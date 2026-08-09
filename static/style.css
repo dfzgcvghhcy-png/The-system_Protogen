@@ -106,16 +106,23 @@ body::before {
 .left { left: 20px; }
 .right { right: 20px; }
 
-.terminal {
-    height: 100%;
-    background: rgba(0,0,0,0.6);
-    border: 1px solid cyan;
-    border-radius: 10px;
-    padding: 10px;
-    color: #00ff9c;
+.terminal-text {
     font-family: monospace;
     font-size: 12px;
-    overflow: hidden;
+    color: #00ff9c;
+    padding: 10px;
+    line-height: 1.4;
+    white-space: pre-wrap;
+}
+
+.cursor {
+    animation: blink 1s infinite;
+}
+
+@keyframes blink {
+    0% {opacity: 1;}
+    50% {opacity: 0;}
+    100% {opacity: 1;}
 }
 
 /* АНИМАЦИЯ */
