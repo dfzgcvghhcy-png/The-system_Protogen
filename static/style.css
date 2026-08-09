@@ -1,75 +1,50 @@
 body {
     margin: 0;
+    background: #1e1e1e;
     font-family: Arial, sans-serif;
-    background: url('/static/bg.jpg') no-repeat center center fixed;
-    background-size: cover;
 }
 
-/* главный контейнер */
+/* контейнер чата */
 .chat-container {
-    max-width: 800px;
-    height: 90vh;
-    margin: 20px auto;
+    width: 400px;
+    height: 600px;
+    margin: 40px auto;
+    background: #2b2b2b;
+    border-radius: 15px;
     display: flex;
     flex-direction: column;
-    backdrop-filter: blur(10px);
-    background: rgba(0,0,0,0.4);
-    border-radius: 15px;
     overflow: hidden;
+}
+
+/* верх */
+.chat-header {
+    padding: 15px;
+    background: #3a3a3a;
+    color: white;
 }
 
 /* сообщения */
 .chat-box {
-    flex: 1;
-    padding: 15px;
+    flex: 1; /* ВАЖНО */
+    padding: 10px;
     overflow-y: auto;
-
-    background: rgba(0, 0, 0, 0.3);
-}
-
-/* сообщение */
-.message {
-    max-width: 70%;
-    padding: 10px 15px;
-    margin: 8px 0;
-    border-radius: 15px;
-    font-size: 14px;
-    line-height: 1.4;
-}
-
-/* пользователь */
-.user {
-    background: #4a90e2;
-    color: white;
-    margin-left: auto;
-}
-
-/* бот */
-.bot {
-    background: #2a2a2a;
-    color: white;
-    margin-right: auto;
 }
 
 /* поле ввода */
-.input-area {
+.chat-input {
     display: flex;
     padding: 10px;
-    background: rgba(0,0,0,0.6);
+    background: #3a3a3a;
 }
 
-/* инпут */
-.input-area input {
-    background: #1e1e1e;
-    color: white;
+.chat-input input {
+    flex: 1;
+    padding: 10px;
+    border-radius: 10px;
+    border: none;
 }
 
-.input-area input::placeholder {
-    color: #aaa;
-}
-
-/* кнопка */
-.input-area button {
+.chat-input button {
     margin-left: 10px;
     padding: 10px 15px;
     border: none;
@@ -79,26 +54,21 @@ body {
     cursor: pointer;
 }
 
-.header {
-    display: flex;
-    align-items: center;
+/* сообщения */
+.message {
+    max-width: 70%;
     padding: 10px;
-    background: rgba(0,0,0,0.6);
+    margin: 5px 0;
+    border-radius: 10px;
 }
 
-.avatar {
-    width: 50px;
-    height: 50px;
-    border-radius: 50%;
-    margin-right: 10px;
-}
-
-.title {
+.bot {
+    background: #444;
     color: white;
-    font-weight: bold;
 }
 
-.status {
-    color: #00ff88;
-    font-size: 12px;
+.user {
+    background: #4a90e2;
+    color: white;
+    margin-left: auto;
 }
