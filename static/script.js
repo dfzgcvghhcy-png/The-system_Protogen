@@ -1,6 +1,46 @@
 const messages = document.getElementById("messages");
 
-/* ОТПРАВКА */
+/* ===================== КОМАНДЫ ===================== */
+
+const commandsList = [
+    "/help",
+    "/ban",
+    "/mute",
+    "/unmute",
+    "/warn",
+    "/stats"
+];
+
+function showCommands() {
+    removeCommands();
+
+    const container = document.createElement("div");
+    container.className = "commands-box";
+    container.id = "commandsBox";
+
+    commandsList.forEach(cmd => {
+        const btn = document.createElement("div");
+        btn.className = "command-item";
+        btn.innerText = cmd;
+
+        btn.onclick = () => {
+            document.getElementById("input").value = cmd;
+            removeCommands();
+        };
+
+        container.appendChild(btn);
+    });
+
+    document.querySelector(".input-area").appendChild(container);
+}
+
+function removeCommands() {
+    const old = document.getElementById("commandsBox");
+    if (old) old.remove();
+}
+
+/* ===================== ЧАТ ===================== */
+
 function sendMessage() {
     const input = document.getElementById("input");
     const text = input.value.trim();
@@ -8,21 +48,32 @@ function sendMessage() {
     if (!text) return;
 
     addMessage(text, "user");
+    logRight(`[${getTime()}] USER: ${text}`);
+
+    removeCommands();
 
     setTimeout(() => {
+        let response = "";
+
         if (text.toLowerCase() === "привет") {
-            addMessage("Чем я могу помочь тебе?", "bot");
+            response = "Привет 👋";
         } else if (text.toLowerCase() === "команды") {
-            addMessage("Вот все команды которые есть в моем брате боте в Telegram.", "bot");
+            response = "Выбери команду ниже 👇";
+            showCommands();
+        } else if (commandsList.includes(text)) {
+            response = `Команда ${text} выполнена ✅`;
         } else {
-            addMessage("Я не понял 🤔", "bot");
+            response = "Я не понял 🤔";
         }
-    }, 500);
+
+        addMessage(response, "bot");
+        logRight(`[${getTime()}] BOT: ${response}`);
+
+    }, 400);
 
     input.value = "";
 }
 
-/* ДОБАВЛЕНИЕ */
 function addMessage(text, type) {
     const div = document.createElement("div");
     div.className = "message " + type;
@@ -32,8 +83,21 @@ function addMessage(text, type) {
     messages.scrollTop = messages.scrollHeight;
 }
 
-/* ДАННЫЕ */
-const leftLines = [
+/* ===================== ЛОГИ ===================== */
+
+function getTime() {
+    return new Date().toLocaleTimeString().slice(0,5);
+}
+
+function logRight(text) {
+    const panel = document.getElementById("rightText");
+    panel.innerHTML += text + "<br>";
+    panel.scrollTop = panel.scrollHeight;
+}
+
+/* ===================== ТЕРМИНАЛ (SYSTEM) ===================== */
+
+const systemLines = [
     "ERROR 0x1F4A9: System overload",
     "WARNING: Memory leak detected...",
     "FAIL: Connection lost",
@@ -41,17 +105,7 @@ const leftLines = [
     ">>> rebooting system..."
 ];
 
-const rightLines = [
-    "[12:01] USER: привет",
-    "[12:01] BOT: ответ отправлен",
-    "[12:02] ERROR: timeout",
-    "[12:02] retrying..."
-];
-
-/* ПЕЧАТЬ */
-function typeEffect(el, lines) {
-    if (!el) return;
-
+function typeSystem(el, lines) {
     let i = 0;
     let j = 0;
 
@@ -59,7 +113,6 @@ function typeEffect(el, lines) {
         if (i < lines.length) {
 
             if (j < lines[i].length) {
-                el.innerHTML = el.innerHTML.replace(/<span class="cursor">\|<\/span>$/, "");
                 el.innerHTML += lines[i][j];
                 j++;
 
@@ -67,11 +120,9 @@ function typeEffect(el, lines) {
                     el.innerHTML += "#$%!";
                 }
 
-                el.innerHTML += '<span class="cursor">|</span>';
                 setTimeout(type, 25);
 
             } else {
-                el.innerHTML = el.innerHTML.replace(/<span class="cursor">\|<\/span>$/, "");
                 el.innerHTML += "<br>";
                 i++;
                 j = 0;
@@ -88,15 +139,28 @@ function typeEffect(el, lines) {
     type();
 }
 
-/* СТАРТ */
-window.onload = () => {
-    typeEffect(document.getElementById("leftText"), leftLines);
-    typeEffect(document.getElementById("rightText"), rightLines);
-};
+/* ===================== СОБЫТИЯ ===================== */
 
-/* ENTER */
 document.addEventListener("DOMContentLoaded", () => {
-    document.getElementById("input").addEventListener("keydown", function(e) {
+
+    // запуск SYSTEM
+    const left = document.getElementById("leftText");
+    if (left) typeSystem(left, systemLines);
+
+    // ввод
+    const input = document.getElementById("input");
+
+    input.addEventListener("input", function () {
+        const val = this.value.toLowerCase();
+
+        if (val.startsWith("ком")) {
+            showCommands();
+        } else {
+            removeCommands();
+        }
+    });
+
+    input.addEventListener("keydown", function(e) {
         if (e.key === "Enter") {
             sendMessage();
         }
