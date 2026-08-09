@@ -1,30 +1,23 @@
 body {
     margin: 0;
-    font-family: Arial;
-    background: url('/static/8b02c398-37fd-4573-b4b4-5ca3d40bb5f4.png') no-repeat center center fixed;
-    background-size: cover;
-}
-
-/* затемнение */
-body::before {
-    content: "";
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.7);
-    z-index: -1;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: url('/static/cyberpunk.gif') no-repeat center center/cover;
+    font-family: Arial, sans-serif;
 }
 
 /* ЧАТ */
 .chat-container {
-    width: 380px;
-    height: 650px;
-    margin: 40px auto;
+    width: 350px;
+    height: 600px;
     display: flex;
     flex-direction: column;
-    background: rgba(20,20,25,0.6);
     backdrop-filter: blur(15px);
+    background: rgba(0,0,0,0.6);
     border-radius: 20px;
-    box-shadow: 0 0 25px rgba(0,255,255,0.3);
+    box-shadow: 0 0 25px #00ffe1;
     overflow: hidden;
 }
 
@@ -32,105 +25,119 @@ body::before {
 .chat-header {
     display: flex;
     align-items: center;
-    padding: 15px;
-    background: rgba(0,0,0,0.5);
+    padding: 10px;
+    background: rgba(0,0,0,0.8);
 }
 
 .avatar {
-    width: 45px;
-    height: 45px;
+    width: 50px;
+    height: 50px;
     border-radius: 50%;
+    border: 2px solid #00ffe1;
+    box-shadow: 0 0 10px #00ffe1;
     margin-right: 10px;
-    border: 2px solid cyan;
+}
+
+.name {
+    color: white;
+}
+
+.status {
+    color: #00ff9c;
+    font-size: 12px;
 }
 
 /* СООБЩЕНИЯ */
-.chat-messages {
+.messages {
     flex: 1;
     overflow-y: auto;
-    padding: 15px;
+    padding: 10px;
 }
 
 .message {
     padding: 10px;
-    border-radius: 15px;
     margin-bottom: 10px;
-    max-width: 75%;
-    animation: fade 0.3s;
+    border-radius: 10px;
+    max-width: 80%;
 }
 
 .bot {
     background: rgba(255,255,255,0.1);
-    color: #00eaff;
+    color: #00ffe1;
 }
 
 .user {
-    background: linear-gradient(45deg, #00c6ff, #0072ff);
+    background: #00aaff;
     color: white;
     margin-left: auto;
 }
 
-/* INPUT */
-.chat-input {
+/* ВВОД */
+.input-area {
     display: flex;
     padding: 10px;
-    background: rgba(0,0,0,0.6);
+    gap: 10px;
 }
 
-.chat-input input {
+.input-area input {
     flex: 1;
     padding: 10px;
     border-radius: 10px;
     border: none;
-    outline: none;
 }
 
-.chat-input button {
-    margin-left: 10px;
-    padding: 10px;
-    border: none;
+.input-area button {
+    padding: 10px 15px;
     border-radius: 10px;
-    background: cyan;
+    border: none;
+    background: #00ffe1;
     cursor: pointer;
 }
 
-/* БОКОВЫЕ ПАНЕЛИ */
-.side {
+/* ПАНЕЛИ */
+.side-panel {
     position: fixed;
     top: 50%;
     transform: translateY(-50%);
     width: 250px;
-    height: 70%;
+    height: 80%;
+    background: rgba(0, 0, 0, 0.6);
+    border: 1px solid #00ffe1;
+    border-radius: 15px;
+    overflow: hidden;
 }
 
-.left { left: 20px; }
-.right { right: 20px; }
+.side-panel.left {
+    left: 20px;
+}
 
+.side-panel.right {
+    right: 20px;
+}
+
+.panel-title {
+    padding: 10px;
+    color: #00ffe1;
+    border-bottom: 1px solid #00ffe1;
+    font-size: 14px;
+}
+
+/* ТЕРМИНАЛ */
 .terminal-text {
+    position: absolute;
+    top: 40px;
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    overflow: hidden;
     font-family: monospace;
     font-size: 12px;
     color: #00ff9c;
-    padding: 10px;
-    line-height: 1.4;
-    white-space: pre-wrap;
 }
 
+/* КУРСОР */
 .cursor {
     animation: blink 1s infinite;
-}
-
-@keyframes blink {
-    0% {opacity: 1;}
-    50% {opacity: 0;}
-    100% {opacity: 1;}
-}
-
-/* АНИМАЦИЯ */
-.cursor {
-    display: inline-block;
-    margin-left: 2px;
-    animation: blink 1s infinite;
-    color: #00ff9c;
 }
 
 @keyframes blink {
