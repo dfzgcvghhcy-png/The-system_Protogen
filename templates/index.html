@@ -9,21 +9,24 @@
 
 <div class="chat-container">
 
-    <!-- ШАПКА -->
-    <div class="header">
-        <img src="/static/avatar.png" class="avatar">
-        <div>
-            <div class="title">Protogen Bot</div>
-            <div class="status">онлайн</div>
+    <div class="chat-header">
+        Protogen Bot<br>
+        <small>онлайн</small>
+    </div>
+
+    <div id="chat-box" class="chat-box">
+        <div class="message bot">
+            Привет 👋 Я Protogen Bot<br>
+            Напиши "команды"
         </div>
     </div>
 
-    <!-- ЧАТ -->
-    <div class="message bot">
-    Привет 👋 Я Protogen Bot<br>
-    Напиши "команды", чтобы узнать что я умею
-</div>
+    <div class="chat-input">
+        <input type="text" id="message" placeholder="Написать сообщение...">
+        <button onclick="sendMessage()">▶</button>
+    </div>
 
+</div>
     <!-- ВВОД -->
     <div class="input-area">
         <input type="text" id="message" placeholder="Написать сообщение...">
