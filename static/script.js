@@ -12,17 +12,20 @@ function sendMessage() {
     userMsg.innerText = text;
     chatBox.appendChild(userMsg);
 
-    // ответ бота
-    let botMsg = document.createElement("div");
-    botMsg.className = "message bot";
-    botMsg.innerHTML = getBotReply(text);
-    chatBox.appendChild(botMsg);
-
-    // очистка
     input.value = "";
 
-    // скролл вниз
+    // "печатает..."
+    let typing = document.createElement("div");
+    typing.className = "message bot";
+    typing.innerText = "печатает...";
+    chatBox.appendChild(typing);
+
     chatBox.scrollTop = chatBox.scrollHeight;
+
+    setTimeout(() => {
+        typing.innerHTML = getBotReply(text);
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }, 700);
 }
 
 function getBotReply(text) {
@@ -33,7 +36,7 @@ function getBotReply(text) {
     }
 
     if (text.includes("кто ты")) {
-        return "Я Protogen Bot 🤖<br>Я создан для общения и помощи.";
+        return "Я Protogen Bot 🤖<br>Я просто бот без AI, но умею отвечать 😎";
     }
 
     if (text.includes("команды")) {
@@ -45,5 +48,5 @@ function getBotReply(text) {
         `;
     }
 
-    return "Я пока не понимаю 😅";
+    return "Я не понял 🤔";
 }
