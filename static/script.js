@@ -2,14 +2,18 @@ const messages = document.getElementById("messages");
 
 /* ===================== КОМАНДЫ ===================== */
 
-const commandsList = [
-    "/help",
-    "/ban",
-    "/mute",
-    "/unmute",
-    "/warn",
-    "/stats"
-];
+const commands = {
+    "/help": "📖 Показывает список всех команд бота",
+    "/ban": "🔨 Банит пользователя в чате",
+    "/mute": "🔇 Выдаёт мут пользователю",
+    "/unmute": "🔊 Снимает мут с пользователя",
+    "/warn": "⚠️ Выдаёт предупреждение",
+    "/stats": "📊 Показывает статистику пользователя"
+};
+
+const commandsList = Object.keys(commands);
+
+/* ===================== UI КОМАНД ===================== */
 
 function showCommands() {
     removeCommands();
@@ -57,11 +61,15 @@ function sendMessage() {
 
         if (text.toLowerCase() === "привет") {
             response = "Привет 👋";
+
         } else if (text.toLowerCase() === "команды") {
             response = "Выбери команду ниже 👇";
             showCommands();
-        } else if (commandsList.includes(text)) {
-            response = `Команда ${text} выполнена ✅`;
+
+        } else if (commands[text]) {
+            // 🔥 ВОТ ГЛАВНОЕ
+            response = `Команда ${text}\n${commands[text]} ✅`;
+
         } else {
             response = "Я не понял 🤔";
         }
@@ -95,7 +103,7 @@ function logRight(text) {
     panel.scrollTop = panel.scrollHeight;
 }
 
-/* ===================== ТЕРМИНАЛ (SYSTEM) ===================== */
+/* ===================== SYSTEM ===================== */
 
 const systemLines = [
     "ERROR 0x1F4A9: System overload",
@@ -143,17 +151,15 @@ function typeSystem(el, lines) {
 
 document.addEventListener("DOMContentLoaded", () => {
 
-    // запуск SYSTEM
     const left = document.getElementById("leftText");
     if (left) typeSystem(left, systemLines);
 
-    // ввод
     const input = document.getElementById("input");
 
     input.addEventListener("input", function () {
         const val = this.value.toLowerCase();
 
-        if (val.startsWith("ком")) {
+        if (val.startsWith("ком") || val.startsWith("/")) {
             showCommands();
         } else {
             removeCommands();
