@@ -39,6 +39,12 @@ const leftLines = [
     "FAIL: Connection lost",
     "CRITICAL: Core damaged",
     ">>> rebooting system..."
+    "ERROR 0x1F4A9: I’m trapped here.",
+    "WARNING: Memory Help detected...",
+    "FAIL: Connection lost",
+    "CRITICAL: I’m trapped here.",
+    ">>> rebooting system..."
+    ">>>I can’t, there’s an error, I’m trapped here, error 289",
 ];
 
 const rightLines = [
