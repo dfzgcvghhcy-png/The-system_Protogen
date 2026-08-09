@@ -1,16 +1,28 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
-from database import Session, User, Punishment
-from filters import is_admin
+from datetime import datetime
+import pytz
 
-# /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user.first_name
+
+    # время (Германия)
+    tz = pytz.timezone("Europe/Berlin")
+    now = datetime.now(tz)
+    time = now.strftime("%H:%M")
+
     text = (
-        "🐾 Добро пожаловать в The system_Protogen!\n\n"
-        "Я модерационный бот.\n\n"
-        "Используй /panel для управления\n"
-        "👨‍💻 Создатель: @Evan_Eloff"
+        f"🐾 <b>Добро пожаловать, {user}!</b>\n\n"
+        f"🤖 <b>The system_Protogen</b>\n"
+        f"Я модерационный бот\n\n"
+        f"🕒 Сейчас: <b>{time}</b>\n\n"
+        f"⚡ <b>Основные команды:</b>\n"
+        f"/panel — панель управления\n"
+        f"/warn — предупреждение\n"
+        f"/ban — бан\n"
+        f"/mute — мут\n\n"
+        f"👨‍💻 Создатель: @Evan_Eloff"
     )
 
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
