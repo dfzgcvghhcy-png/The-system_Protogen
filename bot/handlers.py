@@ -1,4 +1,4 @@
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatPermissions
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 from database import Session, User, Punishment
@@ -7,7 +7,6 @@ from filters import is_admin
 from datetime import datetime
 import pytz
 
-# 🔥 УКАЖИ СЮДА СВОЙ САЙТ
 SITE_URL = "https://web-production-c2beb.up.railway.app"
 
 
@@ -25,8 +24,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Я модерационный бот\n\n"
         f"🕒 Сейчас: <b>{time}</b>\n\n"
         f"⚡ <b>Основные команды:</b>\n"
-        f"🌐 <b>Сайт бота:</b>\n{SITE_URL}\n\n"
-        f"👨‍💻 Создатель: @Evan_Eloff"
+        f"/warn — предупреждение\n"
+        f"/ban — бан\n"
+        f"/mute — мут\n\n"
+        f"🌐 <b>Сайт:</b>\n{SITE_URL}"
     )
 
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
@@ -40,6 +41,8 @@ async def warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.reply_to_message:
         return await update.message.reply_text("Ответь на сообщение пользователя")
 
+    reason = " ".join(context.args) if context.args else "без причины"
+
     user_id = update.message.reply_to_message.from_user.id
 
     session = Session()
@@ -52,10 +55,27 @@ async def warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user.warns += 1
 
     session.add(Punishment(user_id=user_id, type="warn"))
+    
+    # 🔥 авто наказание
+    if user.warns >= 3:
+        await update.effective_chat.restrict_member(
+            user_id,
+            ChatPermissions(can_send_messages=False)
+        )
+        user.warns = 0
+        session.commit()
+        session.close()
+
+        return await update.message.reply_text(
+            f"🚫 Пользователь получил 3 варна\n🔇 Авто-мут"
+        )
+
     session.commit()
     session.close()
 
-    await update.message.reply_text(f"⚠️ Варн ({user.warns})")
+    await update.message.reply_text(
+        f"⚠️ Варн ({user.warns})\nПричина: {reason}"
+    )
 
 
 # ban
@@ -66,6 +86,8 @@ async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.reply_to_message:
         return
 
+    reason = " ".join(context.args) if context.args else "без причины"
+
     user = update.message.reply_to_message.from_user
     await update.effective_chat.ban_member(user.id)
 
@@ -74,7 +96,7 @@ async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session.commit()
     session.close()
 
-    await update.message.reply_text("🚫 Забанен")
+    await update.message.reply_text(f"🚫 Забанен\nПричина: {reason}")
 
 
 # unban
@@ -99,6 +121,8 @@ async def mute(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.reply_to_message:
         return
 
+    reason = " ".join(context.args) if context.args else "без причины"
+
     user = update.message.reply_to_message.from_user
 
     await update.effective_chat.restrict_member(
@@ -111,7 +135,7 @@ async def mute(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session.commit()
     session.close()
 
-    await update.message.reply_text("🔇 Замучен")
+    await update.message.reply_text(f"🔇 Замучен\nПричина: {reason}")
 
 
 # unmute
