@@ -2,49 +2,60 @@ body {
     margin: 0;
     font-family: Arial, sans-serif;
 
-    /* 🔥 GIF ФОН */
     background: url('/static/bg.gif') no-repeat center center fixed;
     background-size: cover;
 }
 
+/* затемнение */
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: -1;
+}
+
 /* контейнер */
 .chat-container {
-    width: 400px;
-    height: 600px;
+    width: 420px;
+    height: 620px;
     margin: 40px auto;
-    background: rgba(30,30,30,0.9);
+    background: rgba(20,20,20,0.85);
     border-radius: 20px;
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    box-shadow: 0 0 40px rgba(0,0,0,0.7);
+    box-shadow: 0 0 50px rgba(0,255,255,0.2);
+    backdrop-filter: blur(10px);
 }
 
 /* header */
 .chat-header {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
     padding: 15px;
-    background: rgba(50,50,50,0.9);
+    background: rgba(0,0,0,0.6);
     color: white;
+    border-bottom: 1px solid rgba(0,255,255,0.2);
 }
 
 .avatar {
-    width: 40px;
-    height: 40px;
+    width: 42px;
+    height: 42px;
     border-radius: 50%;
+    box-shadow: 0 0 10px #00ffff;
 }
 
 .status {
-    color: #4caf50;
+    color: #00ff9f;
     font-size: 12px;
 }
 
 /* чат */
 .chat-box {
     flex: 1;
-    padding: 10px;
+    padding: 12px;
     overflow-y: auto;
 }
 
@@ -52,50 +63,57 @@ body {
 .chat-input {
     display: flex;
     padding: 10px;
-    background: rgba(50,50,50,0.9);
+    background: rgba(0,0,0,0.6);
 }
 
 .chat-input input {
     flex: 1;
     padding: 10px;
-    border-radius: 10px;
+    border-radius: 12px;
     border: none;
+    outline: none;
+    background: #1e1e1e;
+    color: white;
 }
 
 .chat-input button {
     margin-left: 10px;
     padding: 10px 15px;
     border: none;
-    border-radius: 10px;
-    background: #4a90e2;
+    border-radius: 12px;
+    background: linear-gradient(45deg, #00ffff, #0077ff);
     color: white;
     cursor: pointer;
 }
 
 .chat-input button:hover {
-    background: #357abd;
+    opacity: 0.8;
 }
 
 /* сообщения */
 .message {
     max-width: 75%;
     padding: 10px;
-    margin: 5px 0;
+    margin: 6px 0;
     border-radius: 12px;
     animation: fadeIn 0.2s ease;
 }
 
+/* бот */
 .bot {
-    background: #444;
-    color: white;
+    background: rgba(255,255,255,0.1);
+    color: #00ffff;
+    backdrop-filter: blur(5px);
 }
 
+/* пользователь */
 .user {
-    background: #4a90e2;
+    background: linear-gradient(45deg, #0077ff, #00ffff);
     color: white;
     margin-left: auto;
 }
 
+/* анимация */
 @keyframes fadeIn {
     from {
         opacity: 0;
