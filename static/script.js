@@ -32,28 +32,23 @@ function addMessage(text, type) {
     messages.scrollTop = messages.scrollHeight;
 }
 
-/* ДАННЫЕ ТЕРМИНАЛА */
+/* ДАННЫЕ */
 const leftLines = [
     "ERROR 0x1F4A9: System overload",
     "WARNING: Memory leak detected...",
     "FAIL: Connection lost",
     "CRITICAL: Core damaged",
-    ">>> rebooting system...",
-    "ACCESS DENIED",
-    "injecting patch..."
+    ">>> rebooting system..."
 ];
 
 const rightLines = [
     "[12:01] USER: привет",
     "[12:01] BOT: ответ отправлен",
     "[12:02] ERROR: timeout",
-    "[12:02] retrying...",
-    "[12:03] BOT: fallback mode",
-    "[12:04] USER: а",
-    "[12:04] BOT: не понял 🤔"
+    "[12:02] retrying..."
 ];
 
-/* ПЕЧАТАЮЩИЙСЯ ЭФФЕКТ */
+/* ПЕЧАТЬ */
 function typeEffect(el, lines) {
     if (!el) return;
 
@@ -65,7 +60,6 @@ function typeEffect(el, lines) {
 
             if (j < lines[i].length) {
                 el.innerHTML = el.innerHTML.replace(/<span class="cursor">\|<\/span>$/, "");
-
                 el.innerHTML += lines[i][j];
                 j++;
 
@@ -74,7 +68,6 @@ function typeEffect(el, lines) {
                 }
 
                 el.innerHTML += '<span class="cursor">|</span>';
-
                 setTimeout(type, 25);
 
             } else {
@@ -82,7 +75,6 @@ function typeEffect(el, lines) {
                 el.innerHTML += "<br>";
                 i++;
                 j = 0;
-
                 setTimeout(type, 200);
             }
 
