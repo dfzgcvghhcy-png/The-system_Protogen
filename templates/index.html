@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <title>Protogen Bot</title>
+
+    <!-- СТИЛИ -->
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -15,6 +17,7 @@
 
 <!-- ЧАТ -->
 <div class="chat-container">
+    
     <div class="chat-header">
         <img src="/static/my_avatar.gif" class="avatar">
         <div>
@@ -34,6 +37,7 @@
         <input id="input" placeholder="Написать сообщение...">
         <button onclick="sendMessage()">➤</button>
     </div>
+
 </div>
 
 <!-- ПРАВАЯ ПАНЕЛЬ -->
@@ -42,6 +46,8 @@
     <div id="rightText" class="terminal-text"></div>
 </div>
 
-<script src="script.js"></script>
+<!-- ВАЖНО: ПРАВИЛЬНОЕ ПОДКЛЮЧЕНИЕ JS -->
+<script src="/static/script.js"></script>
+
 </body>
 </html>
