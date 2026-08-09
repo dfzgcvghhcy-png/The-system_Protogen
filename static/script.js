@@ -11,9 +11,9 @@ function sendMessage() {
 
     setTimeout(() => {
         if (text.toLowerCase() === "привет") {
-            addMessage("Привет 👋", "bot");
+            addMessage("Чем я могу помочь тебе?", "bot");
         } else if (text.toLowerCase() === "команды") {
-            addMessage("привет, команды, помощь", "bot");
+            addMessage("Вот все команды которые есть в моем брате боте в Telegram.", "bot");
         } else {
             addMessage("Я не понял 🤔", "bot");
         }
