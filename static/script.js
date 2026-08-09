@@ -1,53 +1,49 @@
-const chat = document.getElementById("chat");
-const input = document.getElementById("input");
-
 function sendMessage() {
-    const text = input.value.trim();
-    if (!text) return;
+    let input = document.getElementById("message");
+    let text = input.value.trim();
 
-    addMessage("user", text);
+    if (text === "") return;
+
+    let chatBox = document.getElementById("chat-box");
+
+    // сообщение пользователя
+    let userMsg = document.createElement("div");
+    userMsg.className = "message user";
+    userMsg.innerText = text;
+    chatBox.appendChild(userMsg);
+
+    // ответ бота
+    let botMsg = document.createElement("div");
+    botMsg.className = "message bot";
+    botMsg.innerHTML = getBotReply(text);
+    chatBox.appendChild(botMsg);
+
+    // очистка
     input.value = "";
 
-    fetch("/chat", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ message: text })
-    })
-    .then(res => res.json())
-    .then(data => {
-        typeMessage(data.reply);
-    });
+    // скролл вниз
+    chatBox.scrollTop = chatBox.scrollHeight;
 }
 
-input.addEventListener("keydown", e => {
-    if (e.key === "Enter") sendMessage();
-});
+function getBotReply(text) {
+    text = text.toLowerCase();
 
-function addMessage(type, text) {
-    const msg = document.createElement("div");
-    msg.className = "msg " + type;
-    msg.innerText = text;
-
-    chat.appendChild(msg);
-    chat.scrollTop = chat.scrollHeight;
-}
-
-function typeMessage(text) {
-    const msg = document.createElement("div");
-    msg.className = "msg bot";
-    chat.appendChild(msg);
-
-    let i = 0;
-
-    function typing() {
-        if (i < text.length) {
-            msg.innerHTML += text[i];
-            i++;
-            setTimeout(typing, 10);
-        }
+    if (text.includes("привет")) {
+        return "Привет 👋";
     }
 
-    typing();
+    if (text.includes("кто ты")) {
+        return "Я Protogen Bot 🤖<br>Я создан для общения и помощи.";
+    }
+
+    if (text.includes("команды")) {
+        return `
+        📜 Команды:<br>
+        • привет<br>
+        • кто ты<br>
+        • команды
+        `;
+    }
+
+    return "Я пока не понимаю 😅";
 }
