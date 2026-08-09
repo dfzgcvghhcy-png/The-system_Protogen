@@ -4,7 +4,7 @@ body {
     font-family: Arial, sans-serif;
 }
 
-/* контейнер чата */
+/* контейнер */
 .chat-container {
     width: 400px;
     height: 600px;
@@ -16,21 +16,21 @@ body {
     overflow: hidden;
 }
 
-/* верх */
+/* header */
 .chat-header {
     padding: 15px;
     background: #3a3a3a;
     color: white;
 }
 
-/* сообщения */
+/* чат */
 .chat-box {
-    flex: 1; /* ВАЖНО */
+    flex: 1;
     padding: 10px;
     overflow-y: auto;
 }
 
-/* поле ввода */
+/* ввод */
 .chat-input {
     display: flex;
     padding: 10px;
