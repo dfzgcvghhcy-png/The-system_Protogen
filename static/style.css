@@ -23,15 +23,18 @@ body {
     flex: 1;
     padding: 15px;
     overflow-y: auto;
+
+    background: rgba(0, 0, 0, 0.3);
 }
 
 /* сообщение */
 .message {
     max-width: 70%;
     padding: 10px 15px;
-    margin: 10px 0;
+    margin: 8px 0;
     border-radius: 15px;
-    word-wrap: break-word;
+    font-size: 14px;
+    line-height: 1.4;
 }
 
 /* пользователь */
@@ -43,7 +46,7 @@ body {
 
 /* бот */
 .bot {
-    background: #2c2c2c;
+    background: #2a2a2a;
     color: white;
     margin-right: auto;
 }
