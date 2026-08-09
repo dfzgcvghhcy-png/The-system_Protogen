@@ -60,11 +60,12 @@ body {
 
 /* инпут */
 .input-area input {
-    flex: 1;
-    padding: 10px;
-    border-radius: 10px;
-    border: none;
-    outline: none;
+    background: #1e1e1e;
+    color: white;
+}
+
+.input-area input::placeholder {
+    color: #aaa;
 }
 
 /* кнопка */
