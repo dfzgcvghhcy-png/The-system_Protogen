@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Protogen AI</title>
+    <title>Protogen Bot</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -10,8 +10,8 @@
 <div class="chat-container">
 
     <div class="chat-header">
-        Protogen Bot<br>
-        <small>онлайн</small>
+        <b>Protogen Bot</b><br>
+        <small style="color: #4caf50;">онлайн</small>
     </div>
 
     <div id="chat-box" class="chat-box">
@@ -22,46 +22,12 @@
     </div>
 
     <div class="chat-input">
-        <input type="text" id="message" placeholder="Написать сообщение...">
+        <input type="text" id="message" placeholder="Написать сообщение..." onkeydown="if(event.key==='Enter') sendMessage()">
         <button onclick="sendMessage()">▶</button>
     </div>
 
 </div>
-    <!-- ВВОД -->
-    <div class="input-area">
-        <input type="text" id="message" placeholder="Написать сообщение...">
-        <button onclick="sendMessage()">➤</button>
-    </div>
 
-</div>
-
-<script>
-async function sendMessage() {
-    let input = document.getElementById("message");
-    let text = input.value;
-
-    if (!text) return;
-
-    let chatBox = document.getElementById("chat-box");
-
-    // сообщение пользователя
-    chatBox.innerHTML += `<div class="message user">${text}</div>`;
-
-    let response = await fetch("/chat", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({message: text})
-    });
-
-    let data = await response.json();
-
-    // ответ бота
-    chatBox.innerHTML += `<div class="message bot">${data.response}</div>`;
-
-    input.value = "";
-    chatBox.scrollTop = chatBox.scrollHeight;
-}
-</script>
-
+<script src="/static/script.js"></script>
 </body>
 </html>
