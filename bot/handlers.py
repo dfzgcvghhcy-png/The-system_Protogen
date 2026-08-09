@@ -1,13 +1,20 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
+from database import Session, User, Punishment
+from filters import is_admin
+
 from datetime import datetime
 import pytz
 
+# 🔥 УКАЖИ СЮДА СВОЙ САЙТ
+SITE_URL = "https://web-production-c2beb.up.railway.app"
+
+
+# /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user.first_name
 
-    # время (Германия)
     tz = pytz.timezone("Europe/Berlin")
     now = datetime.now(tz)
     time = now.strftime("%H:%M")
@@ -22,11 +29,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"/warn — предупреждение\n"
         f"/ban — бан\n"
         f"/mute — мут\n\n"
+        f"🌐 <b>Сайт бота:</b>\n{SITE_URL}\n\n"
         f"👨‍💻 Создатель: @Evan_Eloff"
     )
 
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
-    
+
+
 # warn
 async def warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
@@ -52,6 +61,7 @@ async def warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(f"⚠️ Варн ({user.warns})")
 
+
 # ban
 async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
@@ -70,6 +80,7 @@ async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("🚫 Забанен")
 
+
 # unban
 async def unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
@@ -82,6 +93,7 @@ async def unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.effective_chat.unban_member(user.id)
 
     await update.message.reply_text("✅ Разбанен")
+
 
 # mute
 async def mute(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -105,6 +117,7 @@ async def mute(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("🔇 Замучен")
 
+
 # unmute
 async def unmute(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
@@ -122,6 +135,7 @@ async def unmute(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("🔊 Размучен")
 
+
 # kick
 async def kick(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
@@ -137,6 +151,7 @@ async def kick(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("👢 Кикнут")
 
+
 # панель
 async def panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
@@ -151,6 +166,7 @@ async def panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🛠 Админ панель:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
+
 
 # кнопки
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
