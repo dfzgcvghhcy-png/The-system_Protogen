@@ -2,18 +2,23 @@ from flask import Flask, render_template, request, jsonify
 
 app = Flask(__name__)
 
-# простые ответы (без AI)
 def get_response(text):
     text = text.lower()
 
-    if "привет" in text:
-        return "Привет 👋"
-    elif "как дела" in text:
-        return "Нормально 😎"
-    elif "пока" in text:
-        return "Пока 👋"
-    else:
-        return "Я пока без AI 😅"
+    responses = {
+        "привет": "Привет 👋 Я Protogen Bot — бот для управления чатом и развлечений!",
+        "кто ты": "Я Protogen Bot 🤖, помогаю модерировать чат и развлекать пользователей.",
+        "команды": "Вот мои команды:\n/start\n/help\n/ban\n/mute\n/unmute",
+        "помощь": "Напиши 'команды', чтобы увидеть список доступных команд.",
+        "пока": "Пока 👋"
+    }
+
+    # проверка по ключевым словам
+    for key in responses:
+        if key in text:
+            return responses[key]
+
+    return "Я не понял 😅 Напиши 'команды'"
 
 @app.route("/")
 def index():
