@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Protogen AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="app">
+    <div class="topbar">
+        <img src="https://media1.tenor.com/m/l6twQuwR-BYAAAAC/furry-protogen.gif">
+        <div>
+            <div class="name">Protogen AI</div>
+            <div class="status">онлайн</div>
+        </div>
+    </div>
+
+    <div class="chat" id="chat"></div>
+
+    <div class="input-area">
+        <input id="input" placeholder="Написать сообщение...">
+        <button onclick="sendMessage()">➤</button>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
