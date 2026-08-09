@@ -32,19 +32,30 @@ function addMessage(text, type) {
 
 /* БОКОВЫЕ ТЕРМИНАЛЫ */
 const leftLines = [
-    "help - команды",
-    "ban - бан",
-    "mute - мут",
-    "stats - статистика"
+    "ERROR 0x1F4A9: System overload",
+    "WARNING: Memory leak detected...",
+    "FAIL: Connection to core lost",
+    "CRITICAL: AI module crashed",
+    ">>> rebooting system...",
+    "ACCESS DENIED",
+    "injecting patch...",
+    "ERROR: Unknown command",
+    "SYSTEM FAILURE [code: 503]",
+    "restarting neural link..."
 ];
 
 const rightLines = [
     "[12:01] USER: привет",
-    "[12:01] BOT: привет",
-    "[12:02] USER: а",
-    "[12:02] BOT: не понял"
+    "[12:01] BOT: ответ отправлен",
+    "[12:02] ERROR: response timeout",
+    "[12:02] retrying...",
+    "[12:03] WARNING: high load",
+    "[12:03] BOT: fallback mode",
+    "[12:04] ERROR 404: brain not found",
+    "[12:04] USER: а",
+    "[12:04] BOT: не понял 🤔",
+    "[12:05] SYSTEM: unstable..."
 ];
-
 function typeEffect(el, lines) {
     let i = 0;
     let j = 0;
@@ -73,3 +84,6 @@ function typeEffect(el, lines) {
 
 typeEffect(document.getElementById("leftText"), leftLines);
 typeEffect(document.getElementById("rightText"), rightLines);
+if (Math.random() < 0.02) {
+    el.innerHTML += "#$%!";
+}
