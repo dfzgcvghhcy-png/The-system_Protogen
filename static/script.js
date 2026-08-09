@@ -32,25 +32,30 @@ function addMessage(text, type) {
     messages.scrollTop = messages.scrollHeight;
 }
 
-/* ДАННЫЕ */
+/* ДАННЫЕ ТЕРМИНАЛА */
 const leftLines = [
     "ERROR 0x1F4A9: System overload",
     "WARNING: Memory leak detected...",
     "FAIL: Connection lost",
-    "CRITICAL: AI module crashed",
-    ">>> rebooting system..."
+    "CRITICAL: Core damaged",
+    ">>> rebooting system...",
+    "ACCESS DENIED",
+    "injecting patch..."
 ];
 
 const rightLines = [
     "[12:01] USER: привет",
     "[12:01] BOT: ответ отправлен",
     "[12:02] ERROR: timeout",
-    "[12:02] retrying..."
+    "[12:02] retrying...",
+    "[12:03] BOT: fallback mode",
+    "[12:04] USER: а",
+    "[12:04] BOT: не понял 🤔"
 ];
 
-/* ПЕЧАТЬ */
+/* ПЕЧАТАЮЩИЙСЯ ЭФФЕКТ */
 function typeEffect(el, lines) {
-    if (!el) return; // <-- ВАЖНО
+    if (!el) return;
 
     let i = 0;
     let j = 0;
@@ -64,14 +69,13 @@ function typeEffect(el, lines) {
                 el.innerHTML += lines[i][j];
                 j++;
 
-                // глитч
                 if (Math.random() < 0.03) {
                     el.innerHTML += "#$%!";
                 }
 
                 el.innerHTML += '<span class="cursor">|</span>';
 
-                setTimeout(type, 30);
+                setTimeout(type, 25);
 
             } else {
                 el.innerHTML = el.innerHTML.replace(/<span class="cursor">\|<\/span>$/, "");
@@ -92,15 +96,17 @@ function typeEffect(el, lines) {
     type();
 }
 
-/* ЗАПУСК ПОСЛЕ ЗАГРУЗКИ */
+/* СТАРТ */
 window.onload = () => {
     typeEffect(document.getElementById("leftText"), leftLines);
     typeEffect(document.getElementById("rightText"), rightLines);
 };
 
 /* ENTER */
-document.getElementById("input").addEventListener("keydown", function(e) {
-    if (e.key === "Enter") {
-        sendMessage();
-    }
+document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById("input").addEventListener("keydown", function(e) {
+        if (e.key === "Enter") {
+            sendMessage();
+        }
+    });
 });
