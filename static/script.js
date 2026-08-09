@@ -1,5 +1,6 @@
 const messages = document.getElementById("messages");
 
+/* ОТПРАВКА СООБЩЕНИЯ */
 function sendMessage() {
     const input = document.getElementById("input");
     const text = input.value.trim();
@@ -21,6 +22,7 @@ function sendMessage() {
     input.value = "";
 }
 
+/* ДОБАВЛЕНИЕ СООБЩЕНИЯ */
 function addMessage(text, type) {
     const div = document.createElement("div");
     div.className = "message " + type;
@@ -30,24 +32,24 @@ function addMessage(text, type) {
     messages.scrollTop = messages.scrollHeight;
 }
 
-/* БОКОВЫЕ ТЕРМИНАЛЫ */
+/* ДАННЫЕ ДЛЯ ТЕРМИНАЛОВ */
 const leftLines = [
     "ERROR 0x1F4A9: System overload",
     "WARNING: Memory leak detected...",
-    "FAIL: Connection to core lost",
+    "FAIL: Connection lost",
     "CRITICAL: AI module crashed",
     ">>> rebooting system...",
     "ACCESS DENIED",
     "injecting patch...",
     "ERROR: Unknown command",
-    "SYSTEM FAILURE [code: 503]",
+    "SYSTEM FAILURE [503]",
     "restarting neural link..."
 ];
 
 const rightLines = [
     "[12:01] USER: привет",
     "[12:01] BOT: ответ отправлен",
-    "[12:02] ERROR: response timeout",
+    "[12:02] ERROR: timeout",
     "[12:02] retrying...",
     "[12:03] WARNING: high load",
     "[12:03] BOT: fallback mode",
@@ -56,34 +58,56 @@ const rightLines = [
     "[12:04] BOT: не понял 🤔",
     "[12:05] SYSTEM: unstable..."
 ];
+
+/* ЭФФЕКТ ПЕЧАТИ */
 function typeEffect(el, lines) {
     let i = 0;
     let j = 0;
 
     function type() {
         if (i < lines.length) {
+
+            // печать символов
             if (j < lines[i].length) {
+                el.innerHTML = el.innerHTML.replace(/<span class="cursor">\\|<\\/span>$/, "");
+
                 el.innerHTML += lines[i][j];
                 j++;
-                setTimeout(type, 30);
+
+                // глитч эффект
+                if (Math.random() < 0.03) {
+                    el.innerHTML += "#$%!";
+                }
+
+                el.innerHTML += '<span class="cursor">|</span>';
+
+                setTimeout(type, 25);
+
             } else {
+                el.innerHTML = el.innerHTML.replace(/<span class="cursor">\\|<\\/span>$/, "");
                 el.innerHTML += "<br>";
                 i++;
                 j = 0;
                 setTimeout(type, 200);
             }
+
         } else {
             el.innerHTML = "";
             i = 0;
-            setTimeout(type, 1000);
+            setTimeout(type, 800);
         }
     }
 
     type();
 }
 
+/* ЗАПУСК */
 typeEffect(document.getElementById("leftText"), leftLines);
 typeEffect(document.getElementById("rightText"), rightLines);
-if (Math.random() < 0.02) {
-    el.innerHTML += "#$%!";
-}
+
+/* ENTER ДЛЯ ОТПРАВКИ */
+document.getElementById("input").addEventListener("keydown", function(e) {
+    if (e.key === "Enter") {
+        sendMessage();
+    }
+});
