@@ -32,11 +32,11 @@ function getBotReply(text) {
     text = text.toLowerCase();
 
     if (text.includes("привет")) {
-        return "Привет 👋";
+        return "Привет, и Добро пожаловать на мой сайт.👋";
     }
 
     if (text.includes("кто ты")) {
-        return "Я Protogen Bot 🤖<br>Я просто бот без AI, но умею отвечать 😎";
+        return "Я Protogen Bot 🤖<br>Я просто бот но уже могу отвечать на команды и делать анализ и алгоритм";
     }
 
     if (text.includes("команды")) {
