@@ -25,10 +25,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Я модерационный бот\n\n"
         f"🕒 Сейчас: <b>{time}</b>\n\n"
         f"⚡ <b>Основные команды:</b>\n"
-        f"/panel — панель управления\n"
-        f"/warn — предупреждение\n"
-        f"/ban — бан\n"
-        f"/mute — мут\n\n"
         f"🌐 <b>Сайт бота:</b>\n{SITE_URL}\n\n"
         f"👨‍💻 Создатель: @Evan_Eloff"
     )
