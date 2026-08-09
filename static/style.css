@@ -1,70 +1,76 @@
 body {
     margin: 0;
-    font-family: Arial;
-    background: url("https://i.pinimg.com/originals/5b/08/2b/5b082b57f17e55f3e6a3c22cea8d8582.gif") no-repeat center center fixed;
+    font-family: Arial, sans-serif;
+    background: url('/static/bg.jpg') no-repeat center center fixed;
     background-size: cover;
-    color: white;
 }
 
-.app {
+/* главный контейнер */
+.chat-container {
+    max-width: 800px;
+    height: 90vh;
+    margin: 20px auto;
     display: flex;
     flex-direction: column;
-    height: 100vh;
-    backdrop-filter: blur(8px);
+    backdrop-filter: blur(10px);
+    background: rgba(0,0,0,0.4);
+    border-radius: 15px;
+    overflow: hidden;
 }
 
-.topbar {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 15px;
-    background: rgba(0,0,0,0.5);
-}
-
-.topbar img {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-}
-
-.chat {
+/* сообщения */
+.chat-box {
     flex: 1;
-    padding: 10px;
+    padding: 15px;
     overflow-y: auto;
 }
 
-.msg {
-    padding: 10px;
-    margin: 5px;
-    border-radius: 10px;
+/* сообщение */
+.message {
     max-width: 70%;
+    padding: 10px 15px;
+    margin: 10px 0;
+    border-radius: 15px;
+    word-wrap: break-word;
 }
 
+/* пользователь */
 .user {
-    background: #2563eb;
+    background: #4a90e2;
+    color: white;
     margin-left: auto;
 }
 
+/* бот */
 .bot {
-    background: #111827;
+    background: #2c2c2c;
+    color: white;
+    margin-right: auto;
 }
 
+/* поле ввода */
 .input-area {
     display: flex;
     padding: 10px;
     background: rgba(0,0,0,0.6);
 }
 
-input {
+/* инпут */
+.input-area input {
     flex: 1;
     padding: 10px;
+    border-radius: 10px;
     border: none;
     outline: none;
 }
 
-button {
-    padding: 10px;
-    background: #2563eb;
+/* кнопка */
+.input-area button {
+    margin-left: 10px;
+    padding: 10px 15px;
     border: none;
+    border-radius: 10px;
+    background: #4a90e2;
     color: white;
+    cursor: pointer;
 }
