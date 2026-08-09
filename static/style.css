@@ -1,7 +1,10 @@
 body {
     margin: 0;
-    background: #1e1e1e;
     font-family: Arial, sans-serif;
+
+    /* 🔥 GIF ФОН */
+    background: url('/static/bg.gif') no-repeat center center fixed;
+    background-size: cover;
 }
 
 /* контейнер */
@@ -9,18 +12,33 @@ body {
     width: 400px;
     height: 600px;
     margin: 40px auto;
-    background: #2b2b2b;
-    border-radius: 15px;
+    background: rgba(30,30,30,0.9);
+    border-radius: 20px;
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    box-shadow: 0 0 40px rgba(0,0,0,0.7);
 }
 
 /* header */
 .chat-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
     padding: 15px;
-    background: #3a3a3a;
+    background: rgba(50,50,50,0.9);
     color: white;
+}
+
+.avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+}
+
+.status {
+    color: #4caf50;
+    font-size: 12px;
 }
 
 /* чат */
@@ -34,7 +52,7 @@ body {
 .chat-input {
     display: flex;
     padding: 10px;
-    background: #3a3a3a;
+    background: rgba(50,50,50,0.9);
 }
 
 .chat-input input {
@@ -54,12 +72,17 @@ body {
     cursor: pointer;
 }
 
+.chat-input button:hover {
+    background: #357abd;
+}
+
 /* сообщения */
 .message {
-    max-width: 70%;
+    max-width: 75%;
     padding: 10px;
     margin: 5px 0;
-    border-radius: 10px;
+    border-radius: 12px;
+    animation: fadeIn 0.2s ease;
 }
 
 .bot {
@@ -71,4 +94,15 @@ body {
     background: #4a90e2;
     color: white;
     margin-left: auto;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
