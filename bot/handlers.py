@@ -54,8 +54,8 @@ async def target_is_admin(update: Update, target_id: int) -> bool:
     return member.status in ("administrator", "creator")
 
 
-async def check_bot_restriction_rights(update: Update) -> bool:
-    if await bot_can_restrict(update, None):
+async def check_bot_restriction_rights(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    if await bot_can_restrict(update, context):
         return True
 
     await update.message.reply_text(
@@ -113,17 +113,17 @@ async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await target_is_admin(update, target.id):
         return await update.message.reply_text("⚠️ Нельзя заблокировать администратора.")
 
-    if not await check_bot_restriction_rights(update):
+    if not await check_bot_restriction_rights(update, context):
         return
 
     try:
-        await update.effective_chat.ban_member(target.id)
+        await context.bot.ban_chat_member(update.effective_chat.id, target.id)
     except Exception as e:
         print(f"BAN ERROR: {e}")
         return await update.message.reply_text(
             "❌ Не удалось забанить пользователя.\n\n"
-            "Проверь право «Ограничивать пользователей» и убедись, "
-            "что бот находится выше пользователя по роли."
+            f"Telegram: {e}\n\n"
+            "Проверь право «Ограничивать пользователей» и позицию бота."
         )
 
     session = Session()
@@ -147,11 +147,11 @@ async def unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not target:
         return
 
-    if not await check_bot_restriction_rights(update):
+    if not await check_bot_restriction_rights(update, context):
         return
 
     try:
-        await update.effective_chat.unban_member(target.id)
+        await context.bot.unban_chat_member(update.effective_chat.id, target.id)
     except Exception as e:
         print(f"UNBAN ERROR: {e}")
         return await update.message.reply_text("❌ Не удалось снять бан.")
@@ -173,7 +173,7 @@ async def mute(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await target_is_admin(update, target.id):
         return await update.message.reply_text("⚠️ Нельзя выдать мут администратору.")
 
-    if not await check_bot_restriction_rights(update):
+    if not await check_bot_restriction_rights(update, context):
         return
 
     try:
@@ -189,7 +189,8 @@ async def mute(update: Update, context: ContextTypes.DEFAULT_TYPE):
             can_send_other_messages=False,
             can_add_web_page_previews=False,
         )
-        await update.effective_chat.restrict_member(
+        await context.bot.restrict_chat_member(
+            chat_id=update.effective_chat.id,
             user_id=target.id,
             permissions=permissions,
         )
@@ -197,8 +198,8 @@ async def mute(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"MUTE ERROR: {e}")
         return await update.message.reply_text(
             "❌ Не удалось выдать мут.\n\n"
-            "Проверь права бота, его позицию среди администраторов "
-            "и убедись, что цель не является администратором."
+            f"Telegram: {e}\n\n"
+            "Проверь право «Ограничивать пользователей» и позицию бота."
         )
 
     session = Session()
@@ -222,7 +223,7 @@ async def unmute(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not target:
         return
 
-    if not await check_bot_restriction_rights(update):
+    if not await check_bot_restriction_rights(update, context):
         return
 
     try:
@@ -238,7 +239,8 @@ async def unmute(update: Update, context: ContextTypes.DEFAULT_TYPE):
             can_send_other_messages=True,
             can_add_web_page_previews=True,
         )
-        await update.effective_chat.restrict_member(
+        await context.bot.restrict_chat_member(
+            chat_id=update.effective_chat.id,
             user_id=target.id,
             permissions=permissions,
         )
@@ -263,15 +265,15 @@ async def kick(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await target_is_admin(update, target.id):
         return await update.message.reply_text("⚠️ Нельзя исключить администратора.")
 
-    if not await check_bot_restriction_rights(update):
+    if not await check_bot_restriction_rights(update, context):
         return
 
     try:
-        await update.effective_chat.ban_member(target.id)
-        await update.effective_chat.unban_member(target.id)
+        await context.bot.ban_chat_member(update.effective_chat.id, target.id)
+        await context.bot.unban_chat_member(update.effective_chat.id, target.id)
     except Exception as e:
         print(f"KICK ERROR: {e}")
-        return await update.message.reply_text("❌ Не удалось кикнуть пользователя.")
+        return await update.message.reply_text(f"❌ Не удалось кикнуть пользователя.\n\nTelegram: {e}")
 
     await update.message.reply_text(
         f"👢 <b>Пользователь исключён</b>\n\n👤 {target.full_name}",
