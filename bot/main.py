@@ -1,8 +1,4 @@
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    CallbackQueryHandler,
-)
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler
 
 from handlers import (
     start,
@@ -26,7 +22,6 @@ async def error_handler(update, context):
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # Команды
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("warn", warn))
     app.add_handler(CommandHandler("ban", ban))
@@ -36,14 +31,10 @@ def main():
     app.add_handler(CommandHandler("kick", kick))
     app.add_handler(CommandHandler("panel", panel))
 
-    # Кнопки панели
     app.add_handler(CallbackQueryHandler(buttons))
-
-    # Обработчик ошибок
     app.add_error_handler(error_handler)
 
     print("🐾 The system_Protogen запущен")
-
     app.run_polling()
 
 
