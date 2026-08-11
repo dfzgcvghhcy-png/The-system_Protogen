@@ -26,10 +26,7 @@ async def error_handler(update, context):
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # =========================
-    # КОМАНДЫ
-    # =========================
-
+    # Команды
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("warn", warn))
     app.add_handler(CommandHandler("ban", ban))
@@ -39,16 +36,10 @@ def main():
     app.add_handler(CommandHandler("kick", kick))
     app.add_handler(CommandHandler("panel", panel))
 
-    # =========================
-    # КНОПКИ ПАНЕЛИ
-    # =========================
-
+    # Кнопки панели
     app.add_handler(CallbackQueryHandler(buttons))
 
-    # =========================
-    # ОШИБКИ
-    # =========================
-
+    # Обработчик ошибок
     app.add_error_handler(error_handler)
 
     print("🐾 The system_Protogen запущен")
