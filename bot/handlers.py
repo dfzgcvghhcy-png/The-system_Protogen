@@ -1,39 +1,24 @@
-from telegram import (
-    Update,
-    ChatPermissions,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-)
-
+from telegram import Update, ChatPermissions, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
-
 from database import Session, User, Punishment
-from filters import is_admin
-
+from filters import is_admin, bot_can_restrict
 from datetime import datetime
 import pytz
-
 
 SITE_URL = "https://web-production-c2beb.up.railway.app"
 
 
-# =========================================================
-# START
-# =========================================================
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user.first_name
-
     tz = pytz.timezone("Europe/Berlin")
     now = datetime.now(tz)
-    time = now.strftime("%H:%M")
 
     text = (
         f"🐾 <b>Добро пожаловать, {user}!</b>\n\n"
         f"🤖 <b>The system_Protogen</b>\n"
         f"Я модерационный бот.\n\n"
-        f"🕒 Сейчас: <b>{time}</b>\n\n"
+        f"🕒 Сейчас: <b>{now.strftime('%H:%M')}</b>\n\n"
         f"⚡ <b>Основные команды:</b>\n"
         f"/warn — предупреждение\n"
         f"/ban — бан\n"
@@ -42,62 +27,70 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"/unban — снять бан\n"
         f"/kick — кик\n"
         f"/panel — панель управления\n\n"
-        f"🌐 <b>Сайт бота:</b>\n"
-        f"{SITE_URL}\n\n"
+        f"🌐 <b>Сайт бота:</b>\n{SITE_URL}\n\n"
         f"👨‍💻 Создатель: @Evan_Eloff"
     )
 
-    await update.message.reply_text(
-        text,
-        parse_mode=ParseMode.HTML
-    )
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
 
-# =========================================================
-# WARN
-# =========================================================
-
-async def warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if not await is_admin(update, context):
-        return await update.message.reply_text(
-            "❌ У тебя нет прав администратора."
-        )
-
+async def get_target(update: Update, command_name: str):
     if not update.message.reply_to_message:
-        return await update.message.reply_text(
-            "⚠️ Ответь этой командой на сообщение пользователя.\n\n"
-            "Пример:\n"
-            "/warn"
+        await update.message.reply_text(
+            f"⚠️ Ответь командой {command_name} на сообщение пользователя."
         )
+        return None
 
     target = update.message.reply_to_message.from_user
+    if not target:
+        await update.message.reply_text("❌ Не удалось определить пользователя.")
+        return None
+
+    return target
+
+
+async def target_is_admin(update: Update, target_id: int) -> bool:
+    member = await update.effective_chat.get_member(target_id)
+    return member.status in ("administrator", "creator")
+
+
+async def check_bot_restriction_rights(update: Update) -> bool:
+    if await bot_can_restrict(update, None):
+        return True
+
+    await update.message.reply_text(
+        "❌ У меня нет права <b>«Ограничивать пользователей»</b>.\n\n"
+        "Открой настройки группы → Администраторы → The system_Protogen "
+        "и включи право <b>«Ограничивать пользователей»</b>.",
+        parse_mode=ParseMode.HTML,
+    )
+    return False
+
+
+async def warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await is_admin(update, context):
+        return await update.message.reply_text("❌ У тебя нет прав администратора.")
+
+    target = await get_target(update, "/warn")
+    if not target:
+        return
+
+    if await target_is_admin(update, target.id):
+        return await update.message.reply_text("⚠️ Нельзя выдать предупреждение администратору.")
 
     session = Session()
-
     try:
         user = session.get(User, target.id)
 
         if not user:
-            user = User(
-                id=target.id,
-                warns=1
-            )
+            user = User(id=target.id, warns=1)
             session.add(user)
         else:
             user.warns += 1
 
-        session.add(
-            Punishment(
-                user_id=target.id,
-                type="warn"
-            )
-        )
-
+        session.add(Punishment(user_id=target.id, type="warn"))
         session.commit()
-
         warns_count = user.warns
-
     finally:
         session.close()
 
@@ -105,310 +98,231 @@ async def warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⚠️ <b>Предупреждение выдано</b>\n\n"
         f"👤 Пользователь: <b>{target.full_name}</b>\n"
         f"⚠️ Варнов: <b>{warns_count}</b>",
-        parse_mode=ParseMode.HTML
+        parse_mode=ParseMode.HTML,
     )
 
 
-# =========================================================
-# BAN
-# =========================================================
-
 async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     if not await is_admin(update, context):
-        return await update.message.reply_text(
-            "❌ У тебя нет прав администратора."
-        )
+        return await update.message.reply_text("❌ У тебя нет прав администратора.")
 
-    if not update.message.reply_to_message:
-        return await update.message.reply_text(
-            "⚠️ Ответь на сообщение пользователя командой /ban."
-        )
+    target = await get_target(update, "/ban")
+    if not target:
+        return
 
-    target = update.message.reply_to_message.from_user
+    if await target_is_admin(update, target.id):
+        return await update.message.reply_text("⚠️ Нельзя заблокировать администратора.")
+
+    if not await check_bot_restriction_rights(update):
+        return
 
     try:
         await update.effective_chat.ban_member(target.id)
     except Exception as e:
         print(f"BAN ERROR: {e}")
-
         return await update.message.reply_text(
             "❌ Не удалось забанить пользователя.\n\n"
-            "Проверь, что я являюсь администратором группы "
-            "и имею право блокировать пользователей."
+            "Проверь право «Ограничивать пользователей» и убедись, "
+            "что бот находится выше пользователя по роли."
         )
 
     session = Session()
-
     try:
-        session.add(
-            Punishment(
-                user_id=target.id,
-                type="ban"
-            )
-        )
+        session.add(Punishment(user_id=target.id, type="ban"))
         session.commit()
     finally:
         session.close()
 
     await update.message.reply_text(
-        f"🚫 <b>Пользователь заблокирован</b>\n\n"
-        f"👤 {target.full_name}",
-        parse_mode=ParseMode.HTML
+        f"🚫 <b>Пользователь заблокирован</b>\n\n👤 {target.full_name}",
+        parse_mode=ParseMode.HTML,
     )
 
 
-# =========================================================
-# UNBAN
-# =========================================================
-
 async def unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     if not await is_admin(update, context):
-        return await update.message.reply_text(
-            "❌ У тебя нет прав администратора."
-        )
+        return await update.message.reply_text("❌ У тебя нет прав администратора.")
 
-    if not update.message.reply_to_message:
-        return await update.message.reply_text(
-            "⚠️ Ответь на сообщение пользователя командой /unban."
-        )
+    target = await get_target(update, "/unban")
+    if not target:
+        return
 
-    target = update.message.reply_to_message.from_user
+    if not await check_bot_restriction_rights(update):
+        return
 
     try:
         await update.effective_chat.unban_member(target.id)
     except Exception as e:
         print(f"UNBAN ERROR: {e}")
-
-        return await update.message.reply_text(
-            "❌ Не удалось снять бан."
-        )
+        return await update.message.reply_text("❌ Не удалось снять бан.")
 
     await update.message.reply_text(
-        f"✅ <b>Пользователь разблокирован</b>\n\n"
-        f"👤 {target.full_name}",
-        parse_mode=ParseMode.HTML
+        f"✅ <b>Пользователь разблокирован</b>\n\n👤 {target.full_name}",
+        parse_mode=ParseMode.HTML,
     )
 
 
-# =========================================================
-# MUTE
-# =========================================================
-
 async def mute(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     if not await is_admin(update, context):
-        return await update.message.reply_text(
-            "❌ У тебя нет прав администратора."
-        )
+        return await update.message.reply_text("❌ У тебя нет прав администратора.")
 
-    if not update.message.reply_to_message:
-        return await update.message.reply_text(
-            "⚠️ Ответь на сообщение пользователя командой /mute."
-        )
+    target = await get_target(update, "/mute")
+    if not target:
+        return
 
-    target = update.message.reply_to_message.from_user
+    if await target_is_admin(update, target.id):
+        return await update.message.reply_text("⚠️ Нельзя выдать мут администратору.")
+
+    if not await check_bot_restriction_rights(update):
+        return
 
     try:
+        permissions = ChatPermissions(
+            can_send_messages=False,
+            can_send_audios=False,
+            can_send_documents=False,
+            can_send_photos=False,
+            can_send_videos=False,
+            can_send_video_notes=False,
+            can_send_voice_notes=False,
+            can_send_polls=False,
+            can_send_other_messages=False,
+            can_add_web_page_previews=False,
+        )
         await update.effective_chat.restrict_member(
-            target.id,
-            ChatPermissions(
-                can_send_messages=False
-            )
+            user_id=target.id,
+            permissions=permissions,
         )
     except Exception as e:
         print(f"MUTE ERROR: {e}")
-
         return await update.message.reply_text(
             "❌ Не удалось выдать мут.\n\n"
-            "Проверь, что я администратор группы "
-            "и имею право ограничивать пользователей."
+            "Проверь права бота, его позицию среди администраторов "
+            "и убедись, что цель не является администратором."
         )
 
     session = Session()
-
     try:
-        session.add(
-            Punishment(
-                user_id=target.id,
-                type="mute"
-            )
-        )
+        session.add(Punishment(user_id=target.id, type="mute"))
         session.commit()
     finally:
         session.close()
 
     await update.message.reply_text(
-        f"🔇 <b>Пользователь получил мут</b>\n\n"
-        f"👤 {target.full_name}",
-        parse_mode=ParseMode.HTML
+        f"🔇 <b>Пользователь получил мут</b>\n\n👤 {target.full_name}",
+        parse_mode=ParseMode.HTML,
     )
 
 
-# =========================================================
-# UNMUTE
-# =========================================================
-
 async def unmute(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     if not await is_admin(update, context):
-        return await update.message.reply_text(
-            "❌ У тебя нет прав администратора."
-        )
+        return await update.message.reply_text("❌ У тебя нет прав администратора.")
 
-    if not update.message.reply_to_message:
-        return await update.message.reply_text(
-            "⚠️ Ответь на сообщение пользователя командой /unmute."
-        )
+    target = await get_target(update, "/unmute")
+    if not target:
+        return
 
-    target = update.message.reply_to_message.from_user
+    if not await check_bot_restriction_rights(update):
+        return
 
     try:
+        permissions = ChatPermissions(
+            can_send_messages=True,
+            can_send_audios=True,
+            can_send_documents=True,
+            can_send_photos=True,
+            can_send_videos=True,
+            can_send_video_notes=True,
+            can_send_voice_notes=True,
+            can_send_polls=True,
+            can_send_other_messages=True,
+            can_add_web_page_previews=True,
+        )
         await update.effective_chat.restrict_member(
-            target.id,
-            ChatPermissions(
-                can_send_messages=True
-            )
+            user_id=target.id,
+            permissions=permissions,
         )
     except Exception as e:
         print(f"UNMUTE ERROR: {e}")
-
-        return await update.message.reply_text(
-            "❌ Не удалось снять мут."
-        )
+        return await update.message.reply_text("❌ Не удалось снять мут.")
 
     await update.message.reply_text(
-        f"🔊 <b>Мут снят</b>\n\n"
-        f"👤 {target.full_name}",
-        parse_mode=ParseMode.HTML
+        f"🔊 <b>Мут снят</b>\n\n👤 {target.full_name}",
+        parse_mode=ParseMode.HTML,
     )
 
 
-# =========================================================
-# KICK
-# =========================================================
-
 async def kick(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     if not await is_admin(update, context):
-        return await update.message.reply_text(
-            "❌ У тебя нет прав администратора."
-        )
+        return await update.message.reply_text("❌ У тебя нет прав администратора.")
 
-    if not update.message.reply_to_message:
-        return await update.message.reply_text(
-            "⚠️ Ответь на сообщение пользователя командой /kick."
-        )
+    target = await get_target(update, "/kick")
+    if not target:
+        return
 
-    target = update.message.reply_to_message.from_user
+    if await target_is_admin(update, target.id):
+        return await update.message.reply_text("⚠️ Нельзя исключить администратора.")
+
+    if not await check_bot_restriction_rights(update):
+        return
 
     try:
         await update.effective_chat.ban_member(target.id)
         await update.effective_chat.unban_member(target.id)
     except Exception as e:
         print(f"KICK ERROR: {e}")
-
-        return await update.message.reply_text(
-            "❌ Не удалось кикнуть пользователя."
-        )
+        return await update.message.reply_text("❌ Не удалось кикнуть пользователя.")
 
     await update.message.reply_text(
-        f"👢 <b>Пользователь исключён</b>\n\n"
-        f"👤 {target.full_name}",
-        parse_mode=ParseMode.HTML
+        f"👢 <b>Пользователь исключён</b>\n\n👤 {target.full_name}",
+        parse_mode=ParseMode.HTML,
     )
 
 
-# =========================================================
-# PANEL
-# =========================================================
-
 async def panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     if not await is_admin(update, context):
-        return await update.message.reply_text(
-            "❌ У тебя нет прав администратора."
-        )
+        return await update.message.reply_text("❌ У тебя нет прав администратора.")
 
     keyboard = [
-        [
-            InlineKeyboardButton(
-                "📊 Варны",
-                callback_data="warns"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "🚫 Баны",
-                callback_data="bans"
-            )
-        ]
+        [InlineKeyboardButton("📊 Варны", callback_data="warns")],
+        [InlineKeyboardButton("🚫 Баны", callback_data="bans")],
     ]
 
     await update.message.reply_text(
-        "🛠 <b>Панель управления</b>\n\n"
-        "Выбери раздел:",
+        "🛠 <b>Панель управления</b>\n\nВыбери раздел:",
         reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode=ParseMode.HTML
+        parse_mode=ParseMode.HTML,
     )
 
 
-# =========================================================
-# PANEL BUTTONS
-# =========================================================
-
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     query = update.callback_query
     await query.answer()
 
     session = Session()
-
     try:
-
         if query.data == "warns":
-
             users = session.query(User).all()
-
             text = "📊 <b>Варны</b>\n\n"
 
             if not users:
                 text += "Пока нет данных."
 
             for user in users:
-                text += (
-                    f"👤 <code>{user.id}</code>"
-                    f" — ⚠️ {user.warns}\n"
-                )
+                text += f"👤 <code>{user.id}</code> — ⚠️ {user.warns}\n"
 
-            await query.edit_message_text(
-                text,
-                parse_mode=ParseMode.HTML
-            )
+            await query.edit_message_text(text, parse_mode=ParseMode.HTML)
 
         elif query.data == "bans":
-
-            bans = (
-                session.query(Punishment)
-                .filter_by(type="ban")
-                .all()
-            )
-
+            bans = session.query(Punishment).filter_by(type="ban").all()
             text = "🚫 <b>Баны</b>\n\n"
 
             if not bans:
                 text += "Пока нет банов."
 
             for ban_record in bans:
-                text += (
-                    f"👤 <code>{ban_record.user_id}</code>\n"
-                )
+                text += f"👤 <code>{ban_record.user_id}</code>\n"
 
-            await query.edit_message_text(
-                text,
-                parse_mode=ParseMode.HTML
-            )
-
+            await query.edit_message_text(text, parse_mode=ParseMode.HTML)
     finally:
         session.close()
