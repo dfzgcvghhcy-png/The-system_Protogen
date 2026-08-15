@@ -287,8 +287,18 @@ async def kick(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # =========================================================
 
 async def panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type == "private":
+        return await update.message.reply_text(
+            "🛠 <b>Панель управления</b> доступна только в группе.\n\n"
+            "Добавь меня в группу как администратора и используй /panel там.",
+            parse_mode=ParseMode.HTML,
+        )
+
     if not await is_admin(update, context):
-        return await update.message.reply_text("❌ У тебя нет прав администратора.")
+        return await update.message.reply_text(
+            "❌ У тебя нет прав администратора."
+        )
+
     await show_main_panel(update)
 
 
@@ -307,7 +317,7 @@ async def show_main_panel(obj):
         "📊 Статистика\n\n"
         "Выбери раздел:"
     )
-    if hasattr(obj, "callback_query"):
+    if getattr(obj, "callback_query", None) is not None:
         await obj.callback_query.edit_message_text(
             text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML
         )
