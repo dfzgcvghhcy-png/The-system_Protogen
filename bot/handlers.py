@@ -307,13 +307,17 @@ async def show_main_panel(obj):
         "📊 Статистика\n\n"
         "Выбери раздел:"
     )
-    if hasattr(obj, "callback_query"):
+    if getattr(obj, "callback_query", None) is not None:
         await obj.callback_query.edit_message_text(
-            text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode=ParseMode.HTML,
         )
     else:
         await obj.message.reply_text(
-            text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode=ParseMode.HTML,
         )
 
 
