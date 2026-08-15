@@ -287,18 +287,8 @@ async def kick(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # =========================================================
 
 async def panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_chat.type == "private":
-        return await update.message.reply_text(
-            "🛠 <b>Панель управления</b> доступна только в группе.\n\n"
-            "Добавь меня в группу как администратора и используй /panel там.",
-            parse_mode=ParseMode.HTML,
-        )
-
     if not await is_admin(update, context):
-        return await update.message.reply_text(
-            "❌ У тебя нет прав администратора."
-        )
-
+        return await update.message.reply_text("❌ У тебя нет прав администратора.")
     await show_main_panel(update)
 
 
@@ -317,7 +307,7 @@ async def show_main_panel(obj):
         "📊 Статистика\n\n"
         "Выбери раздел:"
     )
-    if getattr(obj, "callback_query", None) is not None:
+    if hasattr(obj, "callback_query"):
         await obj.callback_query.edit_message_text(
             text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML
         )
@@ -347,78 +337,30 @@ async def show_moderation_panel(query):
 
 async def show_users_panel(query):
     session = Session()
-
     try:
-        users = (
-            session.query(User)
-            .order_by(User.warns.desc(), User.id.asc())
-            .limit(30)
-            .all()
-        )
-
+        users = session.query(User).order_by(User.warns.desc()).limit(20).all()
         keyboard = []
-
-        if users:
-            for user in users:
-                warns = user.warns or 0
-
-                total = (
-                    session.query(Punishment)
-                    .filter(Punishment.user_id == user.id)
-                    .count()
+        for user in users:
+            total = session.query(Punishment).filter_by(user_id=user.id).count()
+            keyboard.append([
+                InlineKeyboardButton(
+                    f"👤 {user.id} | ⚠️ {user.warns} | 📜 {total}",
+                    callback_data=f"user_{user.id}",
                 )
+            ])
+        keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="panel_main")])
 
-                keyboard.append([
-                    InlineKeyboardButton(
-                        f"👤 {user.id}  •  ⚠️ {warns}  •  📜 {total}",
-                        callback_data=f"user_{user.id}",
-                    )
-                ])
-
-            text = (
-                "👥 <b>ПОЛЬЗОВАТЕЛИ</b>\n\n"
-                f"Найдено в базе: <b>{len(users)}</b>\n\n"
-                "Выбери пользователя:"
-            )
-        else:
-            text = (
-                "👥 <b>ПОЛЬЗОВАТЕЛИ</b>\n\n"
-                "В базе пока нет пользователей.\n\n"
-                "💡 Пользователь появляется здесь после того, "
-                "как бот сохранит его данные при модерации."
-            )
-
-        keyboard.append([
-            InlineKeyboardButton("🔄 Обновить", callback_data="panel_users"),
-            InlineKeyboardButton("◀️ Назад", callback_data="panel_main"),
-        ])
+        text = (
+            "👥 <b>ПОЛЬЗОВАТЕЛИ</b>\n\n"
+            "Пользователи, которые уже есть в базе.\n"
+            "⚠️ — варны, 📜 — записи наказаний."
+        )
+        if not users:
+            text += "\n\nПока нет пользователей в базе."
 
         await query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode=ParseMode.HTML,
+            text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML
         )
-
-    except Exception as e:
-        session.rollback()
-        print(f"PANEL USERS ERROR: {type(e).__name__}: {e}")
-
-        try:
-            await query.edit_message_text(
-                "❌ <b>Не удалось открыть пользователей.</b>\n\n"
-                f"<code>{type(e).__name__}: {e}</code>\n\n"
-                "Ошибка записана в консоль Railway.",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("◀️ Назад", callback_data="panel_main")]
-                ]),
-                parse_mode=ParseMode.HTML,
-            )
-        except Exception as edit_error:
-            print(
-                f"PANEL USERS TELEGRAM ERROR: "
-                f"{type(edit_error).__name__}: {edit_error}"
-            )
-
     finally:
         session.close()
 
@@ -532,18 +474,8 @@ async def show_stats_panel(query):
 
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-
-    if query is None:
-        return
-
-    try:
-        await query.answer()
-    except Exception as e:
-        print(f"CALLBACK ANSWER ERROR: {type(e).__name__}: {e}")
-        return
-
+    await query.answer()
     data = query.data
-    print(f"CALLBACK: {data}")
 
     if data == "panel_main":
         return await show_main_panel(update)
