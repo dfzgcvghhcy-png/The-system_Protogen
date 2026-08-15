@@ -88,7 +88,7 @@ async def warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             user.warns += 1
 
-        session.add(Punishment(user_id=target.id, type="warn"))
+        session.add(Punishment(user_id=target.id, type="warn", reason=" ".join(context.args) if context.args else "Не указана", moderator_id=update.effective_user.id))
         session.commit()
         warns_count = user.warns
     finally:
@@ -128,7 +128,7 @@ async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     session = Session()
     try:
-        session.add(Punishment(user_id=target.id, type="ban"))
+        session.add(Punishment(user_id=target.id, type="ban", reason=" ".join(context.args) if context.args else "Не указана", moderator_id=update.effective_user.id))
         session.commit()
     finally:
         session.close()
@@ -204,7 +204,7 @@ async def mute(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     session = Session()
     try:
-        session.add(Punishment(user_id=target.id, type="mute"))
+        session.add(Punishment(user_id=target.id, type="mute", reason=" ".join(context.args) if context.args else "Не указана", moderator_id=update.effective_user.id))
         session.commit()
     finally:
         session.close()
@@ -281,50 +281,234 @@ async def kick(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+
+# =========================================================
+# НОВАЯ ПАНЕЛЬ PROTOGEN
+# =========================================================
+
 async def panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
         return await update.message.reply_text("❌ У тебя нет прав администратора.")
+    await show_main_panel(update)
 
+
+async def show_main_panel(obj):
     keyboard = [
-        [InlineKeyboardButton("📊 Варны", callback_data="warns")],
-        [InlineKeyboardButton("🚫 Баны", callback_data="bans")],
+        [InlineKeyboardButton("👥 Пользователи", callback_data="panel_users")],
+        [InlineKeyboardButton("⚔️ Модерация", callback_data="panel_moderation")],
+        [InlineKeyboardButton("📜 История", callback_data="panel_history")],
+        [InlineKeyboardButton("📊 Статистика", callback_data="panel_stats")],
     ]
+    text = (
+        "🛠 <b>ПАНЕЛЬ PROTOGEN</b>\n\n"
+        "👥 Управление пользователями\n"
+        "⚔️ Модерация\n"
+        "📜 История действий\n"
+        "📊 Статистика\n\n"
+        "Выбери раздел:"
+    )
+    if hasattr(obj, "callback_query"):
+        await obj.callback_query.edit_message_text(
+            text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML
+        )
+    else:
+        await obj.message.reply_text(
+            text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML
+        )
 
-    await update.message.reply_text(
-        "🛠 <b>Панель управления</b>\n\nВыбери раздел:",
+
+async def show_moderation_panel(query):
+    keyboard = [
+        [InlineKeyboardButton("⚠️ Варн", callback_data="mod_warn"),
+         InlineKeyboardButton("🔇 Мут", callback_data="mod_mute")],
+        [InlineKeyboardButton("🚫 Бан", callback_data="mod_ban"),
+         InlineKeyboardButton("👢 Кик", callback_data="mod_kick")],
+        [InlineKeyboardButton("🔊 Снять мут", callback_data="mod_unmute"),
+         InlineKeyboardButton("🔓 Разбан", callback_data="mod_unban")],
+        [InlineKeyboardButton("◀️ Назад", callback_data="panel_main")],
+    ]
+    await query.edit_message_text(
+        "⚔️ <b>МОДЕРАЦИЯ</b>\n\n"
+        "Выбери действие. Пользователя можно выбрать из карточки.",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode=ParseMode.HTML,
     )
 
 
+async def show_users_panel(query):
+    session = Session()
+    try:
+        users = session.query(User).order_by(User.warns.desc()).limit(20).all()
+        keyboard = []
+        for user in users:
+            total = session.query(Punishment).filter_by(user_id=user.id).count()
+            keyboard.append([
+                InlineKeyboardButton(
+                    f"👤 {user.id} | ⚠️ {user.warns} | 📜 {total}",
+                    callback_data=f"user_{user.id}",
+                )
+            ])
+        keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="panel_main")])
+
+        text = (
+            "👥 <b>ПОЛЬЗОВАТЕЛИ</b>\n\n"
+            "Пользователи, которые уже есть в базе.\n"
+            "⚠️ — варны, 📜 — записи наказаний."
+        )
+        if not users:
+            text += "\n\nПока нет пользователей в базе."
+
+        await query.edit_message_text(
+            text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML
+        )
+    finally:
+        session.close()
+
+
+async def show_user_card(query, user_id):
+    session = Session()
+    try:
+        user = session.get(User, user_id)
+        punishments = (
+            session.query(Punishment)
+            .filter_by(user_id=user_id)
+            .order_by(Punishment.id.desc())
+            .all()
+        )
+
+        counts = {"warn": 0, "mute": 0, "ban": 0, "kick": 0}
+        for p in punishments:
+            if p.type in counts:
+                counts[p.type] += 1
+
+        text = (
+            "👤 <b>КАРТОЧКА ПОЛЬЗОВАТЕЛЯ</b>\n\n"
+            f"🆔 ID: <code>{user_id}</code>\n\n"
+            f"⚠️ Варнов: <b>{user.warns if user else 0}</b>\n"
+            f"🔇 Мутов: <b>{counts['mute']}</b>\n"
+            f"🚫 Банов: <b>{counts['ban']}</b>\n"
+            f"👢 Киков: <b>{counts['kick']}</b>\n\n"
+            "📜 <b>Последние действия:</b>\n"
+        )
+
+        if not punishments:
+            text += "Пока нет наказаний."
+        else:
+            for p in punishments[:7]:
+                icon = {"warn":"⚠️","mute":"🔇","ban":"🚫","kick":"👢"}.get(p.type, "📌")
+                reason = getattr(p, "reason", None) or "Не указана"
+                text += f"{icon} <b>{p.type}</b> — {reason}\n"
+
+        keyboard = [
+            [InlineKeyboardButton("⚠️ Варн", callback_data=f"action_warn_{user_id}"),
+             InlineKeyboardButton("🔇 Мут", callback_data=f"action_mute_{user_id}")],
+            [InlineKeyboardButton("🚫 Бан", callback_data=f"action_ban_{user_id}"),
+             InlineKeyboardButton("👢 Кик", callback_data=f"action_kick_{user_id}")],
+            [InlineKeyboardButton("🔊 Снять мут", callback_data=f"action_unmute_{user_id}"),
+             InlineKeyboardButton("🔓 Разбан", callback_data=f"action_unban_{user_id}")],
+            [InlineKeyboardButton("◀️ Пользователи", callback_data="panel_users")],
+        ]
+
+        await query.edit_message_text(
+            text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML
+        )
+    finally:
+        session.close()
+
+
+async def show_history_panel(query):
+    session = Session()
+    try:
+        punishments = session.query(Punishment).order_by(Punishment.id.desc()).limit(15).all()
+        text = "📜 <b>ПОСЛЕДНИЕ ДЕЙСТВИЯ</b>\n\n"
+
+        if not punishments:
+            text += "История пока пустая."
+        else:
+            for p in punishments:
+                icon = {"warn":"⚠️","mute":"🔇","ban":"🚫","kick":"👢"}.get(p.type, "📌")
+                reason = getattr(p, "reason", None) or "Не указана"
+                text += f"{icon} <b>{p.type}</b> — <code>{p.user_id}</code>\n📝 {reason}\n\n"
+
+        await query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("◀️ Назад", callback_data="panel_main")]
+            ]),
+            parse_mode=ParseMode.HTML,
+        )
+    finally:
+        session.close()
+
+
+async def show_stats_panel(query):
+    session = Session()
+    try:
+        users_count = session.query(User).count()
+        punishments = session.query(Punishment).all()
+        counts = {"warn":0,"mute":0,"ban":0,"kick":0}
+        for p in punishments:
+            if p.type in counts:
+                counts[p.type] += 1
+
+        text = (
+            "📊 <b>СТАТИСТИКА</b>\n\n"
+            f"👥 Пользователей: <b>{users_count}</b>\n"
+            f"⚠️ Варнов: <b>{counts['warn']}</b>\n"
+            f"🔇 Мутов: <b>{counts['mute']}</b>\n"
+            f"🚫 Банов: <b>{counts['ban']}</b>\n"
+            f"👢 Киков: <b>{counts['kick']}</b>\n"
+            f"📜 Всего действий: <b>{len(punishments)}</b>"
+        )
+
+        await query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("◀️ Назад", callback_data="panel_main")]
+            ]),
+            parse_mode=ParseMode.HTML,
+        )
+    finally:
+        session.close()
+
+
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    data = query.data
 
-    session = Session()
-    try:
-        if query.data == "warns":
-            users = session.query(User).all()
-            text = "📊 <b>Варны</b>\n\n"
+    if data == "panel_main":
+        return await show_main_panel(update)
+    if data == "panel_users":
+        return await show_users_panel(query)
+    if data == "panel_moderation":
+        return await show_moderation_panel(query)
+    if data == "panel_history":
+        return await show_history_panel(query)
+    if data == "panel_stats":
+        return await show_stats_panel(query)
 
-            if not users:
-                text += "Пока нет данных."
+    if data.startswith("user_"):
+        return await show_user_card(query, int(data.split("_", 1)[1]))
 
-            for user in users:
-                text += f"👤 <code>{user.id}</code> — ⚠️ {user.warns}\n"
+    if data.startswith("action_"):
+        _, action, user_id = data.split("_")
+        names = {
+            "warn": "⚠️ Варн", "mute": "🔇 Мут", "ban": "🚫 Бан",
+            "kick": "👢 Кик", "unmute": "🔊 Снять мут", "unban": "🔓 Разбан",
+        }
 
-            await query.edit_message_text(text, parse_mode=ParseMode.HTML)
+        await query.edit_message_text(
+            f"⚙️ <b>{names.get(action, 'Действие')}</b>\n\n"
+            f"Пользователь: <code>{user_id}</code>\n\n"
+            "Кнопка уже подготовлена. Следующим этапом добавим "
+            "подтверждение и выполнение действия прямо здесь.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("◀️ Назад", callback_data=f"user_{user_id}")]
+            ]),
+            parse_mode=ParseMode.HTML,
+        )
+        return
 
-        elif query.data == "bans":
-            bans = session.query(Punishment).filter_by(type="ban").all()
-            text = "🚫 <b>Баны</b>\n\n"
-
-            if not bans:
-                text += "Пока нет банов."
-
-            for ban_record in bans:
-                text += f"👤 <code>{ban_record.user_id}</code>\n"
-
-            await query.edit_message_text(text, parse_mode=ParseMode.HTML)
-    finally:
-        session.close()
+    if data in ("warns", "bans"):
+        return await show_history_panel(query)
