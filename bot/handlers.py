@@ -3,7 +3,7 @@ from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 from database import Session, User, Punishment
 from filters import is_admin, bot_can_restrict
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 
 SITE_URL = "https://web-production-c2beb.up.railway.app"
@@ -503,22 +503,333 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data.startswith("action_"):
         _, action, user_id = data.split("_")
+        user_id = int(user_id)
+
         names = {
-            "warn": "⚠️ Варн", "mute": "🔇 Мут", "ban": "🚫 Бан",
-            "kick": "👢 Кик", "unmute": "🔊 Снять мут", "unban": "🔓 Разбан",
+            "warn": "⚠️ Варн",
+            "mute": "🔇 Мут",
+            "ban": "🚫 Бан",
+            "kick": "👢 Кик",
+            "unmute": "🔊 Снять мут",
+            "unban": "🔓 Разбан",
         }
 
-        await query.edit_message_text(
+        if action == "mute":
+            keyboard = [
+                [
+                    InlineKeyboardButton("5 минут", callback_data=f"mutedur_{user_id}_300"),
+                    InlineKeyboardButton("15 минут", callback_data=f"mutedur_{user_id}_900"),
+                ],
+                [
+                    InlineKeyboardButton("30 минут", callback_data=f"mutedur_{user_id}_1800"),
+                    InlineKeyboardButton("1 час", callback_data=f"mutedur_{user_id}_3600"),
+                ],
+                [
+                    InlineKeyboardButton("6 часов", callback_data=f"mutedur_{user_id}_21600"),
+                    InlineKeyboardButton("24 часа", callback_data=f"mutedur_{user_id}_86400"),
+                ],
+                [
+                    InlineKeyboardButton("∞ Навсегда", callback_data=f"mutedur_{user_id}_0"),
+                ],
+                [
+                    InlineKeyboardButton("❌ Отмена", callback_data=f"user_{user_id}"),
+                ],
+            ]
+
+            return await query.edit_message_text(
+                "🔇 <b>ВЫДАЧА МУТА</b>\n\n"
+                f"👤 Пользователь: <code>{user_id}</code>\n\n"
+                "Выберите длительность:",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode=ParseMode.HTML,
+            )
+
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "✅ Подтвердить",
+                    callback_data=f"confirm_{action}_{user_id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "❌ Отмена",
+                    callback_data=f"user_{user_id}",
+                )
+            ],
+        ]
+
+        return await query.edit_message_text(
             f"⚙️ <b>{names.get(action, 'Действие')}</b>\n\n"
-            f"Пользователь: <code>{user_id}</code>\n\n"
-            "Кнопка уже подготовлена. Следующим этапом добавим "
-            "подтверждение и выполнение действия прямо здесь.",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("◀️ Назад", callback_data=f"user_{user_id}")]
-            ]),
+            f"👤 Пользователь: <code>{user_id}</code>\n\n"
+            "Ты точно хочешь выполнить это действие?",
+            reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode=ParseMode.HTML,
         )
-        return
+
+    if data.startswith("mutedur_"):
+        _, user_id, seconds = data.split("_")
+        user_id = int(user_id)
+        seconds = int(seconds)
+
+        duration_name = {
+            300: "5 минут",
+            900: "15 минут",
+            1800: "30 минут",
+            3600: "1 час",
+            21600: "6 часов",
+            86400: "24 часа",
+            0: "навсегда",
+        }.get(seconds, "выбранное время")
+
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "✅ Подтвердить",
+                    callback_data=f"confirmmute_{user_id}_{seconds}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "◀️ Выбрать другую длительность",
+                    callback_data=f"action_mute_{user_id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "❌ Отмена",
+                    callback_data=f"user_{user_id}",
+                )
+            ],
+        ]
+
+        return await query.edit_message_text(
+            "🔇 <b>ПОДТВЕРЖДЕНИЕ МУТА</b>\n\n"
+            f"👤 Пользователь: <code>{user_id}</code>\n"
+            f"⏱ Длительность: <b>{duration_name}</b>\n\n"
+            "Выдать мут?",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode=ParseMode.HTML,
+        )
+
+    if data.startswith("confirmmute_"):
+        _, user_id, seconds = data.split("_")
+        user_id = int(user_id)
+        seconds = int(seconds)
+
+        if not await is_admin(update, context):
+            return await query.answer(
+                "❌ У тебя нет прав администратора.",
+                show_alert=True,
+            )
+
+        if not await bot_can_restrict(update, context):
+            return await query.answer(
+                "❌ У бота нет права ограничивать пользователей.",
+                show_alert=True,
+            )
+
+        try:
+            if await target_is_admin(update, user_id):
+                return await query.answer(
+                    "⚠️ Нельзя выдать мут администратору.",
+                    show_alert=True,
+                )
+        except Exception as e:
+            print(f"TARGET CHECK ERROR: {e}")
+            return await query.answer(
+                "❌ Не удалось проверить пользователя.",
+                show_alert=True,
+            )
+
+        permissions = ChatPermissions(
+            can_send_messages=False,
+            can_send_audios=False,
+            can_send_documents=False,
+            can_send_photos=False,
+            can_send_videos=False,
+            can_send_video_notes=False,
+            can_send_voice_notes=False,
+            can_send_polls=False,
+            can_send_other_messages=False,
+            can_add_web_page_previews=False,
+        )
+
+        try:
+            kwargs = {
+                "chat_id": update.effective_chat.id,
+                "user_id": user_id,
+                "permissions": permissions,
+            }
+
+            if seconds > 0:
+                kwargs["until_date"] = datetime.now() + timedelta(seconds=seconds)
+
+            await context.bot.restrict_chat_member(**kwargs)
+        except Exception as e:
+            print(f"PANEL MUTE ERROR: {e}")
+            return await query.answer(
+                f"❌ Telegram: {e}",
+                show_alert=True,
+            )
+
+        session = Session()
+        try:
+            session.add(
+                Punishment(
+                    user_id=user_id,
+                    type="mute",
+                    reason="Выдано через панель",
+                    moderator_id=update.effective_user.id,
+                    created_at=datetime.utcnow(),
+                )
+            )
+            session.commit()
+        finally:
+            session.close()
+
+        await query.answer("🔇 Мут выдан!", show_alert=True)
+        return await show_user_card(query, user_id)
+
+    if data.startswith("confirm_"):
+        _, action, user_id = data.split("_")
+        user_id = int(user_id)
+
+        if not await is_admin(update, context):
+            return await query.answer(
+                "❌ У тебя нет прав администратора.",
+                show_alert=True,
+            )
+
+        if action not in {"warn", "ban", "kick", "unmute", "unban"}:
+            return await query.answer(
+                "❌ Неизвестное действие.",
+                show_alert=True,
+            )
+
+        try:
+            if action in {"ban", "kick"} and await target_is_admin(update, user_id):
+                return await query.answer(
+                    "⚠️ Нельзя применить это действие к администратору.",
+                    show_alert=True,
+                )
+        except Exception as e:
+            print(f"TARGET CHECK ERROR: {e}")
+            return await query.answer(
+                "❌ Не удалось проверить пользователя.",
+                show_alert=True,
+            )
+
+        if action in {"ban", "unban", "kick", "unmute"}:
+            if not await bot_can_restrict(update, context):
+                return await query.answer(
+                    "❌ У бота нет права ограничивать пользователей.",
+                    show_alert=True,
+                )
+
+        try:
+            if action == "ban":
+                await context.bot.ban_chat_member(
+                    update.effective_chat.id,
+                    user_id,
+                )
+
+            elif action == "unban":
+                await context.bot.unban_chat_member(
+                    update.effective_chat.id,
+                    user_id,
+                )
+
+            elif action == "kick":
+                await context.bot.ban_chat_member(
+                    update.effective_chat.id,
+                    user_id,
+                )
+                await context.bot.unban_chat_member(
+                    update.effective_chat.id,
+                    user_id,
+                )
+
+            elif action == "unmute":
+                permissions = ChatPermissions(
+                    can_send_messages=True,
+                    can_send_audios=True,
+                    can_send_documents=True,
+                    can_send_photos=True,
+                    can_send_videos=True,
+                    can_send_video_notes=True,
+                    can_send_voice_notes=True,
+                    can_send_polls=True,
+                    can_send_other_messages=True,
+                    can_add_web_page_previews=True,
+                )
+
+                await context.bot.restrict_chat_member(
+                    chat_id=update.effective_chat.id,
+                    user_id=user_id,
+                    permissions=permissions,
+                )
+
+            elif action == "warn":
+                session = Session()
+                try:
+                    user = session.get(User, user_id)
+
+                    if not user:
+                        user = User(id=user_id, warns=1)
+                        session.add(user)
+                    else:
+                        user.warns += 1
+
+                    session.add(
+                        Punishment(
+                            user_id=user_id,
+                            type="warn",
+                            reason="Выдано через панель",
+                            moderator_id=update.effective_user.id,
+                            created_at=datetime.utcnow(),
+                        )
+                    )
+                    session.commit()
+                finally:
+                    session.close()
+
+        except Exception as e:
+            print(f"PANEL {action.upper()} ERROR: {e}")
+            return await query.answer(
+                f"❌ Telegram: {e}",
+                show_alert=True,
+            )
+
+        if action in {"ban", "kick"}:
+            save_type = action
+            session = Session()
+            try:
+                session.add(
+                    Punishment(
+                        user_id=user_id,
+                        type=save_type,
+                        reason="Выдано через панель",
+                        moderator_id=update.effective_user.id,
+                        created_at=datetime.utcnow(),
+                    )
+                )
+                session.commit()
+            finally:
+                session.close()
+
+        await query.answer(
+            {
+                "warn": "⚠️ Варн выдан!",
+                "ban": "🚫 Пользователь заблокирован!",
+                "kick": "👢 Пользователь исключён!",
+                "unmute": "🔊 Мут снят!",
+                "unban": "🔓 Пользователь разблокирован!",
+            }[action],
+            show_alert=True,
+        )
+
+        return await show_user_card(query, user_id)
 
     if data in ("warns", "bans"):
         return await show_history_panel(query)
