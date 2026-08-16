@@ -887,7 +887,7 @@ async def show_user_history(query, user_id):
             text += "История наказаний пока пустая."
         else:
             for p in rows:
-                icon = {"warn":"⚠️","mute":"🔇","ban":"🚫","kick":"👢"}.get(p.type, "📌")
+                icon = {"warn":"⚠️","unwarn":"🧹","mute":"🔇","ban":"🚫","kick":"👢"}.get(p.type, "📌")
                 when = p.created_at.strftime("%d.%m %H:%M") if p.created_at else "—"
                 text += f"{icon} <b>{p.type}</b> · {when}\n📝 {_safe_text(p.reason, 'Не указана')}\n\n"
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Профиль", callback_data=f"user_{user_id}")]]), parse_mode=ParseMode.HTML)
@@ -963,7 +963,7 @@ async def show_history_panel(query):
             text += "История пока пустая."
         else:
             for p in punishments:
-                icon = {"warn":"⚠️","mute":"🔇","ban":"🚫","kick":"👢"}.get(p.type, "📌")
+                icon = {"warn":"⚠️","unwarn":"🧹","mute":"🔇","ban":"🚫","kick":"👢"}.get(p.type, "📌")
                 reason = _safe_text(p.reason, "Не указана")
                 text += f"{icon} <b>{p.type}</b> — <code>{p.user_id}</code>\n📝 {reason}\n\n"
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data="panel_main")]]), parse_mode=ParseMode.HTML)
@@ -1025,14 +1025,17 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("⚠️ Варн", callback_data=f"action_warn_{user_id}"),
+                InlineKeyboardButton("🧹 Снять варн", callback_data=f"action_unwarn_{user_id}"),
+            ],
+            [
                 InlineKeyboardButton("🔇 Мут", callback_data=f"action_mute_{user_id}"),
+                InlineKeyboardButton("🔊 Снять мут", callback_data=f"action_unmute_{user_id}"),
             ],
             [
                 InlineKeyboardButton("🚫 Бан", callback_data=f"action_ban_{user_id}"),
                 InlineKeyboardButton("👢 Кик", callback_data=f"action_kick_{user_id}"),
             ],
             [
-                InlineKeyboardButton("🔊 Снять мут", callback_data=f"action_unmute_{user_id}"),
                 InlineKeyboardButton("🔓 Разбан", callback_data=f"action_unban_{user_id}"),
             ],
             [
@@ -1084,6 +1087,56 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
 
         try:
+            # -------------------------------------------------
+            # UNWARN — Снять один варн
+            # -------------------------------------------------
+            if action == "unwarn":
+                session = Session()
+                try:
+                    user = session.get(User, user_id)
+
+                    if not user or (user.warns or 0) <= 0:
+                        return await query.answer(
+                            "ℹ️ У пользователя нет варнов для снятия.",
+                            show_alert=True,
+                        )
+
+                    user.warns = max(0, (user.warns or 0) - 1)
+
+                    # Сохраняем отдельную запись в истории, чтобы было видно,
+                    # кто и когда снял предупреждение.
+                    session.add(
+                        Punishment(
+                            user_id=user_id,
+                            type="unwarn",
+                            reason="Варн снят через панель",
+                            moderator_id=query.from_user.id,
+                        )
+                    )
+
+                    session.commit()
+                    warns_count = user.warns
+                except Exception:
+                    session.rollback()
+                    raise
+                finally:
+                    session.close()
+
+                await query.answer("🧹 Варн снят.", show_alert=True)
+
+                return await query.edit_message_caption(
+                    caption=(
+                        "🧹 <b>ВАРН СНЯТ</b>\n\n"
+                        f"Пользователь: <code>{user_id}</code>\n"
+                        f"Осталось варнов: <b>{warns_count}</b>"
+                    ),
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("◀️ Профиль", callback_data=f"user_{user_id}")],
+                        [InlineKeyboardButton("⚔️ Модерация", callback_data=f"moduser_{user_id}")],
+                    ]),
+                    parse_mode=ParseMode.HTML,
+                )
+
             # -------------------------------------------------
             # WARN
             # -------------------------------------------------
