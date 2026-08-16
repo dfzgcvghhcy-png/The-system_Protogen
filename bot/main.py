@@ -10,7 +10,7 @@ from telegram.ext import (
 
 from handlers import (
     start, warn, ban, unban, mute, unmute, kick, panel, buttons,
-    track_message, track_chat_member,
+    track_message, track_chat_member, track_my_chat_member,
 )
 from config import TOKEN
 
@@ -38,8 +38,9 @@ def main():
     app.add_handler(CommandHandler("panel", panel))
 
     # Автоматическое наблюдение за сообщениями и изменениями участников.
-    app.add_handler(MessageHandler(tg_filters.ALL & ~tg_filters.COMMAND, track_message))
+    app.add_handler(MessageHandler(tg_filters.ALL, track_message), group=1)
     app.add_handler(ChatMemberHandler(track_chat_member, ChatMemberHandler.CHAT_MEMBER))
+    app.add_handler(ChatMemberHandler(track_my_chat_member, ChatMemberHandler.MY_CHAT_MEMBER))
 
     app.add_error_handler(error_handler)
 
@@ -49,6 +50,7 @@ def main():
         "message",
         "callback_query",
         "chat_member",
+        "my_chat_member",
     ])
 
 
