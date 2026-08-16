@@ -895,158 +895,6 @@ async def show_user_history(query, user_id):
         session.close()
 
 
-def _make_activity_card(user, rows):
-    """Создаёт графическую карточку активности пользователя."""
-    W, H = 1200, 760
-    image = Image.new("RGB", (W, H), (5, 8, 22))
-
-    # Фоновое неоновое свечение.
-    glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    gd = ImageDraw.Draw(glow)
-    gd.ellipse((650, 20, 1250, 520), fill=(0, 120, 255, 55))
-    gd.ellipse((250, 280, 950, 850), fill=(160, 0, 255, 45))
-    glow = glow.filter(ImageFilter.GaussianBlur(85))
-    image = Image.alpha_composite(image.convert("RGBA"), glow).convert("RGB")
-    draw = ImageDraw.Draw(image)
-
-    # Рамка.
-    draw.rounded_rectangle(
-        (20, 20, W - 20, H - 20),
-        radius=32,
-        outline=(0, 255, 245),
-        width=3,
-    )
-
-    title = _font(34, True)
-    normal = _font(25)
-    small = _font(20)
-    value_font = _font(30, True)
-
-    name = _card_text(user.first_name or user.username, "Пользователь")
-    if user.last_name:
-        name += f" {_card_text(user.last_name)}"
-    username = f"@{user.username}" if user.username else "@username не указан"
-
-    draw.text((60, 55), "АКТИВНОСТЬ УЧАСТНИКА", font=title, fill=(0, 255, 245))
-    draw.text((60, 105), name[:30], font=normal, fill=(245, 245, 255))
-    draw.text((60, 145), username[:36], font=small, fill=(0, 255, 245))
-
-    total = user.messages_count or 0
-    last_seen = (
-        user.last_seen.strftime("%d.%m.%Y %H:%M")
-        if user.last_seen
-        else "нет данных"
-    )
-
-    draw.text((700, 105), "ВСЕГО СООБЩЕНИЙ", font=small, fill=(145, 160, 190))
-    draw.text((700, 135), str(total), font=value_font, fill=(0, 255, 245))
-    draw.text((900, 105), "ПОСЛЕДНИЙ", font=small, fill=(145, 160, 190))
-    draw.text((900, 135), last_seen, font=small, fill=(220, 225, 240))
-
-    # Нормализуем последние 30 дней, чтобы дни без сообщений тоже были видны.
-    counts = {}
-    for row in rows:
-        if row.day:
-            counts[row.day.date()] = row.messages_count or 0
-
-    from datetime import timedelta
-    today = datetime.utcnow().date()
-    days = [today - timedelta(days=i) for i in range(29, -1, -1)]
-    values = [counts.get(day, 0) for day in days]
-    max_value = max(values) if values else 1
-    max_value = max(max_value, 1)
-
-    # Область графика.
-    gx, gy = 70, 245
-    gw, gh = 1060, 300
-
-    draw.rounded_rectangle(
-        (45, 205, W - 45, 575),
-        radius=24,
-        outline=(100, 70, 220),
-        width=2,
-        fill=(8, 12, 32),
-    )
-
-    draw.text(
-        (70, 225),
-        "СООБЩЕНИЯ ЗА ПОСЛЕДНИЕ 30 ДНЕЙ",
-        font=small,
-        fill=(145, 160, 190),
-    )
-
-    # Горизонтальные линии.
-    chart_top = 280
-    chart_bottom = 520
-    chart_left = 85
-    chart_right = 1115
-
-    for i in range(5):
-        y = chart_bottom - int((chart_bottom - chart_top) * i / 4)
-        draw.line(
-            (chart_left, y, chart_right, y),
-            fill=(35, 45, 75),
-            width=1,
-        )
-
-    # Столбцы.
-    count = len(values)
-    gap = 5
-    bar_width = max(8, (chart_right - chart_left - gap * (count - 1)) // count)
-
-    for i, value in enumerate(values):
-        x1 = chart_left + i * (bar_width + gap)
-        x2 = x1 + bar_width
-        bar_height = int((chart_bottom - chart_top) * value / max_value)
-
-        if value > 0:
-            y1 = chart_bottom - max(bar_height, 4)
-            draw.rounded_rectangle(
-                (x1, y1, x2, chart_bottom),
-                radius=3,
-                fill=(0, 220, 245),
-            )
-        else:
-            draw.line(
-                (x1, chart_bottom, x2, chart_bottom),
-                fill=(45, 55, 85),
-                width=2,
-            )
-
-        # Подписи только для каждого 5-го дня, чтобы не было каши.
-        if i % 5 == 0 or i == count - 1:
-            label = days[i].strftime("%d.%m")
-            draw.text(
-                (x1, chart_bottom + 12),
-                label,
-                font=small,
-                fill=(145, 160, 190),
-            )
-
-    # Сводка.
-    last_7 = sum(values[-7:])
-    last_30 = sum(values)
-    peak = max(values) if values else 0
-
-    draw.text((70, 610), "7 ДНЕЙ", font=small, fill=(145, 160, 190))
-    draw.text((70, 640), str(last_7), font=value_font, fill=(0, 255, 245))
-
-    draw.text((350, 610), "30 ДНЕЙ", font=small, fill=(145, 160, 190))
-    draw.text((350, 640), str(last_30), font=value_font, fill=(0, 255, 245))
-
-    draw.text((630, 610), "ПИК ЗА ДЕНЬ", font=small, fill=(145, 160, 190))
-    draw.text((630, 640), str(peak), font=value_font, fill=(0, 255, 245))
-
-    draw.text(
-        (60, 700),
-        "THE SYSTEM_PROTOGEN  //  USER ACTIVITY",
-        font=small,
-        fill=(90, 110, 150),
-    )
-
-    return image
-
-
 async def show_activity(query, user_id):
     session = Session()
 
@@ -1054,36 +902,38 @@ async def show_activity(query, user_id):
         user = session.get(User, user_id)
 
         if not user:
-            await query.answer(
+            return await query.answer(
                 "Пользователь не найден.",
                 show_alert=True,
             )
-            return
 
-        # Берём максимум 30 последних дней.
         rows = (
             session.query(Activity)
             .filter(Activity.user_id == user_id)
             .order_by(Activity.day.desc())
-            .limit(30)
+            .limit(7)
             .all()
         )
 
-        try:
-            card = _make_activity_card(user, rows)
-            buf = io.BytesIO()
-            card.save(buf, format="PNG")
-            buf.seek(0)
-        except Exception as e:
-            print(
-                f"ACTIVITY CARD ERROR [{user_id}]: "
-                f"{type(e).__name__}: {e}"
-            )
-            await query.answer(
-                "❌ Не удалось создать карточку активности.",
-                show_alert=True,
-            )
-            return
+        text = (
+            "📊 <b>АКТИВНОСТЬ</b>\n\n"
+            f"👤 {_safe_text(user.first_name or user.username)}\n"
+            f"💬 Всего сообщений: <b>{user.messages_count or 0}</b>\n"
+            f"🕐 Последняя активность: "
+            f"<b>{user.last_seen.strftime('%d.%m.%Y %H:%M') if user.last_seen else 'нет данных'}</b>\n"
+            f"🔥 Уровень: "
+            f"<b>{_activity_text(user.messages_count or 0, user.last_seen)}</b>\n\n"
+            "📅 <b>Последние 7 дней</b>\n"
+        )
+
+        if rows:
+            for row in reversed(rows):
+                day = row.day.strftime("%d.%m")
+                count = row.messages_count or 0
+                bar = "▮" * min(count, 20)
+                text += f"{day}  {bar} <b>{count}</b>\n"
+        else:
+            text += "Пока нет дневной статистики.\n"
 
         keyboard = InlineKeyboardMarkup([
             [
@@ -1091,57 +941,17 @@ async def show_activity(query, user_id):
                     "◀️ Профиль",
                     callback_data=f"user_{user_id}",
                 )
-            ],
-            [
-                InlineKeyboardButton(
-                    "👥 Пользователи",
-                    callback_data="panel_users",
-                )
-            ],
+            ]
         ])
 
-        # Профиль отправляется как photo, поэтому edit_message_text здесь
-        # использовать нельзя. Удаляем старую карточку и отправляем новую.
-        try:
-            await query.message.delete()
-        except Exception as e:
-            print(
-                f"ACTIVITY MESSAGE DELETE ERROR [{user_id}]: "
-                f"{type(e).__name__}: {e}"
-            )
-
-        await context_bot_send_photo(
-            query,
-            buf,
-            keyboard,
+        await query.edit_message_text(
+            text,
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML,
         )
 
-    except Exception as e:
-        print(
-            f"ACTIVITY ERROR [{user_id}]: "
-            f"{type(e).__name__}: {e}"
-        )
-        try:
-            await query.answer(
-                "❌ Не удалось открыть активность. "
-                "Подробность записана в Railway Logs.",
-                show_alert=True,
-            )
-        except Exception:
-            pass
     finally:
         session.close()
-
-
-async def context_bot_send_photo(query, photo, keyboard):
-    """Отправляет карточку активности в тот же чат."""
-    await query.get_bot().send_photo(
-        chat_id=query.message.chat_id,
-        photo=photo,
-        caption="📊 <b>Активность участника</b>",
-        reply_markup=keyboard,
-        parse_mode=ParseMode.HTML,
-    )
 
 
 async def show_history_panel(query):
@@ -1213,20 +1023,293 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("moduser_"):
         user_id = int(data.split("_", 1)[1])
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("⚠️ Варн", callback_data=f"action_warn_{user_id}"), InlineKeyboardButton("🔇 Мут", callback_data=f"action_mute_{user_id}")],
-            [InlineKeyboardButton("🚫 Бан", callback_data=f"action_ban_{user_id}"), InlineKeyboardButton("👢 Кик", callback_data=f"action_kick_{user_id}")],
-            [InlineKeyboardButton("◀️ Профиль", callback_data=f"user_{user_id}")],
+            [
+                InlineKeyboardButton("⚠️ Варн", callback_data=f"action_warn_{user_id}"),
+                InlineKeyboardButton("🔇 Мут", callback_data=f"action_mute_{user_id}"),
+            ],
+            [
+                InlineKeyboardButton("🚫 Бан", callback_data=f"action_ban_{user_id}"),
+                InlineKeyboardButton("👢 Кик", callback_data=f"action_kick_{user_id}"),
+            ],
+            [
+                InlineKeyboardButton("🔊 Снять мут", callback_data=f"action_unmute_{user_id}"),
+                InlineKeyboardButton("🔓 Разбан", callback_data=f"action_unban_{user_id}"),
+            ],
+            [
+                InlineKeyboardButton("◀️ Профиль", callback_data=f"user_{user_id}")
+            ],
         ])
-        return await query.edit_message_caption(caption="⚔️ <b>МОДЕРАЦИЯ ПОЛЬЗОВАТЕЛЯ</b>\n\nВыбери действие:", reply_markup=keyboard, parse_mode=ParseMode.HTML)
 
-    if data.startswith("action_"):
-        _, action, user_id = data.split("_")
-        names = {"warn":"⚠️ Варн", "mute":"🔇 Мут", "ban":"🚫 Бан", "kick":"👢 Кик", "unmute":"🔊 Снять мут", "unban":"🔓 Разбан"}
         return await query.edit_message_caption(
-            caption=f"⚙️ <b>{names.get(action, 'Действие')}</b>\n\nПользователь: <code>{user_id}</code>\n\nКнопка подготовлена. Реальное выполнение подключим следующим этапом.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Профиль", callback_data=f"user_{user_id}")]]),
+            caption="⚔️ <b>МОДЕРАЦИЯ ПОЛЬЗОВАТЕЛЯ</b>\n\nВыбери действие:",
+            reply_markup=keyboard,
             parse_mode=ParseMode.HTML,
         )
+
+    if data.startswith("action_"):
+        _, action, user_id_raw = data.split("_", 2)
+        user_id = int(user_id_raw)
+
+        # Проверяем права того, кто нажал кнопку.
+        member = await query.message.chat.get_member(query.from_user.id)
+        if member.status not in ("administrator", "creator"):
+            return await query.answer(
+                "❌ Только администраторы могут использовать модерацию.",
+                show_alert=True,
+            )
+
+        chat_id = query.message.chat_id
+
+        # Нельзя модерировать владельца/администратора.
+        try:
+            target_member = await query.message.chat.get_member(user_id)
+            if target_member.status in ("administrator", "creator"):
+                return await query.answer(
+                    "⚠️ Нельзя применять это действие к администратору.",
+                    show_alert=True,
+                )
+        except Exception:
+            target_member = None
+
+        # Проверяем права самого бота для ограничений.
+        if action in ("mute", "ban", "kick", "unmute"):
+            bot_member = await query.message.chat.get_member(context.bot.id)
+
+            if bot_member.status != "creator" and (
+                not getattr(bot_member, "can_restrict_members", False)
+            ):
+                return await query.answer(
+                    "❌ У бота нет права «Ограничивать пользователей».",
+                    show_alert=True,
+                )
+
+        try:
+            # -------------------------------------------------
+            # WARN
+            # -------------------------------------------------
+            if action == "warn":
+                session = Session()
+                try:
+                    user = session.get(User, user_id)
+
+                    if not user:
+                        user = User(
+                            id=user_id,
+                            warns=1,
+                            status="member",
+                            first_seen=datetime.utcnow(),
+                            last_seen=datetime.utcnow(),
+                        )
+                        session.add(user)
+                    else:
+                        user.warns = (user.warns or 0) + 1
+
+                    session.add(
+                        Punishment(
+                            user_id=user_id,
+                            type="warn",
+                            reason="Выдано через панель",
+                            moderator_id=query.from_user.id,
+                        )
+                    )
+                    session.commit()
+                    warns_count = user.warns
+                finally:
+                    session.close()
+
+                await query.answer("⚠️ Варн выдан.", show_alert=True)
+
+                return await query.edit_message_caption(
+                    caption=(
+                        "⚠️ <b>ПРЕДУПРЕЖДЕНИЕ ВЫДАНО</b>\n\n"
+                        f"Пользователь: <code>{user_id}</code>\n"
+                        f"Варнов: <b>{warns_count}</b>"
+                    ),
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("◀️ Профиль", callback_data=f"user_{user_id}")]
+                    ]),
+                    parse_mode=ParseMode.HTML,
+                )
+
+            # -------------------------------------------------
+            # MUTE
+            # -------------------------------------------------
+            if action == "mute":
+                permissions = ChatPermissions(
+                    can_send_messages=False,
+                    can_send_audios=False,
+                    can_send_documents=False,
+                    can_send_photos=False,
+                    can_send_videos=False,
+                    can_send_video_notes=False,
+                    can_send_voice_notes=False,
+                    can_send_polls=False,
+                    can_send_other_messages=False,
+                    can_add_web_page_previews=False,
+                )
+
+                await context.bot.restrict_chat_member(
+                    chat_id=chat_id,
+                    user_id=user_id,
+                    permissions=permissions,
+                )
+
+                punishment_type = "mute"
+
+            # -------------------------------------------------
+            # UNMUTE
+            # -------------------------------------------------
+            elif action == "unmute":
+                permissions = ChatPermissions(
+                    can_send_messages=True,
+                    can_send_audios=True,
+                    can_send_documents=True,
+                    can_send_photos=True,
+                    can_send_videos=True,
+                    can_send_video_notes=True,
+                    can_send_voice_notes=True,
+                    can_send_polls=True,
+                    can_send_other_messages=True,
+                    can_add_web_page_previews=True,
+                )
+
+                await context.bot.restrict_chat_member(
+                    chat_id=chat_id,
+                    user_id=user_id,
+                    permissions=permissions,
+                )
+
+                await query.answer("🔊 Мут снят.", show_alert=True)
+
+                return await query.edit_message_caption(
+                    caption=(
+                        "🔊 <b>МУТ СНЯТ</b>\n\n"
+                        f"Пользователь: <code>{user_id}</code>"
+                    ),
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("◀️ Профиль", callback_data=f"user_{user_id}")]
+                    ]),
+                    parse_mode=ParseMode.HTML,
+                )
+
+            # -------------------------------------------------
+            # BAN
+            # -------------------------------------------------
+            elif action == "ban":
+                await context.bot.ban_chat_member(
+                    chat_id=chat_id,
+                    user_id=user_id,
+                )
+                punishment_type = "ban"
+
+            # -------------------------------------------------
+            # UNBAN
+            # -------------------------------------------------
+            elif action == "unban":
+                await context.bot.unban_chat_member(
+                    chat_id=chat_id,
+                    user_id=user_id,
+                )
+
+                await query.answer("🔓 Бан снят.", show_alert=True)
+
+                return await query.edit_message_caption(
+                    caption=(
+                        "🔓 <b>БАН СНЯТ</b>\n\n"
+                        f"Пользователь: <code>{user_id}</code>"
+                    ),
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("◀️ Профиль", callback_data=f"user_{user_id}")]
+                    ]),
+                    parse_mode=ParseMode.HTML,
+                )
+
+            # -------------------------------------------------
+            # KICK
+            # -------------------------------------------------
+            elif action == "kick":
+                await context.bot.ban_chat_member(
+                    chat_id=chat_id,
+                    user_id=user_id,
+                )
+                await context.bot.unban_chat_member(
+                    chat_id=chat_id,
+                    user_id=user_id,
+                )
+                punishment_type = "kick"
+
+            else:
+                return await query.answer(
+                    "❌ Неизвестное действие.",
+                    show_alert=True,
+                )
+
+            # Записываем реальное действие только после успешного
+            # выполнения Telegram API.
+            session = Session()
+            try:
+                user = session.get(User, user_id)
+
+                if not user:
+                    user = User(
+                        id=user_id,
+                        warns=0,
+                        status="member",
+                        first_seen=datetime.utcnow(),
+                        last_seen=datetime.utcnow(),
+                    )
+                    session.add(user)
+
+                if punishment_type == "mute":
+                    user.mutes = (user.mutes or 0) + 1
+                elif punishment_type == "ban":
+                    user.bans = (user.bans or 0) + 1
+                elif punishment_type == "kick":
+                    user.kicks = (user.kicks or 0) + 1
+
+                session.add(
+                    Punishment(
+                        user_id=user_id,
+                        type=punishment_type,
+                        reason="Выдано через панель",
+                        moderator_id=query.from_user.id,
+                    )
+                )
+                session.commit()
+            finally:
+                session.close()
+
+            names = {
+                "mute": "🔇 МУТ ВЫДАН",
+                "ban": "🚫 ПОЛЬЗОВАТЕЛЬ ЗАБЛОКИРОВАН",
+                "kick": "👢 ПОЛЬЗОВАТЕЛЬ ИСКЛЮЧЁН",
+            }
+
+            await query.answer("✅ Действие выполнено.", show_alert=True)
+
+            return await query.edit_message_caption(
+                caption=(
+                    f"<b>{names[punishment_type]}</b>\n\n"
+                    f"Пользователь: <code>{user_id}</code>\n"
+                    f"Модератор: <code>{query.from_user.id}</code>"
+                ),
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("◀️ Профиль", callback_data=f"user_{user_id}")]
+                ]),
+                parse_mode=ParseMode.HTML,
+            )
+
+        except Exception as e:
+            print(
+                f"PANEL MODERATION ERROR: "
+                f"action={action} user={user_id} "
+                f"{type(e).__name__}: {e}"
+            )
+
+            return await query.answer(
+                f"❌ Не удалось выполнить действие.\n{e}",
+                show_alert=True,
+            )
 
     if data in ("warns", "bans"):
         return await show_history_panel(query)
