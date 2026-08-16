@@ -24,7 +24,7 @@ def main():
 
     # Кнопки панели.
     app.add_handler(CallbackQueryHandler(
-        buttons, pattern=r"^(panel_|user_|action_|mod_|warns$|bans$|history_|activity_|moduser_|mute_menu_|mute_for_|ban_menu_|ban_for_)"
+        buttons, pattern=r"^(panel_|user_|action_|mod_|warns$|bans$|history_|activity_|moduser_|mute_menu_|mute_for_|ban_menu_|ban_for_|warn_menu_|reason_warn_|reason_custom_warn_|mute_reason_|custom_mute_|ban_reason_|custom_ban_)"
     ))
 
     # Команды.
@@ -45,6 +45,8 @@ def main():
     app.add_error_handler(error_handler)
 
     print("🐾 The system_Protogen запущен")
+
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, custom_reason_message))
 
     app.run_polling(allowed_updates=[
         "message",
