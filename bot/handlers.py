@@ -15,28 +15,32 @@ SITE_URL = "https://web-production-c2beb.up.railway.app"
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user.first_name
+    user = update.effective_user.first_name or "участник"
     tz = pytz.timezone("Europe/Berlin")
     now = datetime.now(tz)
 
     text = (
         f"🐾 <b>Добро пожаловать, {user}!</b>\n\n"
         f"🤖 <b>The system_Protogen</b>\n"
-        f"Я модерационный бот.\n\n"
-        f"🕒 Сейчас: <b>{now.strftime('%H:%M')}</b>\n\n"
-        f"⚡ <b>Основные команды:</b>\n"
-        f"/warn — предупреждение\n"
-        f"/ban — бан\n"
-        f"/mute — мут\n"
-        f"/unmute — снять мут\n"
-        f"/unban — снять бан\n"
-        f"/kick — кик\n"
-        f"/panel — панель управления\n\n"
-        f"🌐 <b>Сайт бота:</b>\n{SITE_URL}\n\n"
-        f"👨‍💻 Создатель: @Evan_Eloff"
+        f"Цифровой страж этого пространства.\n\n"
+        f"🛡️ Слежу за порядком, активностью участников "
+        f"и безопасностью чата.\n\n"
+        f"🟢 <b>Система активна</b>\n"
+        f"🕒 Время системы: <b>{now.strftime('%H:%M')}</b>\n\n"
+        f"🌐 <b>Веб-панель Protogen</b>\n"
+        f"Управление, пользователи, статистика и инструменты "
+        f"модерации находятся в одном месте."
     )
 
-    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🌐 Открыть Protogen Web", url=SITE_URL)]
+    ])
+
+    await update.message.reply_text(
+        text,
+        reply_markup=keyboard,
+        parse_mode=ParseMode.HTML,
+    )
 
 
 async def get_target(update: Update, command_name: str):
