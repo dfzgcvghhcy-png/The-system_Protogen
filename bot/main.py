@@ -11,6 +11,7 @@ from telegram.ext import (
 from handlers import (
     start, warn, ban, unban, mute, unmute, kick, panel, buttons,
     track_message, track_chat_member, track_my_chat_member,
+    custom_reason_message,
 )
 from config import TOKEN
 
@@ -46,7 +47,7 @@ def main():
 
     print("🐾 The system_Protogen запущен")
 
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, custom_reason_message))
+    app.add_handler(MessageHandler(tg_filters.TEXT & ~tg_filters.COMMAND, custom_reason_message))
 
     app.run_polling(allowed_updates=[
         "message",
