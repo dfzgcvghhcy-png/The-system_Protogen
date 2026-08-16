@@ -1032,7 +1032,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 InlineKeyboardButton("🔊 Снять мут", callback_data=f"action_unmute_{user_id}"),
             ],
             [
-                InlineKeyboardButton("🚫 Бан", callback_data=f"action_ban_{user_id}"),
+                InlineKeyboardButton("🚫 Бан", callback_data=f"ban_menu_{user_id}"),
                 InlineKeyboardButton("👢 Кик", callback_data=f"action_kick_{user_id}"),
             ],
             [
@@ -1213,6 +1213,159 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return await query.answer(
                 f"❌ Не удалось выдать мут.\n{e}",
+                show_alert=True,
+            )
+
+    # -------------------------------------------------
+    # МЕНЮ ВЫБОРА СРОКА БАНА
+    # -------------------------------------------------
+    if data.startswith("ban_menu_"):
+        user_id = int(data.split("_", 2)[2])
+
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("⏱ 1 час", callback_data=f"ban_for_{user_id}_3600"),
+                InlineKeyboardButton("⏱ 6 часов", callback_data=f"ban_for_{user_id}_21600"),
+            ],
+            [
+                InlineKeyboardButton("📅 1 день", callback_data=f"ban_for_{user_id}_86400"),
+                InlineKeyboardButton("📅 7 дней", callback_data=f"ban_for_{user_id}_604800"),
+            ],
+            [
+                InlineKeyboardButton("🚫 Навсегда", callback_data=f"ban_for_{user_id}_0"),
+            ],
+            [
+                InlineKeyboardButton("◀️ Назад", callback_data=f"moduser_{user_id}"),
+            ],
+        ])
+
+        return await query.edit_message_caption(
+            caption=(
+                "🚫 <b>ВЫДАЧА БАНА</b>\n\n"
+                f"Пользователь: <code>{user_id}</code>\n\n"
+                "Выбери срок блокировки:"
+            ),
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML,
+        )
+
+    # -------------------------------------------------
+    # ВЫДАЧА БАНА НА ВЫБРАННЫЙ СРОК
+    # -------------------------------------------------
+    if data.startswith("ban_for_"):
+        _, _, user_id_raw, seconds_raw = data.split("_", 3)
+        user_id = int(user_id_raw)
+        seconds = int(seconds_raw)
+
+        member = await query.message.chat.get_member(query.from_user.id)
+        if member.status not in ("administrator", "creator"):
+            return await query.answer(
+                "❌ Только администраторы могут использовать модерацию.",
+                show_alert=True,
+            )
+
+        chat_id = query.message.chat_id
+
+        try:
+            target_member = await query.message.chat.get_member(user_id)
+            if target_member.status in ("administrator", "creator"):
+                return await query.answer(
+                    "⚠️ Нельзя заблокировать администратора.",
+                    show_alert=True,
+                )
+        except Exception:
+            pass
+
+        bot_member = await query.message.chat.get_member(context.bot.id)
+        if bot_member.status != "creator" and not getattr(
+            bot_member, "can_restrict_members", False
+        ):
+            return await query.answer(
+                "❌ У бота нет права «Ограничивать пользователей».",
+                show_alert=True,
+            )
+
+        try:
+            until_date = (
+                datetime.utcnow() + timedelta(seconds=seconds)
+                if seconds > 0
+                else None
+            )
+
+            await context.bot.ban_chat_member(
+                chat_id=chat_id,
+                user_id=user_id,
+                until_date=until_date,
+            )
+
+            duration_names = {
+                3600: "1 час",
+                21600: "6 часов",
+                86400: "1 день",
+                604800: "7 дней",
+                0: "навсегда",
+            }
+            duration_name = duration_names.get(
+                seconds,
+                f"{seconds // 3600} часов",
+            )
+
+            session = Session()
+            try:
+                user = session.get(User, user_id)
+
+                if not user:
+                    user = User(
+                        id=user_id,
+                        warns=0,
+                        status="kicked",
+                        first_seen=datetime.utcnow(),
+                        last_seen=datetime.utcnow(),
+                    )
+                    session.add(user)
+
+                user.bans = (user.bans or 0) + 1
+                user.status = "kicked"
+
+                session.add(
+                    Punishment(
+                        user_id=user_id,
+                        type="ban",
+                        reason=f"Бан через панель: {duration_name}",
+                        moderator_id=query.from_user.id,
+                    )
+                )
+                session.commit()
+            finally:
+                session.close()
+
+            await query.answer("🚫 Бан выдан.", show_alert=True)
+
+            return await query.edit_message_caption(
+                caption=(
+                    "🚫 <b>БАН ВЫДАН</b>\n\n"
+                    f"Пользователь: <code>{user_id}</code>\n"
+                    f"⏱ Срок: <b>{duration_name}</b>\n"
+                    f"👮 Модератор: <code>{query.from_user.id}</code>"
+                ),
+                reply_markup=InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton(
+                            "◀️ Профиль",
+                            callback_data=f"user_{user_id}",
+                        )
+                    ]
+                ]),
+                parse_mode=ParseMode.HTML,
+            )
+
+        except Exception as e:
+            print(
+                f"PANEL BAN ERROR: user={user_id} "
+                f"seconds={seconds} {type(e).__name__}: {e}"
+            )
+            return await query.answer(
+                f"❌ Не удалось выдать бан.\n{e}",
                 show_alert=True,
             )
 
