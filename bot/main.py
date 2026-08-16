@@ -24,7 +24,7 @@ def main():
 
     # Кнопки панели.
     app.add_handler(CallbackQueryHandler(
-        buttons, pattern=r"^(panel_|user_|action_|mod_|warns$|bans$|history_|activity_|moduser_|mute_menu_|mute_for_)"
+        buttons, pattern=r"^(panel_|user_|action_|mod_|warns$|bans$|history_|activity_|moduser_|mute_menu_|mute_for_|ban_menu_|ban_for_)"
     ))
 
     # Команды.
