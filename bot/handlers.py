@@ -341,19 +341,42 @@ def _activity_text(messages_count, last_seen):
 
 
 def _draw_avatar(canvas, avatar, center, radius):
+    """Рисует аватар строго внутри круглой области."""
     x, y = center
-    mask = Image.new("L", canvas.size, 0)
+
+    size = radius * 2
+
+    # Маска должна быть размера самого аватара.
+    # Старая версия использовала mask размером всей карточки,
+    # из-за чего PIL мог падать на canvas.paste().
+    mask = Image.new("L", (size, size), 0)
     md = ImageDraw.Draw(mask)
-    md.ellipse((x-radius, y-radius, x+radius, y+radius), fill=255)
-    avatar = avatar.convert("RGB").resize((radius * 2, radius * 2), Image.Resampling.LANCZOS)
-    canvas.paste(avatar, (x-radius, y-radius), mask)
+    md.ellipse((0, 0, size - 1, size - 1), fill=255)
+
+    avatar = avatar.convert("RGB").resize(
+        (size, size),
+        Image.Resampling.LANCZOS
+    )
+
+    canvas.paste(
+        avatar,
+        (x - radius, y - radius),
+        mask
+    )
 
     d = ImageDraw.Draw(canvas)
+
+    # Неоновая рамка вокруг аватара.
     for width in (10, 5):
         d.ellipse(
-            (x-radius-width//2, y-radius-width//2,
-             x+radius+width//2, y+radius+width//2),
-            outline=(0, 255, 245), width=width
+            (
+                x - radius - width // 2,
+                y - radius - width // 2,
+                x + radius + width // 2,
+                y + radius + width // 2,
+            ),
+            outline=(0, 255, 245),
+            width=width,
         )
 
 
@@ -625,46 +648,111 @@ async def show_users_panel(query):
 
 async def send_user_profile(query, context, user_id):
     session = Session()
+
     try:
         user = session.get(User, user_id)
+
         if not user:
-            await query.answer("Пользователь ещё не отслеживается.", show_alert=True)
+            await query.answer(
+                "Пользователь ещё не отслеживается.",
+                show_alert=True
+            )
             return
 
-        punishments = session.query(Punishment).filter(Punishment.user_id == user_id).all()
+        punishments = (
+            session.query(Punishment)
+            .filter(Punishment.user_id == user_id)
+            .all()
+        )
+
         counts = {"warn": 0, "mute": 0, "ban": 0, "kick": 0}
-        for p in punishments:
-            if p.type in counts:
-                counts[p.type] += 1
+
+        for punishment in punishments:
+            if punishment.type in counts:
+                counts[punishment.type] += 1
+
         user.mutes = counts["mute"]
         user.bans = counts["ban"]
         user.kicks = counts["kick"]
         session.commit()
 
-        avatar = await _download_avatar(context.bot, user_id)
-        card = _make_profile_card(user, user.status, avatar)
-        buf = io.BytesIO()
-        card.save(buf, format="PNG")
-        buf.seek(0)
+        # Генерация карточки отдельно обрабатывается,
+        # чтобы ошибка Pillow не выглядела как "кнопка не работает".
+        try:
+            avatar = await _download_avatar(context.bot, user_id)
+            card = _make_profile_card(user, user.status, avatar)
+
+            buf = io.BytesIO()
+            card.save(buf, format="PNG")
+            buf.seek(0)
+
+        except Exception as e:
+            print(f"PROFILE CARD ERROR [{user_id}]: {type(e).__name__}: {e}")
+            await query.answer(
+                "❌ Не удалось создать графический профиль.",
+                show_alert=True
+            )
+            return
 
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("⚔️ Модерация", callback_data=f"moduser_{user_id}")],
-            [InlineKeyboardButton("📊 Активность", callback_data=f"activity_{user_id}"), InlineKeyboardButton("📜 История", callback_data=f"history_{user_id}")],
-            [InlineKeyboardButton("◀️ Пользователи", callback_data="panel_users")],
+            [
+                InlineKeyboardButton(
+                    "⚔️ Модерация",
+                    callback_data=f"moduser_{user_id}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "📊 Активность",
+                    callback_data=f"activity_{user_id}"
+                ),
+                InlineKeyboardButton(
+                    "📜 История",
+                    callback_data=f"history_{user_id}"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    "◀️ Пользователи",
+                    callback_data="panel_users"
+                )
+            ],
         ])
 
         try:
             await query.message.delete()
-        except Exception:
-            pass
+        except Exception as e:
+            print(
+                f"PROFILE MESSAGE DELETE ERROR [{user_id}]: "
+                f"{type(e).__name__}: {e}"
+            )
 
         await context.bot.send_photo(
             chat_id=query.message.chat_id,
             photo=buf,
-            caption="👤 <b>Профиль участника</b>\nГрафическая карточка сформирована из данных бота.",
+            caption=(
+                "👤 <b>Профиль участника</b>\n"
+                "Графическая карточка сформирована из данных бота."
+            ),
             reply_markup=keyboard,
             parse_mode=ParseMode.HTML,
         )
+
+    except Exception as e:
+        print(
+            f"PROFILE ERROR [{user_id}]: "
+            f"{type(e).__name__}: {e}"
+        )
+
+        try:
+            await query.answer(
+                "❌ Не удалось открыть профиль. "
+                "Подробность записана в Railway Logs.",
+                show_alert=True
+            )
+        except Exception:
+            pass
+
     finally:
         session.close()
 
