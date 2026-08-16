@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import datetime, date
 
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -75,6 +75,20 @@ class User(Base):
     mutes = Column(Integer, default=0)
     bans = Column(Integer, default=0)
     kicks = Column(Integer, default=0)
+
+
+# ============================================================
+# ACTIVITY
+# ============================================================
+class Activity(Base):
+    __tablename__ = "user_activity"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    day = Column(DateTime, nullable=False, index=True)
+    messages_count = Column(Integer, default=0)
+
+
 
 
 # ============================================================
