@@ -895,6 +895,158 @@ async def show_user_history(query, user_id):
         session.close()
 
 
+def _make_activity_card(user, rows):
+    """Создаёт графическую карточку активности пользователя."""
+    W, H = 1200, 760
+    image = Image.new("RGB", (W, H), (5, 8, 22))
+
+    # Фоновое неоновое свечение.
+    glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    gd = ImageDraw.Draw(glow)
+    gd.ellipse((650, 20, 1250, 520), fill=(0, 120, 255, 55))
+    gd.ellipse((250, 280, 950, 850), fill=(160, 0, 255, 45))
+    glow = glow.filter(ImageFilter.GaussianBlur(85))
+    image = Image.alpha_composite(image.convert("RGBA"), glow).convert("RGB")
+    draw = ImageDraw.Draw(image)
+
+    # Рамка.
+    draw.rounded_rectangle(
+        (20, 20, W - 20, H - 20),
+        radius=32,
+        outline=(0, 255, 245),
+        width=3,
+    )
+
+    title = _font(34, True)
+    normal = _font(25)
+    small = _font(20)
+    value_font = _font(30, True)
+
+    name = _card_text(user.first_name or user.username, "Пользователь")
+    if user.last_name:
+        name += f" {_card_text(user.last_name)}"
+    username = f"@{user.username}" if user.username else "@username не указан"
+
+    draw.text((60, 55), "АКТИВНОСТЬ УЧАСТНИКА", font=title, fill=(0, 255, 245))
+    draw.text((60, 105), name[:30], font=normal, fill=(245, 245, 255))
+    draw.text((60, 145), username[:36], font=small, fill=(0, 255, 245))
+
+    total = user.messages_count or 0
+    last_seen = (
+        user.last_seen.strftime("%d.%m.%Y %H:%M")
+        if user.last_seen
+        else "нет данных"
+    )
+
+    draw.text((700, 105), "ВСЕГО СООБЩЕНИЙ", font=small, fill=(145, 160, 190))
+    draw.text((700, 135), str(total), font=value_font, fill=(0, 255, 245))
+    draw.text((900, 105), "ПОСЛЕДНИЙ", font=small, fill=(145, 160, 190))
+    draw.text((900, 135), last_seen, font=small, fill=(220, 225, 240))
+
+    # Нормализуем последние 30 дней, чтобы дни без сообщений тоже были видны.
+    counts = {}
+    for row in rows:
+        if row.day:
+            counts[row.day.date()] = row.messages_count or 0
+
+    from datetime import timedelta
+    today = datetime.utcnow().date()
+    days = [today - timedelta(days=i) for i in range(29, -1, -1)]
+    values = [counts.get(day, 0) for day in days]
+    max_value = max(values) if values else 1
+    max_value = max(max_value, 1)
+
+    # Область графика.
+    gx, gy = 70, 245
+    gw, gh = 1060, 300
+
+    draw.rounded_rectangle(
+        (45, 205, W - 45, 575),
+        radius=24,
+        outline=(100, 70, 220),
+        width=2,
+        fill=(8, 12, 32),
+    )
+
+    draw.text(
+        (70, 225),
+        "СООБЩЕНИЯ ЗА ПОСЛЕДНИЕ 30 ДНЕЙ",
+        font=small,
+        fill=(145, 160, 190),
+    )
+
+    # Горизонтальные линии.
+    chart_top = 280
+    chart_bottom = 520
+    chart_left = 85
+    chart_right = 1115
+
+    for i in range(5):
+        y = chart_bottom - int((chart_bottom - chart_top) * i / 4)
+        draw.line(
+            (chart_left, y, chart_right, y),
+            fill=(35, 45, 75),
+            width=1,
+        )
+
+    # Столбцы.
+    count = len(values)
+    gap = 5
+    bar_width = max(8, (chart_right - chart_left - gap * (count - 1)) // count)
+
+    for i, value in enumerate(values):
+        x1 = chart_left + i * (bar_width + gap)
+        x2 = x1 + bar_width
+        bar_height = int((chart_bottom - chart_top) * value / max_value)
+
+        if value > 0:
+            y1 = chart_bottom - max(bar_height, 4)
+            draw.rounded_rectangle(
+                (x1, y1, x2, chart_bottom),
+                radius=3,
+                fill=(0, 220, 245),
+            )
+        else:
+            draw.line(
+                (x1, chart_bottom, x2, chart_bottom),
+                fill=(45, 55, 85),
+                width=2,
+            )
+
+        # Подписи только для каждого 5-го дня, чтобы не было каши.
+        if i % 5 == 0 or i == count - 1:
+            label = days[i].strftime("%d.%m")
+            draw.text(
+                (x1, chart_bottom + 12),
+                label,
+                font=small,
+                fill=(145, 160, 190),
+            )
+
+    # Сводка.
+    last_7 = sum(values[-7:])
+    last_30 = sum(values)
+    peak = max(values) if values else 0
+
+    draw.text((70, 610), "7 ДНЕЙ", font=small, fill=(145, 160, 190))
+    draw.text((70, 640), str(last_7), font=value_font, fill=(0, 255, 245))
+
+    draw.text((350, 610), "30 ДНЕЙ", font=small, fill=(145, 160, 190))
+    draw.text((350, 640), str(last_30), font=value_font, fill=(0, 255, 245))
+
+    draw.text((630, 610), "ПИК ЗА ДЕНЬ", font=small, fill=(145, 160, 190))
+    draw.text((630, 640), str(peak), font=value_font, fill=(0, 255, 245))
+
+    draw.text(
+        (60, 700),
+        "THE SYSTEM_PROTOGEN  //  USER ACTIVITY",
+        font=small,
+        fill=(90, 110, 150),
+    )
+
+    return image
+
+
 async def show_activity(query, user_id):
     session = Session()
 
@@ -902,38 +1054,36 @@ async def show_activity(query, user_id):
         user = session.get(User, user_id)
 
         if not user:
-            return await query.answer(
+            await query.answer(
                 "Пользователь не найден.",
                 show_alert=True,
             )
+            return
 
+        # Берём максимум 30 последних дней.
         rows = (
             session.query(Activity)
             .filter(Activity.user_id == user_id)
             .order_by(Activity.day.desc())
-            .limit(7)
+            .limit(30)
             .all()
         )
 
-        text = (
-            "📊 <b>АКТИВНОСТЬ</b>\n\n"
-            f"👤 {_safe_text(user.first_name or user.username)}\n"
-            f"💬 Всего сообщений: <b>{user.messages_count or 0}</b>\n"
-            f"🕐 Последняя активность: "
-            f"<b>{user.last_seen.strftime('%d.%m.%Y %H:%M') if user.last_seen else 'нет данных'}</b>\n"
-            f"🔥 Уровень: "
-            f"<b>{_activity_text(user.messages_count or 0, user.last_seen)}</b>\n\n"
-            "📅 <b>Последние 7 дней</b>\n"
-        )
-
-        if rows:
-            for row in reversed(rows):
-                day = row.day.strftime("%d.%m")
-                count = row.messages_count or 0
-                bar = "▮" * min(count, 20)
-                text += f"{day}  {bar} <b>{count}</b>\n"
-        else:
-            text += "Пока нет дневной статистики.\n"
+        try:
+            card = _make_activity_card(user, rows)
+            buf = io.BytesIO()
+            card.save(buf, format="PNG")
+            buf.seek(0)
+        except Exception as e:
+            print(
+                f"ACTIVITY CARD ERROR [{user_id}]: "
+                f"{type(e).__name__}: {e}"
+            )
+            await query.answer(
+                "❌ Не удалось создать карточку активности.",
+                show_alert=True,
+            )
+            return
 
         keyboard = InlineKeyboardMarkup([
             [
@@ -941,17 +1091,57 @@ async def show_activity(query, user_id):
                     "◀️ Профиль",
                     callback_data=f"user_{user_id}",
                 )
-            ]
+            ],
+            [
+                InlineKeyboardButton(
+                    "👥 Пользователи",
+                    callback_data="panel_users",
+                )
+            ],
         ])
 
-        await query.edit_message_text(
-            text,
-            reply_markup=keyboard,
-            parse_mode=ParseMode.HTML,
+        # Профиль отправляется как photo, поэтому edit_message_text здесь
+        # использовать нельзя. Удаляем старую карточку и отправляем новую.
+        try:
+            await query.message.delete()
+        except Exception as e:
+            print(
+                f"ACTIVITY MESSAGE DELETE ERROR [{user_id}]: "
+                f"{type(e).__name__}: {e}"
+            )
+
+        await context_bot_send_photo(
+            query,
+            buf,
+            keyboard,
         )
 
+    except Exception as e:
+        print(
+            f"ACTIVITY ERROR [{user_id}]: "
+            f"{type(e).__name__}: {e}"
+        )
+        try:
+            await query.answer(
+                "❌ Не удалось открыть активность. "
+                "Подробность записана в Railway Logs.",
+                show_alert=True,
+            )
+        except Exception:
+            pass
     finally:
         session.close()
+
+
+async def context_bot_send_photo(query, photo, keyboard):
+    """Отправляет карточку активности в тот же чат."""
+    await query.get_bot().send_photo(
+        chat_id=query.message.chat_id,
+        photo=photo,
+        caption="📊 <b>Активность участника</b>",
+        reply_markup=keyboard,
+        parse_mode=ParseMode.HTML,
+    )
 
 
 async def show_history_panel(query):
