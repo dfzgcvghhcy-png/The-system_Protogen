@@ -293,10 +293,12 @@ async def kick(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # =========================================================
 
 FONT_PATHS = [
+    str(Path(__file__).resolve().parent / "fonts" / "DejaVuSans.ttf"),
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
 ]
 BOLD_FONT_PATHS = [
+    str(Path(__file__).resolve().parent / "fonts" / "DejaVuSans-Bold.ttf"),
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
     "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
 ]
@@ -320,7 +322,7 @@ def _safe_text(value, fallback="—"):
 def _card_text(value, fallback="—"):
     """Текст для PNG-карточки без emoji/неподдерживаемых символов."""
     value = _safe_text(value, fallback)
-    value = re.sub(r"[\\U0001F000-\\U0001FAFF\\U00002600-\\U000027BF]", "", value)
+    value = re.sub(r"[\U0001F000-\U0001FAFF\U00002600-\U000027BF]", "", value)
     value = re.sub(r"\\s{2,}", " ", value).strip()
     return value or fallback
 
