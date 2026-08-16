@@ -1,7 +1,7 @@
 from telegram import Update, ChatPermissions, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
-from database import Session, User, Punishment
+from database import Session, User, Punishment, Activity
 from filters import is_admin, bot_can_restrict
 from datetime import datetime, timezone
 import pytz
@@ -517,31 +517,72 @@ def _save_user_from_telegram(session, tg_user, status=None, joined_at=None, coun
 
 
 async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Автоматически сохраняет автора каждого сообщения и дневную активность."""
     if not update.effective_message or not update.effective_user:
         return
-    if update.effective_user.is_bot:
+
+    user_tg = update.effective_user
+
+    if user_tg.is_bot:
         return
 
-    # Сохраняем пользователя при каждом обычном сообщении.
     session = Session()
+
     try:
         status = None
+
         try:
-            member = await update.effective_chat.get_member(update.effective_user.id)
+            member = await update.effective_chat.get_member(user_tg.id)
             status = member.status
         except Exception:
             status = "member"
 
-        _save_user_from_telegram(
+        user = _save_user_from_telegram(
             session,
-            update.effective_user,
+            user_tg,
             status=status,
             count_message=True,
         )
+
+        # Дневная статистика. Используем UTC-полночь, чтобы запись
+        # однозначно совпадала для PostgreSQL и SQLite.
+        today = datetime.utcnow().replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+
+        activity = (
+            session.query(Activity)
+            .filter(
+                Activity.user_id == user_tg.id,
+                Activity.day == today,
+            )
+            .first()
+        )
+
+        if activity is None:
+            activity = Activity(
+                user_id=user_tg.id,
+                day=today,
+                messages_count=1,
+            )
+            session.add(activity)
+        else:
+            activity.messages_count = (activity.messages_count or 0) + 1
+
         session.commit()
+
+        print(
+            f"USER TRACKED: {user_tg.id} | "
+            f"messages={user.messages_count or 0}"
+        )
+
     except Exception as e:
         session.rollback()
-        print(f"TRACK MESSAGE ERROR: {e}")
+        print(f"TRACK MESSAGE ERROR: {type(e).__name__}: {e}")
+
     finally:
         session.close()
 
@@ -573,6 +614,72 @@ async def track_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         session.rollback()
         print(f"TRACK MEMBER ERROR: {e}")
+    finally:
+        session.close()
+
+
+async def track_my_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Срабатывает, когда бот добавлен/изменён в группе.
+
+    Telegram Bot API не позволяет боту получить полный список всех
+    участников группы. Поэтому при добавлении мы автоматически
+    сохраняем хотя бы администраторов, а остальных участников бот
+    добавляет по сообщениям и chat_member updates.
+    """
+    change = update.my_chat_member
+
+    if not change or not change.new_chat_member:
+        return
+
+    chat = update.effective_chat
+    new_status = change.new_chat_member.status
+    old_status = change.old_chat_member.status if change.old_chat_member else None
+
+    print(
+        f"BOT CHAT STATUS: chat={chat.id if chat else 'unknown'} "
+        f"{old_status} -> {new_status}"
+    )
+
+    # Бот действительно вошёл/стал администратором.
+    if new_status not in ("member", "administrator"):
+        return
+
+    if not chat or chat.type not in ("group", "supergroup"):
+        return
+
+    session = Session()
+
+    try:
+        # Сразу сохраняем администраторов группы.
+        administrators = await context.bot.get_chat_administrators(chat.id)
+
+        for member in administrators:
+            tg_user = member.user
+
+            if tg_user.is_bot:
+                continue
+
+            _save_user_from_telegram(
+                session,
+                tg_user,
+                status=member.status,
+                count_message=False,
+            )
+
+        session.commit()
+
+        print(
+            f"INITIAL ADMIN SYNC: chat={chat.id}, "
+            f"saved={len(administrators)}"
+        )
+
+    except Exception as e:
+        session.rollback()
+        print(
+            f"INITIAL MEMBER SYNC ERROR: "
+            f"{type(e).__name__}: {e}"
+        )
+
     finally:
         session.close()
 
@@ -786,18 +893,59 @@ async def show_user_history(query, user_id):
 
 async def show_activity(query, user_id):
     session = Session()
+
     try:
         user = session.get(User, user_id)
+
         if not user:
-            return await query.answer("Пользователь не найден.", show_alert=True)
+            return await query.answer(
+                "Пользователь не найден.",
+                show_alert=True,
+            )
+
+        rows = (
+            session.query(Activity)
+            .filter(Activity.user_id == user_id)
+            .order_by(Activity.day.desc())
+            .limit(7)
+            .all()
+        )
+
         text = (
             "📊 <b>АКТИВНОСТЬ</b>\n\n"
             f"👤 {_safe_text(user.first_name or user.username)}\n"
-            f"💬 Сообщений: <b>{user.messages_count or 0}</b>\n"
-            f"🕐 Последняя активность: <b>{user.last_seen.strftime('%d.%m.%Y %H:%M') if user.last_seen else 'нет данных'}</b>\n"
-            f"🔥 Уровень: <b>{_activity_text(user.messages_count or 0, user.last_seen)}</b>"
+            f"💬 Всего сообщений: <b>{user.messages_count or 0}</b>\n"
+            f"🕐 Последняя активность: "
+            f"<b>{user.last_seen.strftime('%d.%m.%Y %H:%M') if user.last_seen else 'нет данных'}</b>\n"
+            f"🔥 Уровень: "
+            f"<b>{_activity_text(user.messages_count or 0, user.last_seen)}</b>\n\n"
+            "📅 <b>Последние 7 дней</b>\n"
         )
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Профиль", callback_data=f"user_{user_id}")]]), parse_mode=ParseMode.HTML)
+
+        if rows:
+            for row in reversed(rows):
+                day = row.day.strftime("%d.%m")
+                count = row.messages_count or 0
+                bar = "▮" * min(count, 20)
+                text += f"{day}  {bar} <b>{count}</b>\n"
+        else:
+            text += "Пока нет дневной статистики.\n"
+
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "◀️ Профиль",
+                    callback_data=f"user_{user_id}",
+                )
+            ]
+        ])
+
+        await query.edit_message_text(
+            text,
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML,
+        )
+
     finally:
         session.close()
 
