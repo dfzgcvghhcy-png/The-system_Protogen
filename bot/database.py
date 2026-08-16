@@ -11,6 +11,17 @@ class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True)
     warns = Column(Integer, default=0)
+    username = Column(String, nullable=True)
+    first_name = Column(String, nullable=True)
+    last_name = Column(String, nullable=True)
+    status = Column(String, default="member")
+    first_seen = Column(DateTime, default=datetime.utcnow)
+    last_seen = Column(DateTime, default=datetime.utcnow)
+    joined_at = Column(DateTime, nullable=True)
+    messages_count = Column(Integer, default=0)
+    mutes = Column(Integer, default=0)
+    bans = Column(Integer, default=0)
+    kicks = Column(Integer, default=0)
 
 
 class Punishment(Base):
@@ -25,21 +36,33 @@ class Punishment(Base):
 
 Base.metadata.create_all(engine)
 
-# Миграция существующего SQLite database.db.
+# Безопасная миграция старой базы. Существующие записи не удаляются.
 with engine.begin() as connection:
-    columns = {c["name"] for c in inspect(engine).get_columns("punishments")}
+    user_columns = {c["name"] for c in inspect(engine).get_columns("users")}
+    punishment_columns = {c["name"] for c in inspect(engine).get_columns("punishments")}
 
-    if "reason" not in columns:
-        connection.execute(text(
-            "ALTER TABLE punishments ADD COLUMN reason VARCHAR DEFAULT 'Не указана'"
-        ))
+    additions = {
+        "username": "VARCHAR",
+        "first_name": "VARCHAR",
+        "last_name": "VARCHAR",
+        "status": "VARCHAR DEFAULT 'member'",
+        "first_seen": "DATETIME",
+        "last_seen": "DATETIME",
+        "joined_at": "DATETIME",
+        "messages_count": "INTEGER DEFAULT 0",
+        "mutes": "INTEGER DEFAULT 0",
+        "bans": "INTEGER DEFAULT 0",
+        "kicks": "INTEGER DEFAULT 0",
+    }
+    for name, definition in additions.items():
+        if name not in user_columns:
+            connection.execute(text(f"ALTER TABLE users ADD COLUMN {name} {definition}"))
 
-    if "moderator_id" not in columns:
-        connection.execute(text(
-            "ALTER TABLE punishments ADD COLUMN moderator_id INTEGER"
-        ))
-
-    if "created_at" not in columns:
-        connection.execute(text(
-            "ALTER TABLE punishments ADD COLUMN created_at DATETIME"
-        ))
+    p_additions = {
+        "reason": "VARCHAR DEFAULT 'Не указана'",
+        "moderator_id": "INTEGER",
+        "created_at": "DATETIME",
+    }
+    for name, definition in p_additions.items():
+        if name not in punishment_columns:
+            connection.execute(text(f"ALTER TABLE punishments ADD COLUMN {name} {definition}"))
