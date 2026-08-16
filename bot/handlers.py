@@ -996,6 +996,290 @@ async def show_stats_panel(query):
         session.close()
 
 
+async def _panel_warn(query, user_id, reason):
+    member = await query.message.chat.get_member(query.from_user.id)
+    if member.status not in ("administrator", "creator"):
+        return await query.answer("❌ Только администраторы могут использовать модерацию.", show_alert=True)
+
+    target = await query.message.chat.get_member(user_id)
+    if target.status in ("administrator", "creator"):
+        return await query.answer("⚠️ Нельзя выдать предупреждение администратору.", show_alert=True)
+
+    session = Session()
+    try:
+        user = session.get(User, user_id)
+        if not user:
+            user = User(
+                id=user_id, warns=1, status="member",
+                first_seen=datetime.utcnow(), last_seen=datetime.utcnow()
+            )
+            session.add(user)
+        else:
+            user.warns = (user.warns or 0) + 1
+
+        session.add(Punishment(
+            user_id=user_id,
+            type="warn",
+            reason=reason,
+            moderator_id=query.from_user.id,
+        ))
+        session.commit()
+        warns_count = user.warns
+    finally:
+        session.close()
+
+    await query.answer("⚠️ Варн выдан.", show_alert=True)
+    return await query.edit_message_caption(
+        caption=(
+            "⚠️ <b>ВАРН ВЫДАН</b>\n\n"
+            f"Пользователь: <code>{user_id}</code>\n"
+            f"📝 Причина: <b>{reason}</b>\n"
+            f"⚠️ Варнов: <b>{warns_count}</b>"
+        ),
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("◀️ Профиль", callback_data=f"user_{user_id}")],
+            [InlineKeyboardButton("⚔️ Модерация", callback_data=f"moduser_{user_id}")],
+        ]),
+        parse_mode=ParseMode.HTML,
+    )
+
+
+async def _panel_mute(query, context, user_id, seconds, reason):
+    member = await query.message.chat.get_member(query.from_user.id)
+    if member.status not in ("administrator", "creator"):
+        return await query.answer("❌ Только администраторы могут использовать модерацию.", show_alert=True)
+
+    target = await query.message.chat.get_member(user_id)
+    if target.status in ("administrator", "creator"):
+        return await query.answer("⚠️ Нельзя выдать мут администратору.", show_alert=True)
+
+    bot_member = await query.message.chat.get_member(context.bot.id)
+    if bot_member.status != "creator" and not getattr(bot_member, "can_restrict_members", False):
+        return await query.answer("❌ У бота нет права «Ограничивать пользователей».", show_alert=True)
+
+    permissions = ChatPermissions(
+        can_send_messages=False,
+        can_send_audios=False,
+        can_send_documents=False,
+        can_send_photos=False,
+        can_send_videos=False,
+        can_send_video_notes=False,
+        can_send_voice_notes=False,
+        can_send_polls=False,
+        can_send_other_messages=False,
+        can_add_web_page_previews=False,
+    )
+
+    until_date = datetime.utcnow() + timedelta(seconds=seconds) if seconds > 0 else None
+
+    await context.bot.restrict_chat_member(
+        chat_id=query.message.chat_id,
+        user_id=user_id,
+        permissions=permissions,
+        until_date=until_date,
+    )
+
+    duration_names = {60: "1 минута", 300: "5 минут", 1800: "30 минут", 3600: "1 час", 0: "навсегда"}
+    duration_name = duration_names.get(seconds, f"{seconds // 60} минут")
+
+    session = Session()
+    try:
+        user = session.get(User, user_id)
+        if not user:
+            user = User(
+                id=user_id, warns=0, status="restricted",
+                first_seen=datetime.utcnow(), last_seen=datetime.utcnow()
+            )
+            session.add(user)
+        user.mutes = (user.mutes or 0) + 1
+        user.status = "restricted"
+        session.add(Punishment(
+            user_id=user_id,
+            type="mute",
+            reason=f"{reason} · {duration_name}",
+            moderator_id=query.from_user.id,
+        ))
+        session.commit()
+    finally:
+        session.close()
+
+    await query.answer("🔇 Мут выдан.", show_alert=True)
+    return await query.edit_message_caption(
+        caption=(
+            "🔇 <b>МУТ ВЫДАН</b>\n\n"
+            f"Пользователь: <code>{user_id}</code>\n"
+            f"📝 Причина: <b>{reason}</b>\n"
+            f"⏱ Срок: <b>{duration_name}</b>"
+        ),
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("◀️ Профиль", callback_data=f"user_{user_id}")],
+            [InlineKeyboardButton("⚔️ Модерация", callback_data=f"moduser_{user_id}")],
+        ]),
+        parse_mode=ParseMode.HTML,
+    )
+
+
+async def _panel_ban(query, context, user_id, seconds, reason):
+    member = await query.message.chat.get_member(query.from_user.id)
+    if member.status not in ("administrator", "creator"):
+        return await query.answer("❌ Только администраторы могут использовать модерацию.", show_alert=True)
+
+    target = await query.message.chat.get_member(user_id)
+    if target.status in ("administrator", "creator"):
+        return await query.answer("⚠️ Нельзя заблокировать администратора.", show_alert=True)
+
+    bot_member = await query.message.chat.get_member(context.bot.id)
+    if bot_member.status != "creator" and not getattr(bot_member, "can_restrict_members", False):
+        return await query.answer("❌ У бота нет права «Ограничивать пользователей».", show_alert=True)
+
+    until_date = datetime.utcnow() + timedelta(seconds=seconds) if seconds > 0 else None
+
+    await context.bot.ban_chat_member(
+        chat_id=query.message.chat_id,
+        user_id=user_id,
+        until_date=until_date,
+    )
+
+    duration_names = {3600: "1 час", 21600: "6 часов", 86400: "1 день", 604800: "7 дней", 0: "навсегда"}
+    duration_name = duration_names.get(seconds, f"{seconds // 3600} часов")
+
+    session = Session()
+    try:
+        user = session.get(User, user_id)
+        if not user:
+            user = User(
+                id=user_id, warns=0, status="kicked",
+                first_seen=datetime.utcnow(), last_seen=datetime.utcnow()
+            )
+            session.add(user)
+        user.bans = (user.bans or 0) + 1
+        user.status = "kicked"
+        session.add(Punishment(
+            user_id=user_id,
+            type="ban",
+            reason=f"{reason} · {duration_name}",
+            moderator_id=query.from_user.id,
+        ))
+        session.commit()
+    finally:
+        session.close()
+
+    await query.answer("🚫 Бан выдан.", show_alert=True)
+    return await query.edit_message_caption(
+        caption=(
+            "🚫 <b>БАН ВЫДАН</b>\n\n"
+            f"Пользователь: <code>{user_id}</code>\n"
+            f"📝 Причина: <b>{reason}</b>\n"
+            f"⏱ Срок: <b>{duration_name}</b>"
+        ),
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("◀️ Профиль", callback_data=f"user_{user_id}")],
+            [InlineKeyboardButton("⚔️ Модерация", callback_data=f"moduser_{user_id}")],
+        ]),
+        parse_mode=ParseMode.HTML,
+    )
+
+
+async def custom_reason_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    pending = context.user_data.get("pending_reason")
+    if not pending or not update.effective_message:
+        return
+
+    reason = update.effective_message.text.strip()
+    if not reason:
+        return
+
+    if len(reason) > 200:
+        return await update.effective_message.reply_text("⚠️ Причина слишком длинная. Максимум 200 символов.")
+
+    context.user_data.pop("pending_reason", None)
+
+    user_id = pending["user_id"]
+    kind = pending["type"]
+
+    # Custom reason is executed from a normal message, so we need a lightweight
+    # proxy for the callback-based helper. For custom mute/ban we send a clear
+    # instruction instead of silently applying an action without a duration.
+    if kind == "warn":
+        session = Session()
+        try:
+            user = session.get(User, user_id)
+            if not user:
+                user = User(
+                    id=user_id, warns=1, status="member",
+                    first_seen=datetime.utcnow(), last_seen=datetime.utcnow()
+                )
+                session.add(user)
+            else:
+                user.warns = (user.warns or 0) + 1
+            session.add(Punishment(
+                user_id=user_id, type="warn", reason=reason,
+                moderator_id=update.effective_user.id
+            ))
+            session.commit()
+            warns_count = user.warns
+        finally:
+            session.close()
+
+        return await update.effective_message.reply_text(
+            f"⚠️ Варн выдан пользователю <code>{user_id}</code>\n"
+            f"📝 Причина: <b>{reason}</b>\n"
+            f"⚠️ Варнов: <b>{warns_count}</b>",
+            parse_mode=ParseMode.HTML,
+        )
+
+    if kind == "mute":
+        context.user_data["pending_reason"] = {
+            "type": "custom_mute_duration",
+            "user_id": user_id,
+            "reason": reason,
+        }
+        return await update.effective_message.reply_text(
+            "🔇 <b>Выбери срок мута</b>\n\n"
+            f"📝 Причина: <b>{reason}</b>",
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("⏱ 1 минута", callback_data=f"custom_mute_for_{user_id}_60"),
+                    InlineKeyboardButton("⏱ 5 минут", callback_data=f"custom_mute_for_{user_id}_300"),
+                ],
+                [
+                    InlineKeyboardButton("⏱ 30 минут", callback_data=f"custom_mute_for_{user_id}_1800"),
+                    InlineKeyboardButton("⏱ 1 час", callback_data=f"custom_mute_for_{user_id}_3600"),
+                ],
+                [
+                    InlineKeyboardButton("🔇 Навсегда", callback_data=f"custom_mute_for_{user_id}_0"),
+                ],
+            ]),
+            parse_mode=ParseMode.HTML,
+        )
+
+    if kind == "ban":
+        context.user_data["pending_reason"] = {
+            "type": "custom_ban_duration",
+            "user_id": user_id,
+            "reason": reason,
+        }
+        return await update.effective_message.reply_text(
+            "🚫 <b>Выбери срок бана</b>\n\n"
+            f"📝 Причина: <b>{reason}</b>",
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("⏱ 1 час", callback_data=f"custom_ban_for_{user_id}_3600"),
+                    InlineKeyboardButton("⏱ 6 часов", callback_data=f"custom_ban_for_{user_id}_21600"),
+                ],
+                [
+                    InlineKeyboardButton("📅 1 день", callback_data=f"custom_ban_for_{user_id}_86400"),
+                    InlineKeyboardButton("📅 7 дней", callback_data=f"custom_ban_for_{user_id}_604800"),
+                ],
+                [
+                    InlineKeyboardButton("🚫 Навсегда", callback_data=f"custom_ban_for_{user_id}_0"),
+                ],
+            ]),
+            parse_mode=ParseMode.HTML,
+        )
+
+
+
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if not query:
@@ -1024,7 +1308,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = int(data.split("_", 1)[1])
         keyboard = InlineKeyboardMarkup([
             [
-                InlineKeyboardButton("⚠️ Варн", callback_data=f"action_warn_{user_id}"),
+                InlineKeyboardButton("⚠️ Варн", callback_data=f"warn_menu_{user_id}"),
                 InlineKeyboardButton("🧹 Снять варн", callback_data=f"action_unwarn_{user_id}"),
             ],
             [
@@ -1050,22 +1334,55 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     # -------------------------------------------------
-    # МЕНЮ ВЫБОРА СРОКА МУТА
+    # ВЫБОР ПРИЧИНЫ ВАРНА
+    # -------------------------------------------------
+    if data.startswith("warn_menu_"):
+        user_id = int(data.split("_", 2)[2])
+
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("💬 Спам", callback_data=f"reason_warn_{user_id}_spam"),
+                InlineKeyboardButton("😡 Оскорбления", callback_data=f"reason_warn_{user_id}_insult"),
+            ],
+            [
+                InlineKeyboardButton("📢 Реклама", callback_data=f"reason_warn_{user_id}_ads"),
+                InlineKeyboardButton("📜 Нарушение правил", callback_data=f"reason_warn_{user_id}_rules"),
+            ],
+            [
+                InlineKeyboardButton("✏️ Своя причина", callback_data=f"reason_custom_warn_{user_id}"),
+            ],
+            [
+                InlineKeyboardButton("◀️ Назад", callback_data=f"moduser_{user_id}"),
+            ],
+        ])
+
+        return await query.edit_message_caption(
+            caption=(
+                "⚠️ <b>ВЫДАЧА ВАРНА</b>\n\n"
+                f"Пользователь: <code>{user_id}</code>\n\n"
+                "Выбери причину:"
+            ),
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML,
+        )
+
+    # -------------------------------------------------
+    # ВЫБОР ПРИЧИНЫ МУТА
     # -------------------------------------------------
     if data.startswith("mute_menu_"):
         user_id = int(data.split("_", 2)[2])
 
         keyboard = InlineKeyboardMarkup([
             [
-                InlineKeyboardButton("⏱ 1 минута", callback_data=f"mute_for_{user_id}_60"),
-                InlineKeyboardButton("⏱ 5 минут", callback_data=f"mute_for_{user_id}_300"),
+                InlineKeyboardButton("💬 Спам", callback_data=f"mute_reason_{user_id}_spam"),
+                InlineKeyboardButton("😡 Оскорбления", callback_data=f"mute_reason_{user_id}_insult"),
             ],
             [
-                InlineKeyboardButton("⏱ 30 минут", callback_data=f"mute_for_{user_id}_1800"),
-                InlineKeyboardButton("⏱ 1 час", callback_data=f"mute_for_{user_id}_3600"),
+                InlineKeyboardButton("📢 Реклама", callback_data=f"mute_reason_{user_id}_ads"),
+                InlineKeyboardButton("📜 Нарушение правил", callback_data=f"mute_reason_{user_id}_rules"),
             ],
             [
-                InlineKeyboardButton("🔇 Навсегда", callback_data=f"mute_for_{user_id}_0"),
+                InlineKeyboardButton("✏️ Своя причина", callback_data=f"custom_mute_{user_id}"),
             ],
             [
                 InlineKeyboardButton("◀️ Назад", callback_data=f"moduser_{user_id}"),
@@ -1076,163 +1393,72 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             caption=(
                 "🔇 <b>ВЫДАЧА МУТА</b>\n\n"
                 f"Пользователь: <code>{user_id}</code>\n\n"
-                "Выбери срок ограничения:"
+                "Сначала выбери причину:"
             ),
             reply_markup=keyboard,
             parse_mode=ParseMode.HTML,
         )
 
     # -------------------------------------------------
-    # ВЫДАЧА МУТА НА ВЫБРАННЫЙ СРОК
+    # ВЫБОР СРОКА МУТА ПОСЛЕ ПРИЧИНЫ
     # -------------------------------------------------
-    if data.startswith("mute_for_"):
-        _, _, user_id_raw, seconds_raw = data.split("_", 3)
+    if data.startswith("mute_reason_"):
+        _, _, user_id_raw, reason_key = data.split("_", 3)
         user_id = int(user_id_raw)
-        seconds = int(seconds_raw)
 
-        member = await query.message.chat.get_member(query.from_user.id)
-        if member.status not in ("administrator", "creator"):
-            return await query.answer(
-                "❌ Только администраторы могут использовать модерацию.",
-                show_alert=True,
-            )
+        reasons = {
+            "spam": "Спам",
+            "insult": "Оскорбления",
+            "ads": "Реклама",
+            "rules": "Нарушение правил",
+        }
+        reason = reasons.get(reason_key, "Нарушение правил")
 
-        chat_id = query.message.chat_id
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("⏱ 1 минута", callback_data=f"mute_for_{user_id}_60_{reason_key}"),
+                InlineKeyboardButton("⏱ 5 минут", callback_data=f"mute_for_{user_id}_300_{reason_key}"),
+            ],
+            [
+                InlineKeyboardButton("⏱ 30 минут", callback_data=f"mute_for_{user_id}_1800_{reason_key}"),
+                InlineKeyboardButton("⏱ 1 час", callback_data=f"mute_for_{user_id}_3600_{reason_key}"),
+            ],
+            [
+                InlineKeyboardButton("🔇 Навсегда", callback_data=f"mute_for_{user_id}_0_{reason_key}"),
+            ],
+            [
+                InlineKeyboardButton("◀️ Назад", callback_data=f"mute_menu_{user_id}"),
+            ],
+        ])
 
-        try:
-            target_member = await query.message.chat.get_member(user_id)
-            if target_member.status in ("administrator", "creator"):
-                return await query.answer(
-                    "⚠️ Нельзя выдать мут администратору.",
-                    show_alert=True,
-                )
-        except Exception:
-            pass
-
-        bot_member = await query.message.chat.get_member(context.bot.id)
-        if bot_member.status != "creator" and not getattr(
-            bot_member, "can_restrict_members", False
-        ):
-            return await query.answer(
-                "❌ У бота нет права «Ограничивать пользователей».",
-                show_alert=True,
-            )
-
-        try:
-            permissions = ChatPermissions(
-                can_send_messages=False,
-                can_send_audios=False,
-                can_send_documents=False,
-                can_send_photos=False,
-                can_send_videos=False,
-                can_send_video_notes=False,
-                can_send_voice_notes=False,
-                can_send_polls=False,
-                can_send_other_messages=False,
-                can_add_web_page_previews=False,
-            )
-
-            until_date = (
-                datetime.utcnow() + timedelta(seconds=seconds)
-                if seconds > 0
-                else None
-            )
-
-            await context.bot.restrict_chat_member(
-                chat_id=chat_id,
-                user_id=user_id,
-                permissions=permissions,
-                until_date=until_date,
-            )
-
-            duration_names = {
-                60: "1 минута",
-                300: "5 минут",
-                1800: "30 минут",
-                3600: "1 час",
-                0: "навсегда",
-            }
-            duration_name = duration_names.get(
-                seconds,
-                f"{seconds // 60} минут",
-            )
-
-            session = Session()
-            try:
-                user = session.get(User, user_id)
-
-                if not user:
-                    user = User(
-                        id=user_id,
-                        warns=0,
-                        status="restricted",
-                        first_seen=datetime.utcnow(),
-                        last_seen=datetime.utcnow(),
-                    )
-                    session.add(user)
-
-                user.mutes = (user.mutes or 0) + 1
-                user.status = "restricted"
-
-                session.add(
-                    Punishment(
-                        user_id=user_id,
-                        type="mute",
-                        reason=f"Мут через панель: {duration_name}",
-                        moderator_id=query.from_user.id,
-                    )
-                )
-                session.commit()
-            finally:
-                session.close()
-
-            await query.answer("🔇 Мут выдан.", show_alert=True)
-
-            return await query.edit_message_caption(
-                caption=(
-                    "🔇 <b>МУТ ВЫДАН</b>\n\n"
-                    f"Пользователь: <code>{user_id}</code>\n"
-                    f"⏱ Срок: <b>{duration_name}</b>\n"
-                    f"👮 Модератор: <code>{query.from_user.id}</code>"
-                ),
-                reply_markup=InlineKeyboardMarkup([
-                    [
-                        InlineKeyboardButton(
-                            "◀️ Профиль",
-                            callback_data=f"user_{user_id}",
-                        )
-                    ]
-                ]),
-                parse_mode=ParseMode.HTML,
-            )
-
-        except Exception as e:
-            print(
-                f"PANEL MUTE ERROR: user={user_id} "
-                f"seconds={seconds} {type(e).__name__}: {e}"
-            )
-            return await query.answer(
-                f"❌ Не удалось выдать мут.\n{e}",
-                show_alert=True,
-            )
+        return await query.edit_message_caption(
+            caption=(
+                "🔇 <b>ВЫДАЧА МУТА</b>\n\n"
+                f"Пользователь: <code>{user_id}</code>\n"
+                f"📝 Причина: <b>{reason}</b>\n\n"
+                "Выбери срок:"
+            ),
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML,
+        )
 
     # -------------------------------------------------
-    # МЕНЮ ВЫБОРА СРОКА БАНА
+    # ВЫБОР СРОКА БАНА ПОСЛЕ ПРИЧИНЫ
     # -------------------------------------------------
     if data.startswith("ban_menu_"):
         user_id = int(data.split("_", 2)[2])
 
         keyboard = InlineKeyboardMarkup([
             [
-                InlineKeyboardButton("⏱ 1 час", callback_data=f"ban_for_{user_id}_3600"),
-                InlineKeyboardButton("⏱ 6 часов", callback_data=f"ban_for_{user_id}_21600"),
+                InlineKeyboardButton("⏱ 1 час", callback_data=f"ban_reason_{user_id}_3600"),
+                InlineKeyboardButton("⏱ 6 часов", callback_data=f"ban_reason_{user_id}_21600"),
             ],
             [
-                InlineKeyboardButton("📅 1 день", callback_data=f"ban_for_{user_id}_86400"),
-                InlineKeyboardButton("📅 7 дней", callback_data=f"ban_for_{user_id}_604800"),
+                InlineKeyboardButton("📅 1 день", callback_data=f"ban_reason_{user_id}_86400"),
+                InlineKeyboardButton("📅 7 дней", callback_data=f"ban_reason_{user_id}_604800"),
             ],
             [
-                InlineKeyboardButton("🚫 Навсегда", callback_data=f"ban_for_{user_id}_0"),
+                InlineKeyboardButton("🚫 Навсегда", callback_data=f"ban_reason_{user_id}_0"),
             ],
             [
                 InlineKeyboardButton("◀️ Назад", callback_data=f"moduser_{user_id}"),
@@ -1243,137 +1469,199 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             caption=(
                 "🚫 <b>ВЫДАЧА БАНА</b>\n\n"
                 f"Пользователь: <code>{user_id}</code>\n\n"
-                "Выбери срок блокировки:"
+                "Сначала выбери срок:"
+            ),
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML,
+        )
+
+    if data.startswith("ban_reason_"):
+        _, _, user_id_raw, seconds_raw = data.split("_", 3)
+        user_id = int(user_id_raw)
+        seconds = int(seconds_raw)
+
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("💬 Спам", callback_data=f"ban_for_{user_id}_{seconds}_spam"),
+                InlineKeyboardButton("😡 Оскорбления", callback_data=f"ban_for_{user_id}_{seconds}_insult"),
+            ],
+            [
+                InlineKeyboardButton("📢 Реклама", callback_data=f"ban_for_{user_id}_{seconds}_ads"),
+                InlineKeyboardButton("📜 Нарушение правил", callback_data=f"ban_for_{user_id}_{seconds}_rules"),
+            ],
+            [
+                InlineKeyboardButton("✏️ Своя причина", callback_data=f"custom_ban_{user_id}_{seconds}"),
+            ],
+            [
+                InlineKeyboardButton("◀️ Назад", callback_data=f"ban_menu_{user_id}"),
+            ],
+        ])
+
+        duration_names = {
+            3600: "1 час",
+            21600: "6 часов",
+            86400: "1 день",
+            604800: "7 дней",
+            0: "навсегда",
+        }
+        duration_name = duration_names.get(seconds, f"{seconds // 3600} часов")
+
+        return await query.edit_message_caption(
+            caption=(
+                "🚫 <b>ВЫДАЧА БАНА</b>\n\n"
+                f"Пользователь: <code>{user_id}</code>\n"
+                f"⏱ Срок: <b>{duration_name}</b>\n\n"
+                "Выбери причину:"
             ),
             reply_markup=keyboard,
             parse_mode=ParseMode.HTML,
         )
 
     # -------------------------------------------------
-    # ВЫДАЧА БАНА НА ВЫБРАННЫЙ СРОК
+    # СВОЯ ПРИЧИНА
     # -------------------------------------------------
-    if data.startswith("ban_for_"):
+    if data.startswith("reason_custom_warn_"):
+        user_id = int(data.split("_", 3)[3])
+        context.user_data["pending_reason"] = {
+            "type": "warn",
+            "user_id": user_id,
+        }
+        return await query.edit_message_caption(
+            caption=(
+                "✏️ <b>СВОЯ ПРИЧИНА</b>\n\n"
+                "Напиши причину следующим сообщением."
+            ),
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("◀️ Отмена", callback_data=f"moduser_{user_id}")]
+            ]),
+            parse_mode=ParseMode.HTML,
+        )
+
+    if data.startswith("custom_mute_"):
+        user_id = int(data.split("_", 2)[2])
+        context.user_data["pending_reason"] = {
+            "type": "mute",
+            "user_id": user_id,
+        }
+        return await query.edit_message_caption(
+            caption=(
+                "✏️ <b>СВОЯ ПРИЧИНА ДЛЯ МУТА</b>\n\n"
+                "Напиши причину следующим сообщением."
+            ),
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("◀️ Отмена", callback_data=f"moduser_{user_id}")]
+            ]),
+            parse_mode=ParseMode.HTML,
+        )
+
+    if data.startswith("custom_ban_"):
         _, _, user_id_raw, seconds_raw = data.split("_", 3)
         user_id = int(user_id_raw)
         seconds = int(seconds_raw)
 
-        member = await query.message.chat.get_member(query.from_user.id)
-        if member.status not in ("administrator", "creator"):
-            return await query.answer(
-                "❌ Только администраторы могут использовать модерацию.",
-                show_alert=True,
-            )
+        context.user_data["pending_reason"] = {
+            "type": "ban",
+            "user_id": int(user_id_raw),
+            "seconds": seconds,
+        }
+        return await query.edit_message_caption(
+            caption=(
+                "✏️ <b>СВОЯ ПРИЧИНА ДЛЯ БАНА</b>\n\n"
+                "Напиши причину следующим сообщением."
+            ),
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("◀️ Отмена", callback_data=f"moduser_{user_id}")]
+            ]),
+            parse_mode=ParseMode.HTML,
+        )
 
-        chat_id = query.message.chat_id
+    # -------------------------------------------------
+    # ПРИМЕНЕНИЕ ВАРНА С ГОТОВОЙ ПРИЧИНОЙ
+    # -------------------------------------------------
+    if data.startswith("reason_warn_"):
+        _, _, user_id_raw, reason_key = data.split("_", 3)
+        user_id = int(user_id_raw)
 
-        try:
-            target_member = await query.message.chat.get_member(user_id)
-            if target_member.status in ("administrator", "creator"):
-                return await query.answer(
-                    "⚠️ Нельзя заблокировать администратора.",
-                    show_alert=True,
-                )
-        except Exception:
-            pass
+        reasons = {
+            "spam": "Спам",
+            "insult": "Оскорбления",
+            "ads": "Реклама",
+            "rules": "Нарушение правил",
+        }
+        reason = reasons.get(reason_key, "Нарушение правил")
 
-        bot_member = await query.message.chat.get_member(context.bot.id)
-        if bot_member.status != "creator" and not getattr(
-            bot_member, "can_restrict_members", False
-        ):
-            return await query.answer(
-                "❌ У бота нет права «Ограничивать пользователей».",
-                show_alert=True,
-            )
+        return await _panel_warn(query, user_id, reason)
 
-        try:
-            until_date = (
-                datetime.utcnow() + timedelta(seconds=seconds)
-                if seconds > 0
-                else None
-            )
+    # -------------------------------------------------
+    # МУТ С ГОТОВОЙ ПРИЧИНОЙ И СРОКОМ
+    # -------------------------------------------------
+    if data.startswith("mute_for_"):
+        parts = data.split("_", 4)
+        if len(parts) == 4:
+            _, _, user_id_raw, seconds_raw = parts
+            reason_key = "rules"
+        else:
+            _, _, user_id_raw, seconds_raw, reason_key = parts
 
-            await context.bot.ban_chat_member(
-                chat_id=chat_id,
-                user_id=user_id,
-                until_date=until_date,
-            )
+        user_id = int(user_id_raw)
+        seconds = int(seconds_raw)
 
-            duration_names = {
-                3600: "1 час",
-                21600: "6 часов",
-                86400: "1 день",
-                604800: "7 дней",
-                0: "навсегда",
-            }
-            duration_name = duration_names.get(
-                seconds,
-                f"{seconds // 3600} часов",
-            )
+        reasons = {
+            "spam": "Спам",
+            "insult": "Оскорбления",
+            "ads": "Реклама",
+            "rules": "Нарушение правил",
+        }
+        reason = reasons.get(reason_key, "Нарушение правил")
 
-            session = Session()
-            try:
-                user = session.get(User, user_id)
+        return await _panel_mute(query, context, user_id, seconds, reason)
 
-                if not user:
-                    user = User(
-                        id=user_id,
-                        warns=0,
-                        status="kicked",
-                        first_seen=datetime.utcnow(),
-                        last_seen=datetime.utcnow(),
-                    )
-                    session.add(user)
+    # -------------------------------------------------
+    # БАН С ГОТОВОЙ ПРИЧИНОЙ И СРОКОМ
+    # -------------------------------------------------
+    if data.startswith("ban_for_"):
+        parts = data.split("_", 4)
+        if len(parts) == 4:
+            _, _, user_id_raw, seconds_raw = parts
+            reason_key = "rules"
+        else:
+            _, _, user_id_raw, seconds_raw, reason_key = parts
 
-                user.bans = (user.bans or 0) + 1
-                user.status = "kicked"
+        user_id = int(user_id_raw)
+        seconds = int(seconds_raw)
 
-                session.add(
-                    Punishment(
-                        user_id=user_id,
-                        type="ban",
-                        reason=f"Бан через панель: {duration_name}",
-                        moderator_id=query.from_user.id,
-                    )
-                )
-                session.commit()
-            finally:
-                session.close()
+        reasons = {
+            "spam": "Спам",
+            "insult": "Оскорбления",
+            "ads": "Реклама",
+            "rules": "Нарушение правил",
+        }
+        reason = reasons.get(reason_key, "Нарушение правил")
 
-            await query.answer("🚫 Бан выдан.", show_alert=True)
+        return await _panel_ban(query, context, user_id, seconds, reason)
 
-            return await query.edit_message_caption(
-                caption=(
-                    "🚫 <b>БАН ВЫДАН</b>\n\n"
-                    f"Пользователь: <code>{user_id}</code>\n"
-                    f"⏱ Срок: <b>{duration_name}</b>\n"
-                    f"👮 Модератор: <code>{query.from_user.id}</code>"
-                ),
-                reply_markup=InlineKeyboardMarkup([
-                    [
-                        InlineKeyboardButton(
-                            "◀️ Профиль",
-                            callback_data=f"user_{user_id}",
-                        )
-                    ]
-                ]),
-                parse_mode=ParseMode.HTML,
-            )
+    if data.startswith("custom_mute_for_"):
+        _, _, _, user_id_raw, seconds_raw = data.split("_", 4)
+        user_id = int(user_id_raw)
+        seconds = int(seconds_raw)
+        pending = context.user_data.get("pending_reason", {})
+        reason = pending.get("reason", "Своя причина")
+        context.user_data.pop("pending_reason", None)
+        return await _panel_mute(query, context, user_id, seconds, reason)
 
-        except Exception as e:
-            print(
-                f"PANEL BAN ERROR: user={user_id} "
-                f"seconds={seconds} {type(e).__name__}: {e}"
-            )
-            return await query.answer(
-                f"❌ Не удалось выдать бан.\n{e}",
-                show_alert=True,
-            )
+    if data.startswith("custom_ban_for_"):
+        _, _, _, user_id_raw, seconds_raw = data.split("_", 4)
+        user_id = int(user_id_raw)
+        seconds = int(seconds_raw)
+        pending = context.user_data.get("pending_reason", {})
+        reason = pending.get("reason", "Своя причина")
+        context.user_data.pop("pending_reason", None)
+        return await _panel_ban(query, context, user_id, seconds, reason)
 
     if data.startswith("action_"):
         _, action, user_id_raw = data.split("_", 2)
         user_id = int(user_id_raw)
 
-        # Проверяем права того, кто нажал кнопку.
         member = await query.message.chat.get_member(query.from_user.id)
         if member.status not in ("administrator", "creator"):
             return await query.answer(
@@ -1383,7 +1671,6 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         chat_id = query.message.chat_id
 
-        # Нельзя модерировать владельца/администратора.
         try:
             target_member = await query.message.chat.get_member(user_id)
             if target_member.status in ("administrator", "creator"):
@@ -1394,12 +1681,10 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             target_member = None
 
-        # Проверяем права самого бота для ограничений.
         if action in ("mute", "ban", "kick", "unmute"):
             bot_member = await query.message.chat.get_member(context.bot.id)
-
-            if bot_member.status != "creator" and (
-                not getattr(bot_member, "can_restrict_members", False)
+            if bot_member.status != "creator" and not getattr(
+                bot_member, "can_restrict_members", False
             ):
                 return await query.answer(
                     "❌ У бота нет права «Ограничивать пользователей».",
@@ -1407,43 +1692,28 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
 
         try:
-            # -------------------------------------------------
-            # UNWARN — Снять один варн
-            # -------------------------------------------------
             if action == "unwarn":
                 session = Session()
                 try:
                     user = session.get(User, user_id)
-
                     if not user or (user.warns or 0) <= 0:
                         return await query.answer(
                             "ℹ️ У пользователя нет варнов для снятия.",
                             show_alert=True,
                         )
-
                     user.warns = max(0, (user.warns or 0) - 1)
-
-                    # Сохраняем отдельную запись в истории, чтобы было видно,
-                    # кто и когда снял предупреждение.
-                    session.add(
-                        Punishment(
-                            user_id=user_id,
-                            type="unwarn",
-                            reason="Варн снят через панель",
-                            moderator_id=query.from_user.id,
-                        )
-                    )
-
+                    session.add(Punishment(
+                        user_id=user_id,
+                        type="unwarn",
+                        reason="Варн снят через панель",
+                        moderator_id=query.from_user.id,
+                    ))
                     session.commit()
                     warns_count = user.warns
-                except Exception:
-                    session.rollback()
-                    raise
                 finally:
                     session.close()
 
                 await query.answer("🧹 Варн снят.", show_alert=True)
-
                 return await query.edit_message_caption(
                     caption=(
                         "🧹 <b>ВАРН СНЯТ</b>\n\n"
@@ -1457,82 +1727,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     parse_mode=ParseMode.HTML,
                 )
 
-            # -------------------------------------------------
-            # WARN
-            # -------------------------------------------------
-            if action == "warn":
-                session = Session()
-                try:
-                    user = session.get(User, user_id)
-
-                    if not user:
-                        user = User(
-                            id=user_id,
-                            warns=1,
-                            status="member",
-                            first_seen=datetime.utcnow(),
-                            last_seen=datetime.utcnow(),
-                        )
-                        session.add(user)
-                    else:
-                        user.warns = (user.warns or 0) + 1
-
-                    session.add(
-                        Punishment(
-                            user_id=user_id,
-                            type="warn",
-                            reason="Выдано через панель",
-                            moderator_id=query.from_user.id,
-                        )
-                    )
-                    session.commit()
-                    warns_count = user.warns
-                finally:
-                    session.close()
-
-                await query.answer("⚠️ Варн выдан.", show_alert=True)
-
-                return await query.edit_message_caption(
-                    caption=(
-                        "⚠️ <b>ПРЕДУПРЕЖДЕНИЕ ВЫДАНО</b>\n\n"
-                        f"Пользователь: <code>{user_id}</code>\n"
-                        f"Варнов: <b>{warns_count}</b>"
-                    ),
-                    reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("◀️ Профиль", callback_data=f"user_{user_id}")]
-                    ]),
-                    parse_mode=ParseMode.HTML,
-                )
-
-            # -------------------------------------------------
-            # MUTE
-            # -------------------------------------------------
-            if action == "mute":
-                permissions = ChatPermissions(
-                    can_send_messages=False,
-                    can_send_audios=False,
-                    can_send_documents=False,
-                    can_send_photos=False,
-                    can_send_videos=False,
-                    can_send_video_notes=False,
-                    can_send_voice_notes=False,
-                    can_send_polls=False,
-                    can_send_other_messages=False,
-                    can_add_web_page_previews=False,
-                )
-
-                await context.bot.restrict_chat_member(
-                    chat_id=chat_id,
-                    user_id=user_id,
-                    permissions=permissions,
-                )
-
-                punishment_type = "mute"
-
-            # -------------------------------------------------
-            # UNMUTE
-            # -------------------------------------------------
-            elif action == "unmute":
+            if action == "unmute":
                 permissions = ChatPermissions(
                     can_send_messages=True,
                     can_send_audios=True,
@@ -1545,140 +1740,77 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     can_send_other_messages=True,
                     can_add_web_page_previews=True,
                 )
-
                 await context.bot.restrict_chat_member(
                     chat_id=chat_id,
                     user_id=user_id,
                     permissions=permissions,
                 )
-
                 await query.answer("🔊 Мут снят.", show_alert=True)
-
                 return await query.edit_message_caption(
-                    caption=(
-                        "🔊 <b>МУТ СНЯТ</b>\n\n"
-                        f"Пользователь: <code>{user_id}</code>"
-                    ),
+                    caption=f"🔊 <b>МУТ СНЯТ</b>\n\nПользователь: <code>{user_id}</code>",
                     reply_markup=InlineKeyboardMarkup([
                         [InlineKeyboardButton("◀️ Профиль", callback_data=f"user_{user_id}")]
                     ]),
                     parse_mode=ParseMode.HTML,
                 )
 
-            # -------------------------------------------------
-            # BAN
-            # -------------------------------------------------
-            elif action == "ban":
-                await context.bot.ban_chat_member(
-                    chat_id=chat_id,
-                    user_id=user_id,
-                )
-                punishment_type = "ban"
-
-            # -------------------------------------------------
-            # UNBAN
-            # -------------------------------------------------
-            elif action == "unban":
-                await context.bot.unban_chat_member(
-                    chat_id=chat_id,
-                    user_id=user_id,
-                )
-
-                await query.answer("🔓 Бан снят.", show_alert=True)
-
-                return await query.edit_message_caption(
-                    caption=(
-                        "🔓 <b>БАН СНЯТ</b>\n\n"
-                        f"Пользователь: <code>{user_id}</code>"
-                    ),
-                    reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("◀️ Профиль", callback_data=f"user_{user_id}")]
-                    ]),
-                    parse_mode=ParseMode.HTML,
-                )
-
-            # -------------------------------------------------
-            # KICK
-            # -------------------------------------------------
-            elif action == "kick":
-                await context.bot.ban_chat_member(
-                    chat_id=chat_id,
-                    user_id=user_id,
-                )
-                await context.bot.unban_chat_member(
-                    chat_id=chat_id,
-                    user_id=user_id,
-                )
+            if action == "kick":
+                await context.bot.ban_chat_member(chat_id=chat_id, user_id=user_id)
+                await context.bot.unban_chat_member(chat_id=chat_id, user_id=user_id)
                 punishment_type = "kick"
+                reason = "Кик через панель"
 
-            else:
-                return await query.answer(
-                    "❌ Неизвестное действие.",
-                    show_alert=True,
-                )
-
-            # Записываем реальное действие только после успешного
-            # выполнения Telegram API.
-            session = Session()
-            try:
-                user = session.get(User, user_id)
-
-                if not user:
-                    user = User(
-                        id=user_id,
-                        warns=0,
-                        status="member",
-                        first_seen=datetime.utcnow(),
-                        last_seen=datetime.utcnow(),
-                    )
-                    session.add(user)
-
-                if punishment_type == "mute":
-                    user.mutes = (user.mutes or 0) + 1
-                elif punishment_type == "ban":
-                    user.bans = (user.bans or 0) + 1
-                elif punishment_type == "kick":
+                session = Session()
+                try:
+                    user = session.get(User, user_id)
+                    if not user:
+                        user = User(
+                            id=user_id, warns=0, status="member",
+                            first_seen=datetime.utcnow(), last_seen=datetime.utcnow()
+                        )
+                        session.add(user)
                     user.kicks = (user.kicks or 0) + 1
+                    session.add(Punishment(
+                        user_id=user_id, type="kick", reason=reason,
+                        moderator_id=query.from_user.id
+                    ))
+                    session.commit()
+                finally:
+                    session.close()
 
-                session.add(
-                    Punishment(
-                        user_id=user_id,
-                        type=punishment_type,
-                        reason="Выдано через панель",
-                        moderator_id=query.from_user.id,
-                    )
+                await query.answer("👢 Пользователь исключён.", show_alert=True)
+                return await query.edit_message_caption(
+                    caption=(
+                        "👢 <b>ПОЛЬЗОВАТЕЛЬ ИСКЛЮЧЁН</b>\n\n"
+                        f"Пользователь: <code>{user_id}</code>"
+                    ),
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("◀️ Профиль", callback_data=f"user_{user_id}")]
+                    ]),
+                    parse_mode=ParseMode.HTML,
                 )
-                session.commit()
-            finally:
-                session.close()
 
-            names = {
-                "mute": "🔇 МУТ ВЫДАН",
-                "ban": "🚫 ПОЛЬЗОВАТЕЛЬ ЗАБЛОКИРОВАН",
-                "kick": "👢 ПОЛЬЗОВАТЕЛЬ ИСКЛЮЧЁН",
-            }
+            if action == "unban":
+                await context.bot.unban_chat_member(chat_id=chat_id, user_id=user_id)
+                await query.answer("🔓 Бан снят.", show_alert=True)
+                return await query.edit_message_caption(
+                    caption=f"🔓 <b>БАН СНЯТ</b>\n\nПользователь: <code>{user_id}</code>",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("◀️ Профиль", callback_data=f"user_{user_id}")]
+                    ]),
+                    parse_mode=ParseMode.HTML,
+                )
 
-            await query.answer("✅ Действие выполнено.", show_alert=True)
-
-            return await query.edit_message_caption(
-                caption=(
-                    f"<b>{names[punishment_type]}</b>\n\n"
-                    f"Пользователь: <code>{user_id}</code>\n"
-                    f"Модератор: <code>{query.from_user.id}</code>"
-                ),
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("◀️ Профиль", callback_data=f"user_{user_id}")]
-                ]),
-                parse_mode=ParseMode.HTML,
+            return await query.answer(
+                "ℹ️ Для варна, мута и бана сначала выбери причину.",
+                show_alert=True,
             )
 
         except Exception as e:
             print(
-                f"PANEL MODERATION ERROR: "
-                f"action={action} user={user_id} "
-                f"{type(e).__name__}: {e}"
+                f"PANEL MODERATION ERROR: action={action} "
+                f"user={user_id} {type(e).__name__}: {e}"
             )
-
             return await query.answer(
                 f"❌ Не удалось выполнить действие.\n{e}",
                 show_alert=True,
