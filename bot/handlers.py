@@ -3,7 +3,7 @@ from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 from database import Session, User, Punishment, Activity
 from filters import is_admin, bot_can_restrict
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import pytz
 import io
 import re
@@ -1028,7 +1028,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 InlineKeyboardButton("🧹 Снять варн", callback_data=f"action_unwarn_{user_id}"),
             ],
             [
-                InlineKeyboardButton("🔇 Мут", callback_data=f"action_mute_{user_id}"),
+                InlineKeyboardButton("🔇 Мут", callback_data=f"mute_menu_{user_id}"),
                 InlineKeyboardButton("🔊 Снять мут", callback_data=f"action_unmute_{user_id}"),
             ],
             [
@@ -1048,6 +1048,173 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=keyboard,
             parse_mode=ParseMode.HTML,
         )
+
+    # -------------------------------------------------
+    # МЕНЮ ВЫБОРА СРОКА МУТА
+    # -------------------------------------------------
+    if data.startswith("mute_menu_"):
+        user_id = int(data.split("_", 2)[2])
+
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("⏱ 1 минута", callback_data=f"mute_for_{user_id}_60"),
+                InlineKeyboardButton("⏱ 5 минут", callback_data=f"mute_for_{user_id}_300"),
+            ],
+            [
+                InlineKeyboardButton("⏱ 30 минут", callback_data=f"mute_for_{user_id}_1800"),
+                InlineKeyboardButton("⏱ 1 час", callback_data=f"mute_for_{user_id}_3600"),
+            ],
+            [
+                InlineKeyboardButton("🔇 Навсегда", callback_data=f"mute_for_{user_id}_0"),
+            ],
+            [
+                InlineKeyboardButton("◀️ Назад", callback_data=f"moduser_{user_id}"),
+            ],
+        ])
+
+        return await query.edit_message_caption(
+            caption=(
+                "🔇 <b>ВЫДАЧА МУТА</b>\n\n"
+                f"Пользователь: <code>{user_id}</code>\n\n"
+                "Выбери срок ограничения:"
+            ),
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML,
+        )
+
+    # -------------------------------------------------
+    # ВЫДАЧА МУТА НА ВЫБРАННЫЙ СРОК
+    # -------------------------------------------------
+    if data.startswith("mute_for_"):
+        _, _, user_id_raw, seconds_raw = data.split("_", 3)
+        user_id = int(user_id_raw)
+        seconds = int(seconds_raw)
+
+        member = await query.message.chat.get_member(query.from_user.id)
+        if member.status not in ("administrator", "creator"):
+            return await query.answer(
+                "❌ Только администраторы могут использовать модерацию.",
+                show_alert=True,
+            )
+
+        chat_id = query.message.chat_id
+
+        try:
+            target_member = await query.message.chat.get_member(user_id)
+            if target_member.status in ("administrator", "creator"):
+                return await query.answer(
+                    "⚠️ Нельзя выдать мут администратору.",
+                    show_alert=True,
+                )
+        except Exception:
+            pass
+
+        bot_member = await query.message.chat.get_member(context.bot.id)
+        if bot_member.status != "creator" and not getattr(
+            bot_member, "can_restrict_members", False
+        ):
+            return await query.answer(
+                "❌ У бота нет права «Ограничивать пользователей».",
+                show_alert=True,
+            )
+
+        try:
+            permissions = ChatPermissions(
+                can_send_messages=False,
+                can_send_audios=False,
+                can_send_documents=False,
+                can_send_photos=False,
+                can_send_videos=False,
+                can_send_video_notes=False,
+                can_send_voice_notes=False,
+                can_send_polls=False,
+                can_send_other_messages=False,
+                can_add_web_page_previews=False,
+            )
+
+            until_date = (
+                datetime.utcnow() + timedelta(seconds=seconds)
+                if seconds > 0
+                else None
+            )
+
+            await context.bot.restrict_chat_member(
+                chat_id=chat_id,
+                user_id=user_id,
+                permissions=permissions,
+                until_date=until_date,
+            )
+
+            duration_names = {
+                60: "1 минута",
+                300: "5 минут",
+                1800: "30 минут",
+                3600: "1 час",
+                0: "навсегда",
+            }
+            duration_name = duration_names.get(
+                seconds,
+                f"{seconds // 60} минут",
+            )
+
+            session = Session()
+            try:
+                user = session.get(User, user_id)
+
+                if not user:
+                    user = User(
+                        id=user_id,
+                        warns=0,
+                        status="restricted",
+                        first_seen=datetime.utcnow(),
+                        last_seen=datetime.utcnow(),
+                    )
+                    session.add(user)
+
+                user.mutes = (user.mutes or 0) + 1
+                user.status = "restricted"
+
+                session.add(
+                    Punishment(
+                        user_id=user_id,
+                        type="mute",
+                        reason=f"Мут через панель: {duration_name}",
+                        moderator_id=query.from_user.id,
+                    )
+                )
+                session.commit()
+            finally:
+                session.close()
+
+            await query.answer("🔇 Мут выдан.", show_alert=True)
+
+            return await query.edit_message_caption(
+                caption=(
+                    "🔇 <b>МУТ ВЫДАН</b>\n\n"
+                    f"Пользователь: <code>{user_id}</code>\n"
+                    f"⏱ Срок: <b>{duration_name}</b>\n"
+                    f"👮 Модератор: <code>{query.from_user.id}</code>"
+                ),
+                reply_markup=InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton(
+                            "◀️ Профиль",
+                            callback_data=f"user_{user_id}",
+                        )
+                    ]
+                ]),
+                parse_mode=ParseMode.HTML,
+            )
+
+        except Exception as e:
+            print(
+                f"PANEL MUTE ERROR: user={user_id} "
+                f"seconds={seconds} {type(e).__name__}: {e}"
+            )
+            return await query.answer(
+                f"❌ Не удалось выдать мут.\n{e}",
+                show_alert=True,
+            )
 
     if data.startswith("action_"):
         _, action, user_id_raw = data.split("_", 2)
