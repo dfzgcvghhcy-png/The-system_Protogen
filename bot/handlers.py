@@ -6,6 +6,7 @@ from filters import is_admin, bot_can_restrict
 from datetime import datetime, timezone
 import pytz
 import io
+import re
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
@@ -316,6 +317,14 @@ def _safe_text(value, fallback="—"):
     return value if value else fallback
 
 
+def _card_text(value, fallback="—"):
+    """Текст для PNG-карточки без emoji/неподдерживаемых символов."""
+    value = _safe_text(value, fallback)
+    value = re.sub(r"[\\U0001F000-\\U0001FAFF\\U00002600-\\U000027BF]", "", value)
+    value = re.sub(r"\\s{2,}", " ", value).strip()
+    return value or fallback
+
+
 def _status_text(status):
     return {
         "creator": "Владелец",
@@ -366,18 +375,17 @@ def _draw_avatar(canvas, avatar, center, radius):
 
     d = ImageDraw.Draw(canvas)
 
-    # Неоновая рамка вокруг аватара.
-    for width in (10, 5):
-        d.ellipse(
-            (
-                x - radius - width // 2,
-                y - radius - width // 2,
-                x + radius + width // 2,
-                y + radius + width // 2,
-            ),
-            outline=(0, 255, 245),
-            width=width,
-        )
+    # Тонкая неоновая рамка вокруг аватара.
+    d.ellipse(
+        (
+            x - radius - 2,
+            y - radius - 2,
+            x + radius + 2,
+            y + radius + 2,
+        ),
+        outline=(0, 255, 245),
+        width=3,
+    )
 
 
 def _make_profile_card(user, status, avatar=None):
@@ -404,9 +412,9 @@ def _make_profile_card(user, status, avatar=None):
     normal = _font(25)
     small = _font(20)
 
-    display_name = _safe_text(user.first_name or user.username, "User")
+    display_name = _card_text(user.first_name or user.username, "Пользователь")
     if user.last_name:
-        display_name += f" {user.last_name}"
+        display_name += f" {_card_text(user.last_name)}"
     username = f"@{user.username}" if user.username else "@username не указан"
 
     if avatar is not None:
@@ -415,8 +423,8 @@ def _make_profile_card(user, status, avatar=None):
         draw.ellipse((57, 32, 173, 148), outline=(0,255,245), width=5)
         draw.text((92, 61), "?", font=big, fill=(0,255,245))
 
-    draw.text((205, 48), "PROTOGEN USER PROFILE", font=title, fill=(0,255,245))
-    draw.text((205, 92), "LIVE MODERATION DATABASE", font=small, fill=(150,170,210))
+    draw.text((205, 48), "ПРОФИЛЬ УЧАСТНИКА", font=title, fill=(0,255,245))
+    draw.text((205, 92), "БАЗА МОДЕРАЦИИ", font=small, fill=(150,170,210))
 
     draw.text((60, 190), display_name[:26], font=big, fill=(245,245,255))
     draw.text((60, 245), username[:34], font=normal, fill=(0,255,245))
@@ -426,14 +434,14 @@ def _make_profile_card(user, status, avatar=None):
     y = 320
     line = 58
     draw.text((left_x, y), f"ID        {user.id}", font=normal, fill=(220,225,240))
-    draw.text((left_x, y+line), f"STATUS    {_status_text(status)}", font=normal, fill=(220,225,240))
-    draw.text((left_x, y+line*2), f"MESSAGES  {user.messages_count or 0}", font=normal, fill=(220,225,240))
+    draw.text((left_x, y+line), f"СТАТУС    {_card_text(_status_text(status))}", font=normal, fill=(220,225,240))
+    draw.text((left_x, y+line*2), f"СООБЩЕНИЯ  {user.messages_count or 0}", font=normal, fill=(220,225,240))
 
     joined = user.joined_at.strftime("%d.%m.%Y") if user.joined_at else "нет данных"
     last = user.last_seen.strftime("%H:%M  %d.%m.%Y") if user.last_seen else "нет данных"
-    draw.text((right_x, y), f"JOINED    {joined}", font=normal, fill=(220,225,240))
-    draw.text((right_x, y+line), f"LAST      {last}", font=normal, fill=(220,225,240))
-    draw.text((right_x, y+line*2), f"ACTIVITY  {_activity_text(user.messages_count or 0, user.last_seen)}", font=normal, fill=(220,225,240))
+    draw.text((right_x, y), f"В ГРУППЕ  {joined}", font=normal, fill=(220,225,240))
+    draw.text((right_x, y+line), f"ПОСЛЕДНИЙ  {last}", font=normal, fill=(220,225,240))
+    draw.text((right_x, y+line*2), f"АКТИВНОСТЬ  {_card_text(_activity_text(user.messages_count or 0, user.last_seen))}", font=normal, fill=(220,225,240))
 
     draw.rounded_rectangle((45, 500, W-45, 635), radius=22,
                            outline=(100, 70, 220), width=2,
@@ -450,7 +458,7 @@ def _make_profile_card(user, status, avatar=None):
         draw.text((sx, 552), str(value), font=big, fill=(0,255,245))
         sx += 275
 
-    draw.text((60, 657), "THE SYSTEM_PROTOGEN  //  USER DATABASE", font=small, fill=(90,110,150))
+    draw.text((60, 657), "THE SYSTEM_PROTOGEN  //  БАЗА УЧАСТНИКОВ", font=small, fill=(90,110,150))
     return image
 
 
