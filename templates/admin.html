@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ru"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Protogen Admin</title><link rel="stylesheet" href="/static/style.css">
+</head><body class="dashboard-page">
+<div class="dashboard-shell">
+<aside class="dashboard-sidebar">
+  <div class="brand"><div class="brand-icon">🐾</div><div><b>Protogen</b><small>Admin Console</small></div></div>
+  <nav>
+    <a class="nav-item active" href="/admin">🏠 <span>Главная</span></a>
+    <a class="nav-item" href="#" onclick="return soon('Пользователи')">👥 <span>Пользователи</span></a>
+    <a class="nav-item" href="#" onclick="return soon('Модерация')">⚔️ <span>Модерация</span></a>
+    <a class="nav-item" href="#" onclick="return soon('История')">📜 <span>История</span></a>
+    <a class="nav-item" href="#" onclick="return soon('Статистика')">📊 <span>Статистика</span></a>
+    <a class="nav-item" href="#" onclick="return soon('Настройки')">⚙️ <span>Настройки</span></a>
+  </nav>
+  <a class="logout" href="/admin/logout">↪ Выйти</a>
+</aside>
+<main class="dashboard-main">
+<header class="dashboard-header">
+  <div><div class="eyebrow">ADMIN CONSOLE</div><h1>Добро пожаловать, {{ username }} 👋</h1><p>Центр управления The system_Protogen</p></div>
+  <div class="admin-status"><i></i> <span id="systemStatus">Подключение...</span></div>
+</header>
+
+<div id="dbError" class="dashboard-note error-note hidden"></div>
+
+<section class="stats-grid">
+  <div class="stat-card"><span>👥</span><small>Участники</small><strong id="usersStat">—</strong><em id="activeStat">— активных за 24ч</em></div>
+  <div class="stat-card"><span>💬</span><small>Сообщений</small><strong id="messagesStat">—</strong><em>Всего в базе</em></div>
+  <div class="stat-card"><span>⚠️</span><small>Варны</small><strong id="warnsStat">—</strong><em>Накоплено</em></div>
+  <div class="stat-card"><span>🔇</span><small>Муты</small><strong id="mutesStat">—</strong><em id="bansKicksStat">Баны: — · Кики: —</em></div>
+</section>
+
+<section class="dashboard-grid">
+  <div class="dashboard-card large">
+    <div class="card-header"><div><span class="card-kicker">ACTIVITY</span><h2>Активность сообщений</h2></div><button class="refresh-btn" onclick="loadDashboard()">↻ Обновить</button></div>
+    <div id="activityChart" class="activity-chart"><div class="chart-empty">Загрузка...</div></div>
+  </div>
+  <div class="dashboard-card">
+    <div class="card-header"><div><span class="card-kicker">SYSTEM</span><h2>Состояние</h2></div></div>
+    <div class="security-row"><span>🔐 Авторизация</span><b>Активна</b></div>
+    <div class="security-row"><span>🗄️ PostgreSQL</span><b id="dbStatus">...</b></div>
+    <div class="security-row"><span>🤖 Бот</span><b>Online</b></div>
+    <div class="security-row"><span>🟢 API</span><b>Online</b></div>
+  </div>
+</section>
+
+<section class="dashboard-card recent-card">
+  <div class="card-header"><div><span class="card-kicker">MODERATION</span><h2>Последние действия</h2></div></div>
+  <div id="recentActions" class="recent-list"><div class="chart-empty">Загрузка истории...</div></div>
+</section>
+
+<div class="dashboard-note"><span>⚡</span><div><b>Live PostgreSQL</b><p>Сайт читает ту же базу, что и Telegram-бот. Данные обновляются автоматически каждые 30 секунд.</p></div></div>
+</main></div>
+
+<script>
+const esc=v=>String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
+const icon=t=>({warn:"⚠️",unwarn:"🧹",mute:"🔇",unmute:"🔊",ban:"🚫",unban:"🔓",kick:"👢"}[t]||"📌");
+const name=t=>({warn:"Варн",unwarn:"Снятие варна",mute:"Мут",unmute:"Снятие мута",ban:"Бан",unban:"Разбан",kick:"Кик"}[t]||t);
+function soon(n){alert(n+" — следующий этап разработки.");return false;}
+
+function renderChart(items){
+ const box=document.getElementById("activityChart");
+ if(!items?.length){box.innerHTML='<div class="chart-empty">Пока нет данных активности.</div>';return;}
+ const max=Math.max(...items.map(x=>x.messages),1);
+ box.innerHTML=items.map(x=>`<div class="bar-wrap"><div class="bar-value">${x.messages.toLocaleString("ru-RU")}</div><div class="bar" style="height:${Math.max(5,Math.round(x.messages/max*100))}%"></div><div class="bar-label">${esc(x.day)}</div></div>`).join("");
+}
+function renderRecent(items){
+ const box=document.getElementById("recentActions");
+ if(!items?.length){box.innerHTML='<div class="chart-empty">Наказаний пока нет.</div>';return;}
+ box.innerHTML=items.map(x=>`<div class="recent-row"><div class="recent-icon">${icon(x.type)}</div><div class="recent-main"><b>${esc(name(x.type))}</b><span>${esc(x.user)} · ID ${esc(x.user_id)}</span><small>${esc(x.reason)}</small></div><div class="recent-meta"><b>${esc(x.created_at)}</b><span>👮 ${esc(x.moderator_id||"—")}</span></div></div>`).join("");
+}
+async function loadDashboard(){
+ try{
+  const r=await fetch("/api/admin/dashboard",{cache:"no-store"}), d=await r.json();
+  if(!r.ok||d.database!=="online")throw new Error(d.error||"PostgreSQL недоступен");
+  const s=d.stats;
+  document.getElementById("systemStatus").textContent="PostgreSQL ONLINE";
+  document.getElementById("dbStatus").textContent="Online";
+  usersStat.textContent=s.users.toLocaleString("ru-RU");
+  activeStat.textContent=`${s.active_users.toLocaleString("ru-RU")} активных за 24ч`;
+  messagesStat.textContent=s.messages.toLocaleString("ru-RU");
+  warnsStat.textContent=s.warns.toLocaleString("ru-RU");
+  mutesStat.textContent=s.mutes.toLocaleString("ru-RU");
+  bansKicksStat.textContent=`Баны: ${s.bans.toLocaleString("ru-RU")} · Кики: ${s.kicks.toLocaleString("ru-RU")}`;
+  renderChart(d.activity);renderRecent(d.recent);dbError.classList.add("hidden");
+ }catch(e){
+  systemStatus.textContent="DB ERROR";dbStatus.textContent="Offline";dbError.classList.remove("hidden");
+  dbError.innerHTML=`⚠️ <div><b>Не удалось получить данные</b><p>${esc(e.message)}</p></div>`;
+ }
+}
+loadDashboard();setInterval(loadDashboard,30000);
+</script>
+</body></html>
