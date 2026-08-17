@@ -1,9 +1,7 @@
 const messages = document.getElementById("messages");
 
-/* ===================== КОМАНДЫ ===================== */
-
 const commands = {
-    "/help": "📖 Показывает список всех команд бота",
+    "/help": "📖 Показывает список доступных функций",
     "/ban": "🔨 Банит пользователя в чате",
     "/mute": "🔇 Выдаёт мут пользователю",
     "/unmute": "🔊 Снимает мут с пользователя",
@@ -12,8 +10,6 @@ const commands = {
 };
 
 const commandsList = Object.keys(commands);
-
-/* ===================== UI КОМАНД ===================== */
 
 function showCommands() {
     removeCommands();
@@ -43,9 +39,7 @@ function removeCommands() {
     if (old) old.remove();
 }
 
-/* ===================== ЧАТ ===================== */
-
-function sendMessage() {
+async function sendMessage() {
     const input = document.getElementById("input");
     const text = input.value.trim();
 
@@ -53,33 +47,24 @@ function sendMessage() {
 
     addMessage(text, "user");
     logRight(`[${getTime()}] USER: ${text}`);
-
     removeCommands();
-
-    setTimeout(() => {
-        let response = "";
-
-        if (text.toLowerCase() === "привет") {
-            response = "Привет 👋";
-
-        } else if (text.toLowerCase() === "команды") {
-            response = "Выбери команду ниже 👇";
-            showCommands();
-
-        } else if (commands[text]) {
-            // 🔥 ВОТ ГЛАВНОЕ
-            response = `Команда ${text}\n${commands[text]} ✅`;
-
-        } else {
-            response = "Я не понял 🤔";
-        }
-
-        addMessage(response, "bot");
-        logRight(`[${getTime()}] BOT: ${response}`);
-
-    }, 400);
-
     input.value = "";
+
+    try {
+        const response = await fetch("/chat", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({message: text})
+        });
+
+        const data = await response.json();
+        addMessage(data.response, "bot");
+        logRight(`[${getTime()}] BOT: ${data.response}`);
+    } catch (error) {
+        const msg = "Не удалось связаться с системой 🤖";
+        addMessage(msg, "bot");
+        logRight(`[${getTime()}] ERROR: ${error}`);
+    }
 }
 
 function addMessage(text, type) {
@@ -87,30 +72,25 @@ function addMessage(text, type) {
     div.className = "message " + type;
     div.innerText = text;
     messages.appendChild(div);
-
     messages.scrollTop = messages.scrollHeight;
 }
 
-/* ===================== ЛОГИ ===================== */
-
 function getTime() {
-    return new Date().toLocaleTimeString().slice(0,5);
+    return new Date().toLocaleTimeString().slice(0, 5);
 }
 
 function logRight(text) {
     const panel = document.getElementById("rightText");
-    panel.innerHTML += text + "<br>";
+    panel.innerHTML += text.replaceAll("<", "&lt;").replaceAll(">", "&gt;") + "<br>";
     panel.scrollTop = panel.scrollHeight;
 }
 
-/* ===================== SYSTEM ===================== */
-
 const systemLines = [
-    "ERROR 0x1F4A9: System overload",
-    "WARNING: Memory leak detected...",
-    "FAIL: Connection lost",
-    "CRITICAL: Core damaged",
-    ">>> rebooting system..."
+    "SYSTEM ONLINE...",
+    "Protogen core initialized",
+    "Security layer: active",
+    "Admin console: ready",
+    ">>> waiting for input..."
 ];
 
 function typeSystem(el, lines) {
@@ -119,24 +99,16 @@ function typeSystem(el, lines) {
 
     function type() {
         if (i < lines.length) {
-
             if (j < lines[i].length) {
                 el.innerHTML += lines[i][j];
                 j++;
-
-                if (Math.random() < 0.03) {
-                    el.innerHTML += "#$%!";
-                }
-
                 setTimeout(type, 25);
-
             } else {
                 el.innerHTML += "<br>";
                 i++;
                 j = 0;
                 setTimeout(type, 200);
             }
-
         } else {
             el.innerHTML = "";
             i = 0;
@@ -147,14 +119,12 @@ function typeSystem(el, lines) {
     type();
 }
 
-/* ===================== СОБЫТИЯ ===================== */
-
 document.addEventListener("DOMContentLoaded", () => {
-
     const left = document.getElementById("leftText");
     if (left) typeSystem(left, systemLines);
 
     const input = document.getElementById("input");
+    if (!input) return;
 
     input.addEventListener("input", function () {
         const val = this.value.toLowerCase();
@@ -167,8 +137,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     input.addEventListener("keydown", function(e) {
-        if (e.key === "Enter") {
-            sendMessage();
-        }
+        if (e.key === "Enter") sendMessage();
     });
 });
