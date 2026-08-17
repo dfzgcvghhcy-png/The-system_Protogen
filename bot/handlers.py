@@ -1004,8 +1004,20 @@ async def show_user_history(query, user_id):
             ],
         ])
 
-        await query.edit_message_text(
-            text,
+        # Профиль пользователя отправляется как фото, поэтому Telegram
+        # не позволяет редактировать его через edit_message_text().
+        # Удаляем карточку и отправляем историю отдельным сообщением.
+        try:
+            await query.message.delete()
+        except Exception as e:
+            print(
+                f"HISTORY MESSAGE DELETE ERROR [{user_id}]: "
+                f"{type(e).__name__}: {e}"
+            )
+
+        await context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text=text,
             reply_markup=keyboard,
             parse_mode=ParseMode.HTML,
         )
