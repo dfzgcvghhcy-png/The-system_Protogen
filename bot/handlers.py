@@ -879,18 +879,149 @@ async def send_user_profile(query, context, user_id):
 
 
 async def show_user_history(query, user_id):
+    """Показывает подробную историю наказаний конкретного пользователя."""
     session = Session()
     try:
-        rows = session.query(Punishment).filter(Punishment.user_id == user_id).order_by(Punishment.id.desc()).limit(15).all()
-        text = f"📜 <b>ИСТОРИЯ ПОЛЬЗОВАТЕЛЯ</b>\n\n🆔 <code>{user_id}</code>\n\n"
+        user = session.get(User, user_id)
+        rows = (
+            session.query(Punishment)
+            .filter(Punishment.user_id == user_id)
+            .order_by(Punishment.id.desc())
+            .limit(15)
+            .all()
+        )
+
+        display_name = "Пользователь"
+        username = None
+
+        if user:
+            display_name = _safe_text(
+                f"{user.first_name or ''} {user.last_name or ''}".strip()
+                or user.username
+                or str(user_id)
+            )
+            username = user.username
+
+        title = (
+            "📜 <b>ИСТОРИЯ НАКАЗАНИЙ</b>\n\n"
+            f"👤 <b>{display_name}</b>\n"
+            f"🆔 <code>{user_id}</code>"
+        )
+        if username:
+            title += f"\n🔗 @{_safe_text(username)}"
+
         if not rows:
-            text += "История наказаний пока пустая."
+            text = title + "\n\n━━━━━━━━━━━━━━━━━━\n\n"
+            text += "📭 <b>История пока пустая.</b>\n\n"
+            text += "Наказаний для этого пользователя ещё нет."
         else:
-            for p in rows:
-                icon = {"warn":"⚠️","unwarn":"🧹","mute":"🔇","ban":"🚫","kick":"👢"}.get(p.type, "📌")
-                when = p.created_at.strftime("%d.%m %H:%M") if p.created_at else "—"
-                text += f"{icon} <b>{p.type}</b> · {when}\n📝 {_safe_text(p.reason, 'Не указана')}\n\n"
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Профиль", callback_data=f"user_{user_id}")]]), parse_mode=ParseMode.HTML)
+            text = title + f"\n\n━━━━━━━━━━━━━━━━━━\n\n📊 Всего записей: <b>{len(rows)}</b>\n\n"
+
+            icons = {
+                "warn": "⚠️",
+                "unwarn": "🧹",
+                "mute": "🔇",
+                "unmute": "🔊",
+                "ban": "🚫",
+                "unban": "🔓",
+                "kick": "👢",
+            }
+
+            names = {
+                "warn": "Варн",
+                "unwarn": "Снятие варна",
+                "mute": "Мут",
+                "unmute": "Снятие мута",
+                "ban": "Бан",
+                "unban": "Разбан",
+                "kick": "Кик",
+            }
+
+            for index, punishment in enumerate(rows, start=1):
+                icon = icons.get(punishment.type, "📌")
+                action_name = names.get(
+                    punishment.type,
+                    _safe_text(punishment.type, "Действие"),
+                )
+
+                when = (
+                    punishment.created_at.strftime("%d.%m.%Y • %H:%M")
+                    if punishment.created_at
+                    else "Дата неизвестна"
+                )
+
+                reason = _safe_text(punishment.reason, "Причина не указана")
+
+                # Достаём модератора из Telegram, чтобы вместо одного ID
+                # по возможности показать его имя/username.
+                moderator = f"ID {punishment.moderator_id}" if punishment.moderator_id else "Неизвестен"
+                if punishment.moderator_id:
+                    try:
+                        moderator_member = await query.message.chat.get_member(
+                            punishment.moderator_id
+                        )
+                        moderator_user = moderator_member.user
+                        if moderator_user.username:
+                            moderator = f"@{moderator_user.username}"
+                        else:
+                            moderator = _safe_text(
+                                moderator_user.full_name,
+                                f"ID {punishment.moderator_id}",
+                            )
+                    except Exception:
+                        pass
+
+                text += (
+                    f"<b>#{index}  {icon} {action_name}</b>\n"
+                    f"🕐 {when}\n"
+                    f"📝 <b>Причина:</b> {reason}\n"
+                    f"👮 <b>Модератор:</b> {_safe_text(moderator)}\n"
+                    "──────────────────\n"
+                )
+
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "🔄 Обновить",
+                    callback_data=f"history_{user_id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "◀️ Профиль",
+                    callback_data=f"user_{user_id}",
+                ),
+                InlineKeyboardButton(
+                    "⚔️ Модерация",
+                    callback_data=f"moduser_{user_id}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    "👥 Пользователи",
+                    callback_data="panel_users",
+                )
+            ],
+        ])
+
+        await query.edit_message_text(
+            text,
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML,
+        )
+
+    except Exception as e:
+        print(
+            f"USER HISTORY ERROR [{user_id}]: "
+            f"{type(e).__name__}: {e}"
+        )
+        try:
+            await query.answer(
+                "❌ Не удалось открыть историю.",
+                show_alert=True,
+            )
+        except Exception:
+            pass
     finally:
         session.close()
 
