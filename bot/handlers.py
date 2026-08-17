@@ -8,6 +8,7 @@ import pytz
 import io
 import re
 from pathlib import Path
+from html import escape
 
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
@@ -879,7 +880,7 @@ async def send_user_profile(query, context, user_id):
 
 
 async def show_user_history(query, user_id):
-    """Показывает подробную историю наказаний конкретного пользователя."""
+    """Показывает подробную историю наказаний пользователя."""
     session = Session()
     try:
         user = session.get(User, user_id)
@@ -891,31 +892,36 @@ async def show_user_history(query, user_id):
             .all()
         )
 
-        display_name = "Пользователь"
-        username = None
-
         if user:
-            display_name = _safe_text(
+            raw_name = (
                 f"{user.first_name or ''} {user.last_name or ''}".strip()
                 or user.username
                 or str(user_id)
             )
-            username = user.username
+            display_name = escape(str(raw_name))
+            username = escape(str(user.username)) if user.username else None
+        else:
+            display_name = "Пользователь"
+            username = None
 
-        title = (
+        text = (
             "📜 <b>ИСТОРИЯ НАКАЗАНИЙ</b>\n\n"
             f"👤 <b>{display_name}</b>\n"
             f"🆔 <code>{user_id}</code>"
         )
+
         if username:
-            title += f"\n🔗 @{_safe_text(username)}"
+            text += f"\n🔗 @{username}"
+
+        text += "\n\n━━━━━━━━━━━━━━━━━━\n\n"
 
         if not rows:
-            text = title + "\n\n━━━━━━━━━━━━━━━━━━\n\n"
-            text += "📭 <b>История пока пустая.</b>\n\n"
-            text += "Наказаний для этого пользователя ещё нет."
+            text += (
+                "📭 <b>История пока пустая.</b>\n\n"
+                "Наказаний для этого пользователя ещё нет."
+            )
         else:
-            text = title + f"\n\n━━━━━━━━━━━━━━━━━━\n\n📊 Всего записей: <b>{len(rows)}</b>\n\n"
+            text += f"📊 Всего записей: <b>{len(rows)}</b>\n\n"
 
             icons = {
                 "warn": "⚠️",
@@ -937,11 +943,11 @@ async def show_user_history(query, user_id):
                 "kick": "Кик",
             }
 
-            for index, punishment in enumerate(rows, start=1):
+            for index, punishment in enumerate(rows, 1):
                 icon = icons.get(punishment.type, "📌")
                 action_name = names.get(
                     punishment.type,
-                    _safe_text(punishment.type, "Действие"),
+                    str(punishment.type or "Действие"),
                 )
 
                 when = (
@@ -950,11 +956,16 @@ async def show_user_history(query, user_id):
                     else "Дата неизвестна"
                 )
 
-                reason = _safe_text(punishment.reason, "Причина не указана")
+                reason = escape(
+                    str(punishment.reason or "Причина не указана")
+                )
 
-                # Достаём модератора из Telegram, чтобы вместо одного ID
-                # по возможности показать его имя/username.
-                moderator = f"ID {punishment.moderator_id}" if punishment.moderator_id else "Неизвестен"
+                moderator = (
+                    f"ID {punishment.moderator_id}"
+                    if punishment.moderator_id
+                    else "Неизвестен"
+                )
+
                 if punishment.moderator_id:
                     try:
                         moderator_member = await query.message.chat.get_member(
@@ -964,20 +975,23 @@ async def show_user_history(query, user_id):
                         if moderator_user.username:
                             moderator = f"@{moderator_user.username}"
                         else:
-                            moderator = _safe_text(
-                                moderator_user.full_name,
-                                f"ID {punishment.moderator_id}",
-                            )
+                            moderator = moderator_user.full_name or moderator
                     except Exception:
                         pass
 
+                moderator = escape(str(moderator))
+
                 text += (
-                    f"<b>#{index}  {icon} {action_name}</b>\n"
-                    f"🕐 {when}\n"
+                    f"<b>#{index}  {icon} {escape(action_name)}</b>\n"
+                    f"🕐 {escape(when)}\n"
                     f"📝 <b>Причина:</b> {reason}\n"
-                    f"👮 <b>Модератор:</b> {_safe_text(moderator)}\n"
+                    f"👮 <b>Модератор:</b> {moderator}\n"
                     "──────────────────\n"
                 )
+
+        # Telegram message limit is 4096 chars.
+        if len(text) > 4000:
+            text = text[:3950] + "\n\n…"
 
         keyboard = InlineKeyboardMarkup([
             [
@@ -1004,22 +1018,27 @@ async def show_user_history(query, user_id):
             ],
         ])
 
-        # Профиль пользователя отправляется как фото, поэтому Telegram
-        # не позволяет редактировать его через edit_message_text().
-        # Удаляем карточку и отправляем историю отдельным сообщением.
-        try:
-            await query.message.delete()
-        except Exception as e:
-            print(
-                f"HISTORY MESSAGE DELETE ERROR [{user_id}]: "
-                f"{type(e).__name__}: {e}"
-            )
-
-        await context.bot.send_message(
+        # Сначала отправляем историю. Если Telegram отклонит сообщение,
+        # профиль не исчезнет и в логах будет точная причина.
+        history_message = await context.bot.send_message(
             chat_id=query.message.chat_id,
             text=text,
             reply_markup=keyboard,
             parse_mode=ParseMode.HTML,
+        )
+
+        # Только после успешной отправки удаляем старую фотокарточку.
+        try:
+            await query.message.delete()
+        except Exception as e:
+            print(
+                f"HISTORY OLD MESSAGE DELETE ERROR [{user_id}]: "
+                f"{type(e).__name__}: {e}"
+            )
+
+        print(
+            f"USER HISTORY SENT: user={user_id}, "
+            f"records={len(rows)}, message={history_message.message_id}"
         )
 
     except Exception as e:
@@ -1029,7 +1048,7 @@ async def show_user_history(query, user_id):
         )
         try:
             await query.answer(
-                "❌ Не удалось открыть историю.",
+                f"❌ История не открылась: {type(e).__name__}",
                 show_alert=True,
             )
         except Exception:
