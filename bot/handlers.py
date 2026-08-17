@@ -1158,6 +1158,62 @@ async def show_stats_panel(query):
         session.close()
 
 
+async def _notify_user_punishment(query, user_id, action, reason, duration=None, warns_count=None):
+    """Отправляет пользователю уведомление о наказании в ЛС.
+    Ошибка доставки не отменяет само наказание.
+    """
+    try:
+        bot = query.get_bot()
+        moderator = query.from_user
+        moderator_name = (
+            f"@{moderator.username}"
+            if moderator.username
+            else moderator.full_name
+        )
+
+        if action == "warn":
+            text = (
+                "⚠️ <b>Вам выдано предупреждение</b>\n\n"
+                f"📝 <b>Причина:</b> {escape(str(reason))}\n"
+                f"⚠️ <b>Всего варнов:</b> {warns_count}\n"
+                f"👮 <b>Модератор:</b> {escape(moderator_name)}\n\n"
+                "Пожалуйста, соблюдайте правила группы."
+            )
+        elif action == "mute":
+            text = (
+                "🔇 <b>Вам выдан мут</b>\n\n"
+                f"📝 <b>Причина:</b> {escape(str(reason))}\n"
+                f"⏱ <b>Срок:</b> {escape(str(duration))}\n"
+                f"👮 <b>Модератор:</b> {escape(moderator_name)}\n\n"
+                "После окончания срока вы снова сможете писать в группе."
+            )
+        elif action == "ban":
+            text = (
+                "🚫 <b>Вы заблокированы в группе</b>\n\n"
+                f"📝 <b>Причина:</b> {escape(str(reason))}\n"
+                f"⏱ <b>Срок:</b> {escape(str(duration))}\n"
+                f"👮 <b>Модератор:</b> {escape(moderator_name)}\n\n"
+                "Если считаете блокировку ошибочной, обратитесь к администрации."
+            )
+        else:
+            return
+
+        await bot.send_message(
+            chat_id=user_id,
+            text=text,
+            parse_mode=ParseMode.HTML,
+        )
+        print(f"DM NOTIFICATION SENT: user={user_id} action={action}")
+
+    except Exception as e:
+        # Пользователь мог не открыть ЛС с ботом или заблокировать его.
+        print(
+            f"DM NOTIFICATION FAILED: user={user_id} action={action} "
+            f"{type(e).__name__}: {e}"
+        )
+
+
+
 async def _panel_warn(query, user_id, reason):
     member = await query.message.chat.get_member(query.from_user.id)
     if member.status not in ("administrator", "creator"):
@@ -1189,6 +1245,10 @@ async def _panel_warn(query, user_id, reason):
         warns_count = user.warns
     finally:
         session.close()
+
+    await _notify_user_punishment(
+        query, user_id, "warn", reason, warns_count=warns_count
+    )
 
     await query.answer("⚠️ Варн выдан.", show_alert=True)
     return await query.edit_message_caption(
@@ -1265,6 +1325,10 @@ async def _panel_mute(query, context, user_id, seconds, reason):
     finally:
         session.close()
 
+    await _notify_user_punishment(
+        query, user_id, "mute", reason, duration=duration_name
+    )
+
     await query.answer("🔇 Мут выдан.", show_alert=True)
     return await query.edit_message_caption(
         caption=(
@@ -1325,6 +1389,10 @@ async def _panel_ban(query, context, user_id, seconds, reason):
         session.commit()
     finally:
         session.close()
+
+    await _notify_user_punishment(
+        query, user_id, "ban", reason, duration=duration_name
+    )
 
     await query.answer("🚫 Бан выдан.", show_alert=True)
     return await query.edit_message_caption(
