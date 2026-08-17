@@ -1020,7 +1020,7 @@ async def show_user_history(query, user_id):
 
         # Сначала отправляем историю. Если Telegram отклонит сообщение,
         # профиль не исчезнет и в логах будет точная причина.
-        history_message = await context.bot.send_message(
+        history_message = await query.get_bot().send_message(
             chat_id=query.message.chat_id,
             text=text,
             reply_markup=keyboard,
