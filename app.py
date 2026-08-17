@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 from functools import wraps
 
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
-from werkzeug.security import check_password_hash
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, func, desc
 from sqlalchemy.orm import declarative_base, sessionmaker
 
@@ -11,7 +10,7 @@ app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "CHANGE_ME_IN_RAILWAY")
 
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
-ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH", "")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 if DATABASE_URL:
@@ -159,9 +158,9 @@ def admin_login():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
-        if not ADMIN_PASSWORD_HASH:
-            error = "Добавь ADMIN_PASSWORD_HASH в Railway Variables."
-        elif username == ADMIN_USERNAME and check_password_hash(ADMIN_PASSWORD_HASH, password):
+        if not ADMIN_PASSWORD:
+            error = "Добавь ADMIN_PASSWORD в Railway Variables."
+        elif username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
             session.clear()
             session["admin_authenticated"] = True
             session["admin_username"] = username
