@@ -259,6 +259,132 @@ def admin_users_api():
         db.close()
 
 
+# ============================================================
+# 📜 HISTORY
+# ============================================================
+
+@app.route("/admin/history")
+@admin_required
+def admin_history():
+    if not SessionLocal:
+        return render_template(
+            "history.html",
+            username=session.get("admin_username", ADMIN_USERNAME),
+            rows=[],
+            query="",
+            action_type="",
+            error="DATABASE_URL не настроен."
+        )
+
+    query = request.args.get("q", "").strip()
+    action_type = request.args.get("type", "").strip().lower()
+
+    db = SessionLocal()
+    try:
+        base = (
+            db.query(Punishment, User)
+            .outerjoin(User, Punishment.user_id == User.id)
+        )
+
+        if action_type in {"warn", "unwarn", "mute", "unmute", "ban", "unban", "kick"}:
+            base = base.filter(Punishment.type == action_type)
+
+        if query:
+            conditions = []
+            if query.isdigit():
+                conditions.extend([
+                    Punishment.user_id == int(query),
+                    Punishment.moderator_id == int(query),
+                ])
+            like = f"%{query}%"
+            conditions.extend([
+                Punishment.reason.ilike(like),
+                User.username.ilike(like),
+                User.first_name.ilike(like),
+                User.last_name.ilike(like),
+            ])
+            base = base.filter(or_(*conditions))
+
+        rows = base.order_by(desc(Punishment.created_at)).limit(200).all()
+
+        return render_template(
+            "history.html",
+            username=session.get("admin_username", ADMIN_USERNAME),
+            rows=rows,
+            query=query,
+            action_type=action_type,
+            error=None,
+        )
+    except Exception as e:
+        print(f"HISTORY PAGE ERROR: {type(e).__name__}: {e}")
+        return render_template(
+            "history.html",
+            username=session.get("admin_username", ADMIN_USERNAME),
+            rows=[],
+            query=query,
+            action_type=action_type,
+            error=f"{type(e).__name__}: {e}",
+        )
+    finally:
+        db.close()
+
+
+@app.route("/api/admin/history")
+@admin_required
+def admin_history_api():
+    if not SessionLocal:
+        return jsonify({"error": "DATABASE_URL не настроен."}), 500
+
+    query = request.args.get("q", "").strip()
+    action_type = request.args.get("type", "").strip().lower()
+
+    db = SessionLocal()
+    try:
+        base = (
+            db.query(Punishment, User)
+            .outerjoin(User, Punishment.user_id == User.id)
+        )
+
+        if action_type in {"warn", "unwarn", "mute", "unmute", "ban", "unban", "kick"}:
+            base = base.filter(Punishment.type == action_type)
+
+        if query:
+            conditions = []
+            if query.isdigit():
+                conditions.extend([
+                    Punishment.user_id == int(query),
+                    Punishment.moderator_id == int(query),
+                ])
+            like = f"%{query}%"
+            conditions.extend([
+                Punishment.reason.ilike(like),
+                User.username.ilike(like),
+                User.first_name.ilike(like),
+                User.last_name.ilike(like),
+            ])
+            base = base.filter(or_(*conditions))
+
+        rows = base.order_by(desc(Punishment.created_at)).limit(200).all()
+
+        return jsonify({
+            "history": [{
+                "id": p.id,
+                "type": p.type,
+                "reason": p.reason or "Не указана",
+                "user_id": p.user_id,
+                "user": (
+                    f"{u.first_name or ''} {u.last_name or ''}".strip()
+                    or (f"@{u.username}" if u and u.username else str(p.user_id))
+                ) if u else str(p.user_id),
+                "username": u.username if u else None,
+                "moderator_id": p.moderator_id,
+                "created_at": p.created_at.strftime("%d.%m.%Y %H:%M") if p.created_at else "—",
+            } for p, u in rows]
+        })
+    finally:
+        db.close()
+
+
 @app.route("/admin/logout")
 def admin_logout():
     session.clear()
