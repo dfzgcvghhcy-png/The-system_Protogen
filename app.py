@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from functools import wraps
 
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, func, desc
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, func, desc, or_
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 app = Flask(__name__)
@@ -186,61 +186,78 @@ def admin_dashboard_api():
         return jsonify({"database": "error", "error": f"{type(e).__name__}: {e}"}), 500
 
 
-
 # ============================================================
-# USERS WEB PANEL
+# USERS
 # ============================================================
-def _user_name(u):
-    if not u: return 'Неизвестный пользователь'
-    full=f'{u.first_name or ""} {u.last_name or ""}'.strip()
-    return full or (f'@{u.username}' if u.username else str(u.id))
 
-@app.route('/admin/users')
+@app.route("/admin/users")
 @admin_required
 def admin_users():
     if not SessionLocal:
-        return render_template('users.html', users=[], query='', error='DATABASE_URL не настроен.')
-    query=request.args.get('q','').strip(); db=SessionLocal()
+        return render_template("users.html", username=session.get("admin_username", ADMIN_USERNAME), users=[], query="", error="DATABASE_URL не настроен.")
+    query = request.args.get("q", "").strip()
+    db = SessionLocal()
     try:
-        q=db.query(User)
+        q = db.query(User)
         if query:
-            like=f'%{query}%'; conditions=[User.username.ilike(like),User.first_name.ilike(like),User.last_name.ilike(like)]
-            if query.isdigit(): conditions.insert(0,User.id==int(query))
-            q=q.filter(__import__('sqlalchemy').or_(*conditions))
-        users=q.order_by(desc(User.last_seen)).limit(100).all()
-        return render_template('users.html',users=users,query=query,error=None)
+            conditions = []
+            if query.isdigit():
+                conditions.append(User.id == int(query))
+            like = f"%{query}%"
+            conditions.extend([User.username.ilike(like), User.first_name.ilike(like), User.last_name.ilike(like)])
+            q = q.filter(or_(*conditions))
+        users = q.order_by(desc(User.last_seen)).limit(100).all()
+        return render_template("users.html", username=session.get("admin_username", ADMIN_USERNAME), users=users, query=query, error=None)
     except Exception as e:
-        print(f'USERS PAGE ERROR: {type(e).__name__}: {e}')
-        return render_template('users.html',users=[],query=query,error=f'{type(e).__name__}: {e}')
-    finally: db.close()
+        print(f"USERS PAGE ERROR: {type(e).__name__}: {e}")
+        return render_template("users.html", username=session.get("admin_username", ADMIN_USERNAME), users=[], query=query, error=f"{type(e).__name__}: {e}")
+    finally:
+        db.close()
 
-@app.route('/admin/users/<int:user_id>')
+
+@app.route("/admin/users/<int:user_id>")
 @admin_required
 def admin_user_profile(user_id):
-    if not SessionLocal: return redirect(url_for('admin_users'))
-    db=SessionLocal()
+    if not SessionLocal:
+        return redirect(url_for("admin_users"))
+    db = SessionLocal()
     try:
-        user=db.get(User,user_id)
-        if not user: return render_template('user_profile.html',user=None,punishments=[],activity=[])
-        punishments=db.query(Punishment).filter(Punishment.user_id==user_id).order_by(desc(Punishment.created_at)).limit(100).all()
-        activity=db.query(Activity).filter(Activity.user_id==user_id).order_by(desc(Activity.day)).limit(30).all()
-        return render_template('user_profile.html',user=user,punishments=punishments,activity=activity)
-    finally: db.close()
+        user = db.get(User, user_id)
+        if not user:
+            return render_template("user_profile.html", username=session.get("admin_username", ADMIN_USERNAME), user=None, punishments=[], activity=[])
+        punishments = db.query(Punishment).filter(Punishment.user_id == user_id).order_by(desc(Punishment.created_at)).limit(100).all()
+        activity = db.query(Activity).filter(Activity.user_id == user_id).order_by(desc(Activity.day)).limit(30).all()
+        return render_template("user_profile.html", username=session.get("admin_username", ADMIN_USERNAME), user=user, punishments=punishments, activity=activity)
+    finally:
+        db.close()
 
-@app.route('/api/admin/users')
+
+@app.route("/api/admin/users")
 @admin_required
 def admin_users_api():
-    if not SessionLocal: return jsonify({'error':'DATABASE_URL не настроен.'}),500
-    query=request.args.get('q','').strip(); db=SessionLocal()
+    if not SessionLocal:
+        return jsonify({"error": "DATABASE_URL не настроен."}), 500
+    query = request.args.get("q", "").strip()
+    db = SessionLocal()
     try:
-        q=db.query(User)
+        q = db.query(User)
         if query:
-            like=f'%{query}%'; conditions=[User.username.ilike(like),User.first_name.ilike(like),User.last_name.ilike(like)]
-            if query.isdigit(): conditions.insert(0,User.id==int(query))
-            q=q.filter(__import__('sqlalchemy').or_(*conditions))
-        users=q.order_by(desc(User.last_seen)).limit(100).all()
-        return jsonify({'users':[{'id':u.id,'username':u.username,'first_name':u.first_name,'last_name':u.last_name,'status':u.status,'messages':u.messages_count or 0,'warns':u.warns or 0,'mutes':u.mutes or 0,'bans':u.bans or 0,'kicks':u.kicks or 0,'last_seen':u.last_seen.strftime('%d.%m.%Y %H:%M') if u.last_seen else '—'} for u in users]})
-    finally: db.close()
+            conditions = []
+            if query.isdigit():
+                conditions.append(User.id == int(query))
+            like = f"%{query}%"
+            conditions.extend([User.username.ilike(like), User.first_name.ilike(like), User.last_name.ilike(like)])
+            q = q.filter(or_(*conditions))
+        users = q.order_by(desc(User.last_seen)).limit(100).all()
+        return jsonify({"users": [{
+            "id":u.id,"username":u.username,"first_name":u.first_name,"last_name":u.last_name,
+            "status":u.status,"messages":u.messages_count or 0,"warns":u.warns or 0,"mutes":u.mutes or 0,
+            "bans":u.bans or 0,"kicks":u.kicks or 0,
+            "last_seen":u.last_seen.strftime("%d.%m.%Y %H:%M") if u.last_seen else "—"
+        } for u in users]})
+    finally:
+        db.close()
+
 
 @app.route("/admin/logout")
 def admin_logout():
