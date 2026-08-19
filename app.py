@@ -25,8 +25,6 @@ else:
 Base = declarative_base()
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False) if engine else None
 
-if engine:
-    Base.metadata.create_all(engine)
 
 
 class User(Base):
@@ -78,6 +76,11 @@ class BotSetting(Base):
     mute_duration = Column(Integer, default=60)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+
+# Create missing tables only after ALL SQLAlchemy models are registered.
+if engine:
+    Base.metadata.create_all(engine)
+    print("🗄️ Database tables checked/created")
 
 def admin_required(view):
     @wraps(view)
