@@ -1594,3 +1594,87 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data in ("warns", "bans"):
         return await show_history_panel(query)
+
+
+# =========================================================
+# CUSTOM REASON COMPATIBILITY
+# =========================================================
+async def custom_reason_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Обработчик сообщения с пользовательской причиной модерации.
+
+    Нужен для совместимости с текущим main.py.
+    Если админ ранее выбрал «Своя причина», причина сохраняется
+    в PostgreSQL для выбранного действия.
+    """
+    pending = context.user_data.get("pending_reason")
+    message = update.effective_message
+
+    if not pending or not message or not message.text:
+        return
+
+    reason = message.text.strip()
+    if not reason:
+        return
+
+    if len(reason) > 200:
+        await message.reply_text(
+            "⚠️ Причина слишком длинная. Максимум 200 символов."
+        )
+        return
+
+    context.user_data.pop("pending_reason", None)
+
+    user_id = int(pending["user_id"])
+    action = pending.get("type", "warn")
+
+    if action == "warn":
+        session = Session()
+        try:
+            user = session.get(User, user_id)
+            if not user:
+                user = User(
+                    id=user_id,
+                    warns=1,
+                    first_seen=datetime.utcnow(),
+                    last_seen=datetime.utcnow(),
+                )
+                session.add(user)
+            else:
+                user.warns = (user.warns or 0) + 1
+
+            session.add(Punishment(
+                user_id=user_id,
+                type="warn",
+                reason=reason,
+                moderator_id=update.effective_user.id,
+            ))
+            session.commit()
+            count = user.warns or 0
+        finally:
+            session.close()
+
+        return await message.reply_text(
+            f"⚠️ <b>Warn выдан</b>\n\n"
+            f"👤 ID: <code>{user_id}</code>\n"
+            f"📝 Причина: <b>{reason}</b>\n"
+            f"⚠️ Варнов: <b>{count}</b>",
+            parse_mode=ParseMode.HTML,
+        )
+
+    # Для будущих расширений сохраняем причину отдельно,
+    # не выполняя опасное действие без выбранного срока.
+    context.user_data["last_custom_reason"] = {
+        "user_id": user_id,
+        "type": action,
+        "reason": reason,
+    }
+
+    return await message.reply_text(
+        f"📝 Причина сохранена для действия <b>{action}</b>.\n"
+        f"👤 ID: <code>{user_id}</code>\n"
+        f"Причина: <b>{reason}</b>\n\n"
+        "Выбери действие/срок через панель модерации.",
+        parse_mode=ParseMode.HTML,
+    )
+
