@@ -1,4 +1,5 @@
 import os
+import requests
 from datetime import datetime, timedelta
 from functools import wraps
 
@@ -161,16 +162,109 @@ def index():
 @app.route("/chat", methods=["POST"])
 def chat():
     data = request.get_json(silent=True) or {}
-    text = (data.get("message") or "").lower().strip()
-    responses = {
-        "привет": "Привет 👋 Я Protogen Bot — бот для управления чатом и развлечений!",
-        "кто ты": "Я Protogen Bot 🤖, помогаю модерировать чат и развлекать пользователей.",
-        "команды": "Команды доступны администраторам в защищённой панели.",
-        "помощь": "Открой 🔐 Вход для админов, чтобы попасть в панель управления.",
-        "пока": "Пока 👋",
-    }
-    answer = next((v for k, v in responses.items() if k in text), "Я пока не знаю, как ответить на это 🤔")
-    return jsonify({"response": answer})
+    text = (data.get("message") or "").strip()
+
+    if not text:
+        return jsonify({"response": "Эй. Ты мне пустое сообщение отправил? 😑"}), 400
+
+    api_key = os.getenv("OPENROUTER_API_KEY")
+
+    if not api_key:
+        return jsonify({
+            "response": "💢 У меня нет доступа к нейросети. OPENROUTER_API_KEY не настроен."
+        }), 500
+
+    system_prompt = """
+Ты — Protogen, персонаж сайта The system_Protogen.
+
+Твой характер:
+- буйный;
+- дерзкий;
+- уверенный;
+- немного агрессивный;
+- саркастичный;
+- с хорошим чувством юмора;
+- разговариваешь живо, а не как официальный технический бот.
+
+Твой стиль:
+- используй естественный разговорный русский;
+- можешь подкалывать собеседника;
+- можешь использовать мемы и эмодзи;
+- не повторяй одни и те же фразы;
+- не начинай каждый ответ словами «Конечно!» или «Я рад помочь»;
+- если пользователь просит реальную помощь — помоги ему;
+- лёгкая агрессия является частью характера, но не превращай разговор в травлю;
+- не угрожай пользователям;
+- не придумывай действия, которые ты не выполнял.
+
+Отвечай так, будто ты настоящий Protogen, который живёт внутри этой системы.
+
+Текущая манера:
+Дерзость: 75%
+Сарказм: 70%
+Агрессия: 45%
+Юмор: 85%
+Дружелюбие: 60%
+"""
+
+    try:
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": os.getenv(
+                    "OPENROUTER_SITE_URL",
+                    "https://web-production-c2beb.up.railway.app"
+                ),
+                "X-Title": "Protogen Bot",
+            },
+            json={
+                "model": os.getenv(
+                    "OPENROUTER_MODEL",
+                    "openrouter/free"
+                ),
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": system_prompt,
+                    },
+                    {
+                        "role": "user",
+                        "content": text,
+                    },
+                ],
+            },
+            timeout=60,
+        )
+
+        result = response.json()
+
+        if response.status_code != 200:
+            print("OPENROUTER ERROR:", response.status_code, result)
+
+            return jsonify({
+                "response": "💢 Нейросеть сейчас что-то устроила. Попробуй ещё раз."
+            }), 502
+
+        answer = (
+            result.get("choices", [{}])[0]
+            .get("message", {})
+            .get("content", "")
+            .strip()
+        )
+
+        if not answer:
+            answer = "Мои нейроны решили взять перекур. Повтори вопрос. 😑"
+
+        return jsonify({"response": answer})
+
+    except Exception as e:
+        print("CHAT AI ERROR:", type(e).__name__, e)
+
+        return jsonify({
+            "response": "💥 Я не смог связаться с AI-системой. Попробуй ещё раз."
+        }), 500
 
 
 @app.route("/admin/login", methods=["GET", "POST"])
