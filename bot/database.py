@@ -1,7 +1,7 @@
 import os
 from datetime import datetime, date
 
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, inspect, text
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 
@@ -117,6 +117,21 @@ class Punishment(Base):
         DateTime,
         default=datetime.utcnow,
     )
+
+
+class BotSetting(Base):
+    __tablename__ = "bot_settings"
+    id = Column(Integer, primary_key=True, default=1)
+    moderation_enabled = Column(Boolean, default=True)
+    auto_delete_spam = Column(Boolean, default=True)
+    warn_enabled = Column(Boolean, default=True)
+    mute_enabled = Column(Boolean, default=True)
+    ban_enabled = Column(Boolean, default=True)
+    kick_enabled = Column(Boolean, default=True)
+    ai_moderation_enabled = Column(Boolean, default=False)
+    warn_limit = Column(Integer, default=3)
+    mute_duration = Column(Integer, default=60)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 # ============================================================
