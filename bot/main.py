@@ -68,14 +68,50 @@ def main():
         ChatMemberHandler(track_my_chat_member, ChatMemberHandler.MY_CHAT_MEMBER)
     )
 
+    # 🧪 ДИАГНОСТИКА TELEGRAM
+    # Ловим сообщение раньше всех остальных обработчиков.
+    # Это временная проверка: она показывает, получает ли Worker
+    # вообще сообщения от Telegram.
+    async def debug_message(update: Update, context):
+        message = update.effective_message
+
+        if not message:
+            print("🔥 DEBUG UPDATE RECEIVED, BUT NO MESSAGE")
+            return
+
+        print("🔥 DEBUG MESSAGE RECEIVED")
+        print(
+            "CHAT:",
+            update.effective_chat.id if update.effective_chat else None
+        )
+        print(
+            "USER:",
+            update.effective_user.id if update.effective_user else None
+        )
+        print("TEXT:", repr(message.text))
+
+        if message.text and message.text.lower().strip() == "тест протоген":
+            await message.reply_text(
+                "🧪 Я получил твоё сообщение.\n"
+                "Telegram → Worker работает."
+            )
+
+    app.add_handler(
+        MessageHandler(
+            tg_filters.ALL,
+            debug_message,
+        ),
+        group=-1,
+    )
+
     # Причины действий модерации
     app.add_handler(
-    MessageHandler(
-        tg_filters.ALL,
-        protogen_ai_message,
-    ),
-    group=0,
-)
+        MessageHandler(
+            tg_filters.TEXT & ~tg_filters.COMMAND,
+            custom_reason_message,
+        ),
+        group=2,
+    )
 
     app.add_error_handler(error_handler)
 
