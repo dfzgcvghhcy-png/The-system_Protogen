@@ -70,12 +70,12 @@ def main():
 
     # Причины действий модерации
     app.add_handler(
-        MessageHandler(
-            tg_filters.TEXT & ~tg_filters.COMMAND,
-            custom_reason_message,
-        ),
-        group=2,
-    )
+    MessageHandler(
+        tg_filters.ALL,
+        protogen_ai_message,
+    ),
+    group=0,
+)
 
     app.add_error_handler(error_handler)
 
