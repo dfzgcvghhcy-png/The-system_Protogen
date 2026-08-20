@@ -17,11 +17,13 @@ def mentioned(text: str):
     return any(x in text for x in triggers)
 
 
-async def protogen_ai_message(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
+async def protogen_ai_message(update, context):
+
     message = update.effective_message
+
+    print("🔥 PROTOGEN AI RECEIVED:", message.text)
+
+    ...
 
     if not message or not message.text:
         return
