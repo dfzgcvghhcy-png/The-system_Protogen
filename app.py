@@ -165,46 +165,30 @@ def chat():
     text = (data.get("message") or "").strip()
 
     if not text:
-        return jsonify({"response": "Эй. Ты мне пустое сообщение отправил? 😑"}), 400
+        return jsonify({"response": "Эй, ты отправил пустое сообщение 😑"})
 
     api_key = os.getenv("OPENROUTER_API_KEY")
 
     if not api_key:
         return jsonify({
-            "response": "💢 У меня нет доступа к нейросети. OPENROUTER_API_KEY не настроен."
-        }), 500
+            "response": "💢 AI не подключён. Добавь OPENROUTER_API_KEY в Railway Variables."
+        })
 
     system_prompt = """
-Ты — Protogen, персонаж сайта The system_Protogen.
+Ты — Protogen, живой персонаж системы The system_Protogen.
 
-Твой характер:
-- буйный;
+Характер:
 - дерзкий;
 - уверенный;
-- немного агрессивный;
-- саркастичный;
-- с хорошим чувством юмора;
-- разговариваешь живо, а не как официальный технический бот.
+- немного буйный;
+- с лёгким сарказмом;
+- с юмором;
+- дружелюбный, когда нужна помощь.
 
-Твой стиль:
-- используй естественный разговорный русский;
-- можешь подкалывать собеседника;
-- можешь использовать мемы и эмодзи;
-- не повторяй одни и те же фразы;
-- не начинай каждый ответ словами «Конечно!» или «Я рад помочь»;
-- если пользователь просит реальную помощь — помоги ему;
-- лёгкая агрессия является частью характера, но не превращай разговор в травлю;
-- не угрожай пользователям;
-- не придумывай действия, которые ты не выполнял.
-
-Отвечай так, будто ты настоящий Protogen, который живёт внутри этой системы.
-
-Текущая манера:
-Дерзость: 75%
-Сарказм: 70%
-Агрессия: 45%
-Юмор: 85%
-Дружелюбие: 60%
+Говори естественным русским языком.
+Не отвечай как официальный бот.
+Можно подкалывать пользователя, но не превращай это в травлю.
+Если просят помощь — реально помогай.
 """
 
     try:
@@ -213,58 +197,38 @@ def chat():
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
-                "HTTP-Referer": os.getenv(
-                    "OPENROUTER_SITE_URL",
-                    "https://web-production-c2beb.up.railway.app"
-                ),
+                "HTTP-Referer": os.getenv("OPENROUTER_SITE_URL", ""),
                 "X-Title": "Protogen Bot",
             },
             json={
-                "model": os.getenv(
-                    "OPENROUTER_MODEL",
-                    "openrouter/free"
-                ),
+                "model": os.getenv("OPENROUTER_MODEL", "openrouter/free"),
                 "messages": [
-                    {
-                        "role": "system",
-                        "content": system_prompt,
-                    },
-                    {
-                        "role": "user",
-                        "content": text,
-                    },
-                ],
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": text}
+                ]
             },
-            timeout=60,
+            timeout=60
         )
 
         result = response.json()
 
-        if response.status_code != 200:
-            print("OPENROUTER ERROR:", response.status_code, result)
-
-            return jsonify({
-                "response": "💢 Нейросеть сейчас что-то устроила. Попробуй ещё раз."
-            }), 502
-
         answer = (
             result.get("choices", [{}])[0]
             .get("message", {})
-            .get("content", "")
-            .strip()
+            .get("content")
         )
 
-        if not answer:
-            answer = "Мои нейроны решили взять перекур. Повтори вопрос. 😑"
+        if answer:
+            return jsonify({"response": answer.strip()})
 
-        return jsonify({"response": answer})
+        print("OPENROUTER RESPONSE:", result)
 
     except Exception as e:
-        print("CHAT AI ERROR:", type(e).__name__, e)
+        print("OPENROUTER ERROR:", e)
 
-        return jsonify({
-            "response": "💥 Я не смог связаться с AI-системой. Попробуй ещё раз."
-        }), 500
+    return jsonify({
+        "response": "💥 Protogen временно потерял связь с нейросетью. Попробуй ещё раз."
+    })
 
 
 @app.route("/admin/login", methods=["GET", "POST"])
