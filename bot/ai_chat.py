@@ -17,28 +17,46 @@ def mentioned(text: str):
     return any(x in text for x in triggers)
 
 
-async def protogen_ai_message(update, context):
+async def protogen_ai_message(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     message = update.effective_message
-
-    print("🔥 PROTOGEN AI RECEIVED:", message.text)
-
-    ...
 
     if not message or not message.text:
         return
 
+    print("🔥 PROTOGEN AI RECEIVED:", message.text)
+
     if not mentioned(message.text):
         return
 
-    chat_id = update.effective_chat.id if update.effective_chat else 0
-    user_id = update.effective_user.id if update.effective_user else 0
+    chat_id = (
+        update.effective_chat.id
+        if update.effective_chat
+        else 0
+    )
+
+    user_id = (
+        update.effective_user.id
+        if update.effective_user
+        else 0
+    )
 
     key = f"{chat_id}:{user_id}"
 
-    answer = ask_protogen(
-        message.text,
-        key
-    )
+    try:
+        answer = ask_protogen(
+            message.text,
+            key
+        )
 
-    await message.reply_text(answer)
+        await message.reply_text(answer)
+
+    except Exception as e:
+        print("AI CHAT ERROR:", e)
+
+        await message.reply_text(
+            "💥 Протоген завис. Мои нейроны ушли на перезагрузку."
+        )
