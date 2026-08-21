@@ -131,6 +131,14 @@ class BotSetting(Base):
     ai_moderation_enabled = Column(Boolean, default=False)
     warn_limit = Column(Integer, default=3)
     mute_duration = Column(Integer, default=60)
+
+    # Protogen personality (0..100)
+    personality_daring = Column(Integer, default=75)
+    personality_sarcasm = Column(Integer, default=70)
+    personality_aggression = Column(Integer, default=45)
+    personality_humor = Column(Integer, default=85)
+    personality_friendliness = Column(Integer, default=60)
+
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
@@ -163,6 +171,13 @@ def migrate_database():
         for column in inspector.get_columns("punishments")
     }
 
+    bot_setting_columns = set()
+    if "bot_settings" in table_names:
+        bot_setting_columns = {
+            column["name"]
+            for column in inspector.get_columns("bot_settings")
+        }
+
     is_postgres = engine.dialect.name == "postgresql"
 
     datetime_type = "TIMESTAMP" if is_postgres else "DATETIME"
@@ -187,6 +202,14 @@ def migrate_database():
         "created_at": datetime_type,
     }
 
+    personality_additions = {
+        "personality_daring": "INTEGER DEFAULT 75",
+        "personality_sarcasm": "INTEGER DEFAULT 70",
+        "personality_aggression": "INTEGER DEFAULT 45",
+        "personality_humor": "INTEGER DEFAULT 85",
+        "personality_friendliness": "INTEGER DEFAULT 60",
+    }
+
     with engine.begin() as connection:
         for name, definition in user_additions.items():
             if name not in user_columns:
@@ -205,6 +228,16 @@ def migrate_database():
                         f"ADD COLUMN {name} {definition}"
                     )
                 )
+
+        if "bot_settings" in table_names:
+            for name, definition in personality_additions.items():
+                if name not in bot_setting_columns:
+                    connection.execute(
+                        text(
+                            f"ALTER TABLE bot_settings "
+                            f"ADD COLUMN {name} {definition}"
+                        )
+                    )
 
 
 migrate_database()
