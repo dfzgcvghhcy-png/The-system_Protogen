@@ -1,175 +1,215 @@
 <!doctype html>
 <html lang="ru">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Protogen Bot</title>
-    <link rel="stylesheet" href="/static/style.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Protogen Bot</title>
+  <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <div class="page-glow"></div>
+  <div class="page-glow"></div>
 
-    <header class="topbar">
-        <div class="brand">
-            <div class="brand-avatar">
-                <img src="/static/my_avatar.gif" alt="Protogen Bot">
-            </div>
-            <div class="brand-copy">
-                <strong>PROTOGEN BOT</strong>
-                <span><i></i> THE SYSTEM // PROTOGEN</span>
-            </div>
-        </div>
-
-        <nav class="public-nav" aria-label="Основная навигация">
-            <a href="#chat" id="topChatLink">💬 ЧАТ</a>
-            <a href="#system">◈ СИСТЕМА</a>
-            <a class="settings-link" href="#settings" id="openSettings">⚙ НАСТРОЙКИ</a>
-        </nav>
-
-        <div class="system-pill"><i></i> СИСТЕМА АКТИВНА</div>
-    </header>
-
-    <main class="hero">
-        <section class="hero-copy">
-            <div class="eyebrow">THE SYSTEM // PROTOGEN</div>
-            <h1>Твой чат.<br><span>Твоя система.</span></h1>
-            <p>
-                Protogen Bot следит за порядком, хранит историю модерации
-                и помогает управлять сообществом через единую систему.
-            </p>
-
-            
-            <div class="hero-actions">
-                <a class="chat-cta" href="#chat" id="heroChatBtn">◈ &nbsp; ЗАЙТИ В ЧАТ <b>→</b></a>
-                <a class="admin-cta" href="/admin/login">⚙ &nbsp; НАСТРОЙКИ СИСТЕМЫ <b>→</b></a>
-            </div>
-
-            <div class="feature-grid">
-                <div class="feature-card">
-                    <b>⚔️</b>
-                    <span>Модерация</span>
-                    <small>Warn · Mute · Ban</small>
-                </div>
-                <div class="feature-card">
-                    <b>👥</b>
-                    <span>Участники</span>
-                    <small>Профили и активность</small>
-                </div>
-                <div class="feature-card">
-                    <b>📜</b>
-                    <span>История</span>
-                    <small>Все действия в базе</small>
-                </div>
-            </div>
-        </section>
-
-        <section class="bot-panel chat-closed" id="chat">
-            <div class="panel-header">
-                <div class="panel-user">
-                    <div class="panel-avatar">
-                        <img src="/static/my_avatar.gif" alt="">
-                    </div>
-                    <div>
-                        <strong>Protogen Bot</strong>
-                        <span><i></i> система активна</span>
-                    </div>
-                </div>
-                <div class="panel-dots">•••</div>
-            </div>
-
-            <div class="chat-area" id="messages">
-                <div class="message bot-message">
-                    <div class="message-label">🤖 PROTOGEN</div>
-                    <div>Привет! 👋<br>Я Protogen Bot. Готов помочь с системой и управлением чатом.</div>
-                </div>
-                <div class="message bot-message secondary">
-                    Напиши что-нибудь — попробуем пообщаться.
-                </div>
-            </div>
-
-            <div class="chat-input">
-                <input id="input" type="text" placeholder="Написать сообщение..." autocomplete="off">
-                <button id="sendBtn" type="button">➤</button>
-            </div>
-        </section>
-
-        <aside class="public-system" id="system" aria-label="Состояние системы">
-            <div class="system-kicker">SYSTEM CORE</div>
-            <div class="system-core">
-                <div class="core-orbit orbit-one"></div>
-                <div class="core-orbit orbit-two"></div>
-                <div class="core-avatar">
-                    <img src="/static/my_avatar.gif" alt="Protogen Core">
-                </div>
-            </div>
-            <div class="system-readout">
-                <div><span>STATUS</span><b>ONLINE</b></div>
-                <div><span>AI CORE</span><b>READY</b></div>
-                <div><span>SECURITY</span><b>LOCKED</b></div>
-            </div>
-            <div class="system-note">Пользовательские настройки сохраняются только у тебя.</div>
-        </aside>
-    </main>
-
-
-
-    <footer>
-        THE SYSTEM_PROTOGEN <span>•</span> SECURE SYSTEM
-    </footer>
-
-    <script src="/static/script.js"></script>
-
-    <!-- PUBLIC USER SETTINGS -->
-    <div class="settings-overlay" id="settingsOverlay" aria-hidden="true">
-        <section class="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
-            <button class="settings-close" id="closeSettings" aria-label="Закрыть">×</button>
-            <div class="modal-kicker">USER CONSOLE // LOCAL</div>
-            <h2 id="settingsTitle">Настройки</h2>
-            <p class="modal-sub">Эти настройки принадлежат только тебе. Выбранные обои сохраняются локально в этом браузере и не меняют обои других пользователей.</p>
-
-            <div class="setting-section">
-                <div class="setting-title">
-                    <span>🖼️ ОБОИ</span>
-                    <small>Только для тебя</small>
-                </div>
-
-                <div class="wallpaper-grid" id="wallpaperGrid">
-                    <button class="wall-option active" data-wall="default">
-                        <span class="wall-preview wall-default"></span>
-                        <b>Protogen</b>
-                    </button>
-                    <button class="wall-option" data-wall="violet">
-                        <span class="wall-preview wall-violet"></span>
-                        <b>Violet Grid</b>
-                    </button>
-                    <button class="wall-option" data-wall="nebula">
-                        <span class="wall-preview wall-nebula"></span>
-                        <b>Deep Nebula</b>
-                    </button>
-                    <button class="wall-option" data-wall="cyber">
-                        <span class="wall-preview wall-cyber"></span>
-                        <b>Cyber Grid</b>
-                    </button>
-                </div>
-
-                <label class="upload-wallpaper">
-                    <input type="file" id="customWallpaper" accept="image/png,image/jpeg,image/webp">
-                    <span>＋ ЗАГРУЗИТЬ СВОЁ ИЗОБРАЖЕНИЕ</span>
-                    <small>до 4 МБ · хранится только в твоём браузере</small>
-                </label>
-
-                <button class="reset-wallpaper" id="resetWallpaper">↺ Вернуть Protogen</button>
-            </div>
-
-            <div class="settings-security">
-                <span>🔒</span>
-                <div>
-                    <strong>Админ-панель отдельно</strong>
-                    <small>Кнопка «Настройки системы» требует логин и пароль администратора.</small>
-                </div>
-            </div>
-        </section>
+  <!-- DARKER TOP PANEL -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-avatar">
+        <img src="/static/my_avatar.gif" alt="Protogen Bot">
+      </div>
+      <div class="brand-copy">
+        <strong>PROTOGEN BOT</strong>
+        <span><i></i> THE SYSTEM // PROTOGEN</span>
+      </div>
     </div>
 
+    <!-- Navigation intentionally simplified: no Chat/System/Settings buttons here. -->
+    <div class="topbar-spacer"></div>
+
+    <div class="system-pill">
+      <i></i> СИСТЕМА АКТИВНА
+      <span class="top-wave" aria-hidden="true"></span>
+    </div>
+  </header>
+
+  <main class="web-shell">
+    <section class="hero-area">
+      <div class="hero-copy">
+        <div class="eyebrow">THE SYSTEM // PROTOGEN</div>
+        <h1>Твой чат.<br><span>Твоя система.</span></h1>
+        <p>
+          Protogen Bot следит за порядком, хранит историю модерации
+          и помогает управлять сообществом через единую систему.
+        </p>
+
+        <div class="hero-actions">
+          <button class="chat-cta" id="heroChatBtn" type="button">
+            ◈ &nbsp; ЗАЙТИ В ЧАТ <b>→</b>
+          </button>
+          <a class="admin-cta" href="/admin/login">
+            ⚙ &nbsp; НАСТРОЙКИ СИСТЕМЫ <b>→</b>
+          </a>
+        </div>
+
+        <div class="feature-grid">
+          <div class="feature-card">
+            <b>⚔️</b>
+            <span>Модерация</span>
+            <small>Warn · Mute · Ban</small>
+          </div>
+          <div class="feature-card">
+            <b>👥</b>
+            <span>Участники</span>
+            <small>Профили и активность</small>
+          </div>
+          <div class="feature-card">
+            <b>📜</b>
+            <span>История</span>
+            <small>Все действия в базе</small>
+          </div>
+        </div>
+
+        <section class="system-stats">
+          <div class="stats-heading">
+            <span><i></i> ОБЩАЯ СТАТИСТИКА СИСТЕМЫ</span>
+            <small>LIVE // PROTOGEN CORE</small>
+          </div>
+          <div class="stats-grid">
+            <div class="stat-item"><b>♙</b><strong>1,248</strong><span>ПОЛЬЗОВАТЕЛЕЙ</span></div>
+            <div class="stat-item"><b>⌁</b><strong>24</strong><span>ОНЛАЙН</span></div>
+            <div class="stat-item"><b>▣</b><strong>3,421</strong><span>СООБЩЕНИЙ СЕГОДНЯ</span></div>
+            <div class="stat-item"><b>⚒</b><strong>128</strong><span>ДЕЙСТВИЙ МОДЕРАЦИИ</span></div>
+            <div class="stat-item"><b>◇</b><strong>98.7%</strong><span>СТАБИЛЬНОСТЬ</span></div>
+          </div>
+        </section>
+      </div>
+
+      <!-- RIGHT COLUMN: exactly the direction of reference photo #4 -->
+      <aside class="system-sidebar">
+
+        <!-- SYSTEM -->
+        <section class="side-card system-card">
+          <div class="side-title">
+            <div><span class="side-icon">◈</span><strong>СИСТЕМА</strong></div>
+            <span class="live-badge">ONLINE</span>
+          </div>
+
+          <div class="system-monitor">
+            <div class="core-ring">
+              <div class="ring ring-a"></div>
+              <div class="ring ring-b"></div>
+              <div class="ring ring-c"></div>
+              <div class="core-avatar">
+                <img src="/static/my_avatar.gif" alt="Protogen Core">
+              </div>
+              <span class="scan-dot"></span>
+            </div>
+
+            <div class="metrics">
+              <div class="metric"><span>CPU</span><div class="mini-wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><b id="cpuValue">23%</b></div>
+              <div class="metric"><span>RAM</span><div class="mini-wave cyan"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><b id="ramValue">41%</b></div>
+              <div class="metric"><span>PING</span><div class="mini-wave cyan"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><b id="pingValue">28ms</b></div>
+              <div class="metric"><span>UPTIME</span><b class="uptime-value" id="uptimeValue">7d 14h 22m</b></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- USER-ONLY WALLPAPER CONTROL -->
+        <section class="side-card wallpaper-card">
+          <div class="side-title">
+            <div><span class="side-icon">✥</span><strong>УПРАВЛЕНИЕ ОБОЯМИ</strong></div>
+            <span class="new-badge">NEW</span>
+          </div>
+
+          <button class="wall-main-preview" data-wall="default" type="button" title="Применить Protogen">
+            <span class="wall-check">✓</span>
+          </button>
+
+          <div class="wall-thumbs" id="wallpaperGrid">
+            <button class="wall-thumb active" data-wall="default" type="button"></button>
+            <button class="wall-thumb violet" data-wall="violet" type="button"></button>
+            <button class="wall-thumb nebula" data-wall="nebula" type="button"></button>
+            <button class="wall-thumb cyber" data-wall="cyber" type="button"></button>
+            <button class="wall-thumb dark" data-wall="dark" type="button"></button>
+          </div>
+
+          <label class="upload-wallpaper">
+            <input type="file" id="customWallpaper" accept="image/png,image/jpeg,image/webp">
+            <span>♧ &nbsp; ЗАГРУЗИТЬ СВОЁ ИЗОБРАЖЕНИЕ</span>
+          </label>
+
+          <p class="local-note">Обои сохраняются только у тебя и не меняют оформление других пользователей.</p>
+        </section>
+
+        <!-- ANIMATED PANEL -->
+        <section class="side-card animated-card">
+          <div class="side-title">
+            <div><span class="side-icon">✤</span><strong>АНИМИРОВАННАЯ ПАНЕЛЬ</strong></div>
+            <span class="live-badge">ВКЛЮЧЕНА</span>
+          </div>
+
+          <div class="animation-stage">
+            <div class="wave wave-left"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            <div class="animated-core">
+              <div class="core-glow"></div>
+              <div class="core-orbit"></div>
+              <img src="/static/my_avatar.gif" alt="">
+            </div>
+            <div class="wave wave-right"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          </div>
+
+          <div class="animation-controls">
+            <span>NEURAL SIGNAL</span>
+            <div class="signal-line"><i></i></div>
+            <b id="signalState">STABLE</b>
+          </div>
+        </section>
+
+        <!-- SMALL QUICK ACTIONS -->
+        <section class="side-card quick-card">
+          <div class="side-title">
+            <div><span class="side-icon">⌁</span><strong>СИСТЕМА</strong></div>
+          </div>
+          <div class="quick-grid">
+            <div><span>◈</span> AI CORE <b>READY</b></div>
+            <div><span>♢</span> DATABASE <b>ONLINE</b></div>
+            <div><span>◇</span> SECURITY <b>LOCKED</b></div>
+            <div><span>⌁</span> API <b>ACTIVE</b></div>
+          </div>
+        </section>
+      </aside>
+    </section>
+  </main>
+
+  <!-- CHAT IS A MODAL NOW. Repeated "ЗАЙТИ В ЧАТ" clicks never close it. -->
+  <div class="chat-overlay" id="chatOverlay" aria-hidden="true">
+    <section class="chat-modal" role="dialog" aria-modal="true" aria-labelledby="chatTitle">
+      <div class="chat-modal-header">
+        <div class="panel-user">
+          <div class="panel-avatar"><img src="/static/my_avatar.gif" alt=""></div>
+          <div>
+            <strong id="chatTitle">Protogen Bot</strong>
+            <span><i></i> система активна</span>
+          </div>
+        </div>
+        <button class="chat-close" id="closeChat" type="button" aria-label="Закрыть чат">×</button>
+      </div>
+
+      <div class="chat-area" id="messages">
+        <div class="message bot-message">
+          <div class="message-label">🤖 PROTOGEN</div>
+          <div>Привет! 👋<br>Я Protogen Bot. Готов помочь с системой и управлением чатом.</div>
+        </div>
+        <div class="message bot-message secondary">Напиши что-нибудь — попробуем пообщаться.</div>
+      </div>
+
+      <div class="chat-input">
+        <input id="input" type="text" placeholder="Написать сообщение..." autocomplete="off">
+        <button id="sendBtn" type="button">➤</button>
+      </div>
+    </section>
+  </div>
+
+  <footer>THE SYSTEM_PROTOGEN <span>•</span> SECURE SYSTEM</footer>
+
+  <script src="/static/script.js"></script>
 </body>
 </html>
