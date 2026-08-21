@@ -1,47 +1,50 @@
-
 (() => {
   const $ = (s, root = document) => root.querySelector(s);
   const $$ = (s, root = document) => [...root.querySelectorAll(s)];
 
-  const overlay = $('#settingsOverlay');
-  const openSettings = $('#openSettings');
-  const closeSettings = $('#closeSettings');
-  const wallpaperGrid = $('#wallpaperGrid');
-  const customWallpaper = $('#customWallpaper');
-  const resetWallpaper = $('#resetWallpaper');
-  const chat = $('#chat');
+  // ---------------------------------------------------------
+  // CHAT MODAL
+  // "ЗАЙТИ В ЧАТ" opens it. Repeated clicks keep it OPEN.
+  // Only X, backdrop click, or Escape closes it.
+  // ---------------------------------------------------------
+  const chatOverlay = $('#chatOverlay');
+  const heroChatBtn = $('#heroChatBtn');
+  const closeChat = $('#closeChat');
   const input = $('#input');
   const messages = $('#messages');
-  const heroChatBtn = $('#heroChatBtn');
-  const topChatLink = $('#topChatLink');
 
-  // ---------------------------
-  // PUBLIC CHAT
-  // ---------------------------
   function openChat() {
-    if (!chat) return;
-    chat.classList.remove('chat-closed');
-    chat.classList.add('chat-open');
-    setTimeout(() => input?.focus(), 180);
-    chat.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (!chatOverlay) return;
+    chatOverlay.classList.add('open');
+    chatOverlay.setAttribute('aria-hidden', 'false');
+    setTimeout(() => input?.focus(), 160);
+  }
+
+  function hideChat() {
+    if (!chatOverlay) return;
+    chatOverlay.classList.remove('open');
+    chatOverlay.setAttribute('aria-hidden', 'true');
   }
 
   heroChatBtn?.addEventListener('click', (e) => {
     e.preventDefault();
     openChat();
   });
-
-  topChatLink?.addEventListener('click', (e) => {
-    e.preventDefault();
-    openChat();
+  closeChat?.addEventListener('click', hideChat);
+  chatOverlay?.addEventListener('click', (e) => {
+    if (e.target === chatOverlay) hideChat();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') hideChat();
   });
 
-  function addMessage(text, type = 'user') {
+  function addMessage(text, type = 'bot') {
+    if (!messages) return null;
     const div = document.createElement('div');
     div.className = `message ${type === 'user' ? 'user-message' : 'bot-message'}`;
     div.textContent = text;
-    messages?.appendChild(div);
-    if (messages) messages.scrollTop = messages.scrollHeight;
+    messages.appendChild(div);
+    messages.scrollTop = messages.scrollHeight;
     return div;
   }
 
@@ -54,7 +57,7 @@
     input.value = '';
 
     const thinking = addMessage('Protogen обрабатывает сообщение…', 'bot');
-    thinking.classList.add('thinking');
+    thinking?.classList.add('thinking');
 
     try {
       const response = await fetch('/chat', {
@@ -63,10 +66,10 @@
         body: JSON.stringify({message: text})
       });
       const data = await response.json();
-      thinking.remove();
+      thinking?.remove();
       addMessage(data.response || 'Protogen пока молчит…', 'bot');
     } catch (err) {
-      thinking.remove();
+      thinking?.remove();
       addMessage('💥 Не удалось связаться с Protogen. Попробуй ещё раз.', 'bot');
       console.error('CHAT:', err);
     }
@@ -80,29 +83,37 @@
     }
   });
 
-  // ---------------------------
+  // ---------------------------------------------------------
   // USER-ONLY WALLPAPERS
-  // localStorage means the choice is stored only in this browser/device.
-  // It is not sent to the Flask admin endpoints or PostgreSQL.
-  // ---------------------------
-  const WALL_KEY = 'protogen_user_wallpaper_v1';
+  // Stored locally in this browser. No admin API call.
+  // ---------------------------------------------------------
+  const WALL_KEY = 'protogen_user_wallpaper_v2';
 
   const presets = {
     default: {
       image: 'url("/static/bg.png")',
-      overlay: 'linear-gradient(180deg,rgba(1,5,7,.54),rgba(1,5,7,.78))'
+      overlay: 'linear-gradient(180deg,rgba(1,4,9,.58),rgba(1,3,7,.80))',
+      size: 'cover'
     },
     violet: {
       image: 'radial-gradient(circle at 72% 20%,rgba(155,69,255,.58),transparent 25%),linear-gradient(135deg,#070317,#17102b 52%,#020609)',
-      overlay: 'linear-gradient(180deg,rgba(1,4,8,.30),rgba(1,4,8,.70))'
+      overlay: 'linear-gradient(180deg,rgba(1,4,8,.28),rgba(1,4,8,.72))',
+      size: 'cover'
     },
     nebula: {
       image: 'radial-gradient(circle at 28% 28%,rgba(0,132,255,.58),transparent 22%),radial-gradient(circle at 75% 70%,rgba(155,69,255,.52),transparent 30%),linear-gradient(135deg,#020812,#0a0b20 55%,#020307)',
-      overlay: 'linear-gradient(180deg,rgba(1,4,8,.30),rgba(1,4,8,.70))'
+      overlay: 'linear-gradient(180deg,rgba(1,4,8,.28),rgba(1,4,8,.72))',
+      size: 'cover'
     },
     cyber: {
       image: 'linear-gradient(rgba(0,255,225,.11) 1px,transparent 1px),linear-gradient(90deg,rgba(0,255,225,.11) 1px,transparent 1px),linear-gradient(135deg,#02090c,#080616)',
-      overlay: 'linear-gradient(180deg,rgba(1,4,8,.28),rgba(1,4,8,.76))'
+      overlay: 'linear-gradient(180deg,rgba(1,4,8,.26),rgba(1,4,8,.76))',
+      size: '22px 22px,22px 22px,auto'
+    },
+    dark: {
+      image: 'linear-gradient(135deg,#010307,#070914 50%,#10051d)',
+      overlay: 'linear-gradient(180deg,rgba(1,3,6,.30),rgba(1,3,6,.78))',
+      size: 'cover'
     }
   };
 
@@ -111,23 +122,28 @@
 
     if (custom) {
       document.body.style.backgroundImage =
-        `linear-gradient(180deg,rgba(1,5,7,.44),rgba(1,5,7,.76)),url("${custom}")`;
+        `linear-gradient(180deg,rgba(1,4,8,.48),rgba(1,3,7,.80)),url("${custom}")`;
       document.body.style.backgroundSize = 'cover';
       document.body.style.backgroundPosition = 'center';
+      document.body.style.backgroundAttachment = 'fixed';
     } else {
       const preset = presets[id] || presets.default;
       document.body.style.backgroundImage = `${preset.overlay},${preset.image}`;
-      document.body.style.backgroundSize = id === 'cyber' ? '20px 20px,20px 20px,auto' : 'cover';
+      document.body.style.backgroundSize = preset.size;
       document.body.style.backgroundPosition = 'center';
       document.body.style.backgroundAttachment = 'fixed';
     }
 
-    $$('.wall-option').forEach(btn => {
+    $$('.wall-thumb').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.wall === id);
     });
 
     if (save) {
-      localStorage.setItem(WALL_KEY, JSON.stringify({id, custom}));
+      try {
+        localStorage.setItem(WALL_KEY, JSON.stringify({id, custom}));
+      } catch (err) {
+        console.warn('Wallpaper could not be saved locally:', err);
+      }
     }
   }
 
@@ -141,55 +157,50 @@
     }
   }
 
-  $$('.wall-option').forEach(btn => {
+  $$('.wall-thumb').forEach(btn => {
     btn.addEventListener('click', () => setWallpaper(btn.dataset.wall));
   });
 
-  customWallpaper?.addEventListener('change', () => {
-    const file = customWallpaper.files?.[0];
+  $('.wall-main-preview')?.addEventListener('click', () => setWallpaper('default'));
+
+  $('#customWallpaper')?.addEventListener('change', () => {
+    const file = $('#customWallpaper').files?.[0];
     if (!file) return;
-    if (file.size > 4 * 1024 * 1024) {
-      alert('Файл слишком большой. Максимум 4 МБ.');
-      customWallpaper.value = '';
+
+    if (file.size > 3 * 1024 * 1024) {
+      alert('Файл слишком большой. Максимум 3 МБ.');
+      $('#customWallpaper').value = '';
       return;
     }
 
     const reader = new FileReader();
     reader.onload = () => {
       setWallpaper('custom', reader.result);
+      $('.wall-main-preview').style.backgroundImage =
+        `linear-gradient(180deg,rgba(2,5,9,.15),rgba(2,4,8,.50)),url("${reader.result}")`;
       alert('Готово — эти обои видишь только ты в этом браузере.');
-      customWallpaper.value = '';
+      $('#customWallpaper').value = '';
     };
     reader.readAsDataURL(file);
   });
 
-  resetWallpaper?.addEventListener('click', () => {
-    setWallpaper('default');
-  });
-
-  // ---------------------------
-  // SETTINGS MODAL
-  // ---------------------------
-  function showSettings() {
-    overlay?.classList.add('open');
-    overlay?.setAttribute('aria-hidden', 'false');
-  }
-  function hideSettings() {
-    overlay?.classList.remove('open');
-    overlay?.setAttribute('aria-hidden', 'true');
-  }
-
-  openSettings?.addEventListener('click', (e) => {
-    e.preventDefault();
-    showSettings();
-  });
-  closeSettings?.addEventListener('click', hideSettings);
-  overlay?.addEventListener('click', (e) => {
-    if (e.target === overlay) hideSettings();
-  });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') hideSettings();
-  });
-
   loadWallpaper();
+
+  // ---------------------------------------------------------
+  // SMALL LIVE VALUES / ANIMATION STATUS
+  // ---------------------------------------------------------
+  const cpu = $('#cpuValue');
+  const ram = $('#ramValue');
+  const ping = $('#pingValue');
+  const signalState = $('#signalState');
+
+  setInterval(() => {
+    if (cpu) cpu.textContent = `${20 + Math.floor(Math.random() * 9)}%`;
+    if (ram) ram.textContent = `${38 + Math.floor(Math.random() * 8)}%`;
+    if (ping) ping.textContent = `${22 + Math.floor(Math.random() * 13)}ms`;
+    if (signalState) {
+      const states = ['STABLE', 'SYNC', 'ACTIVE', 'STABLE'];
+      signalState.textContent = states[Math.floor(Math.random() * states.length)];
+    }
+  }, 2200);
 })();
