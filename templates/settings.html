@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ProtogenAdmin — Настройки</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='settings.css') }}">
+
+<style>
+.profile-box {
+  margin: 18px 0 24px;
+  padding: 16px 18px;
+  border: 1px solid rgba(0, 255, 230, .16);
+  border-radius: 14px;
+  background: rgba(0, 20, 30, .35);
+}
+.profile-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.profile-heading b {
+  display: block;
+  font-size: 16px;
+}
+.profile-heading small,
+.profile-description {
+  display: block;
+  margin-top: 5px;
+  opacity: .65;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.profile-heading select {
+  min-width: 190px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(0,255,230,.22);
+  background: #07141b;
+  color: #e9ffff;
+  outline: none;
+}
+.profile-description {
+  margin-top: 12px;
+}
+@media (max-width: 700px) {
+  .profile-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .profile-heading select {
+    width: 100%;
+  }
+}
+</style>
+
+</head>
+<body>
+<div class="bg"></div><div class="grid"></div>
+
+<div class="shell">
+<header class="topbar">
+  <a class="brand" href="/admin">
+    <div class="brand-avatar"><img src="{{ url_for('static', filename='my_avatar.gif') }}" alt=""></div>
+    <div><div class="brand-name">ProtogenAdmin <span>Console</span></div><div class="brand-sub"><i></i> THE SYSTEM_PROTOGEN</div></div>
+  </a>
+  <nav>
+    <a href="/admin">🏠 Главная</a>
+    <a href="/admin/users">👥 Пользователи</a>
+    <a href="/admin#moderation">⚔️ Модерация</a>
+    <a href="/admin/history">📜 История</a>
+    <a href="/admin/statistics">📊 Статистика</a>
+    <a class="active" href="/admin/settings">⚙️ Настройки</a>
+  </nav>
+  <a class="logout" href="/admin/logout">↪ Выйти</a>
+</header>
+
+<main class="settings-main">
+  <section class="settings-hero">
+    <div>
+      <div class="eyebrow">SYSTEM CONFIGURATION</div>
+      <h1>Настройки</h1>
+      <p>Управление поведением Protogen через PostgreSQL.</p>
+    </div>
+    <div class="online-pill"><i></i> DATABASE CONFIG</div>
+  </section>
+
+  {% if saved %}
+  <div class="notice success">✓ Настройки сохранены.</div>
+  {% endif %}
+  {% if error %}
+  <div class="notice error">⚠️ {{ error }}</div>
+  {% endif %}
+
+  {% if settings %}
+  <form method="post" class="settings-form">
+
+    <section class="panel settings-card">
+      <div class="card-title">
+        <div><span>🛡️</span><div><div class="panel-kicker">MODERATION</div><h2>Модерация</h2></div></div>
+        <label class="switch"><input type="checkbox" name="moderation_enabled" {% if settings.moderation_enabled %}checked{% endif %}><i></i></label>
+      </div>
+      <p class="desc">Главный переключатель системы модерации.</p>
+
+      <div class="setting-row">
+        <div><b>⚠️ Warn</b><small>Разрешить предупреждения</small></div>
+        <label class="switch"><input type="checkbox" name="warn_enabled" {% if settings.warn_enabled %}checked{% endif %}><i></i></label>
+      </div>
+      <div class="setting-row">
+        <div><b>🔇 Mute</b><small>Разрешить временное ограничение</small></div>
+        <label class="switch"><input type="checkbox" name="mute_enabled" {% if settings.mute_enabled %}checked{% endif %}><i></i></label>
+      </div>
+      <div class="setting-row">
+        <div><b>🚫 Ban</b><small>Разрешить блокировку пользователей</small></div>
+        <label class="switch"><input type="checkbox" name="ban_enabled" {% if settings.ban_enabled %}checked{% endif %}><i></i></label>
+      </div>
+      <div class="setting-row">
+        <div><b>👢 Kick</b><small>Разрешить исключение пользователей</small></div>
+        <label class="switch"><input type="checkbox" name="kick_enabled" {% if settings.kick_enabled %}checked{% endif %}><i></i></label>
+      </div>
+    </section>
+
+    <section class="panel settings-card">
+      <div class="card-title">
+        <div><span>⚡</span><div><div class="panel-kicker">AUTOMATION</div><h2>Автоматизация</h2></div></div>
+      </div>
+
+      <div class="setting-row">
+        <div><b>🗑️ Автоудаление спама</b><small>Удалять сообщения, которые бот определяет как спам</small></div>
+        <label class="switch"><input type="checkbox" name="auto_delete_spam" {% if settings.auto_delete_spam %}checked{% endif %}><i></i></label>
+      </div>
+
+      <div class="setting-row">
+        <div><b>🧠 AI-модерация</b><small>Подготовлено для будущего подключения умной модерации</small></div>
+        <label class="switch ai"><input type="checkbox" name="ai_moderation_enabled" {% if settings.ai_moderation_enabled %}checked{% endif %}><i></i></label>
+      </div>
+    </section>
+
+
+    <section class="panel settings-card protogen-ai-card">
+      <div class="card-title">
+        <div><span>🐾</span><div><div class="panel-kicker">PROTOGEN AI</div><h2>Характер Protogen</h2></div></div>
+      </div>
+
+      <p class="desc">Настройки сохраняются в PostgreSQL и используются и на сайте, и в Telegram.</p>
+
+
+      <div class="profile-box">
+        <div class="profile-heading">
+          <div>
+            <b>🎭 Профиль личности</b>
+            <small>Быстро выставляет характер Protogen под выбранный стиль.</small>
+          </div>
+          <select id="personality_profile" onchange="applyProtogenProfile(this.value)">
+            <option value="">Свой профиль</option>
+            <option value="hooligan">😈 Хулиган</option>
+            <option value="party">😂 Тусовщик</option>
+            <option value="friendly">💙 Дружелюбный</option>
+            <option value="system">🤖 Системный</option>
+            <option value="chaos">☢️ Хаос</option>
+          </select>
+        </div>
+
+        <div class="profile-description" id="profile_description">
+          Выбери готовый профиль или оставь «Свой профиль» и настрой ползунки вручную.
+        </div>
+      </div>
+
+      <div class="ai-slider-row">
+        <div><b>😈 Дерзость</b><span><output id="personality_daring_value">{{ settings.personality_daring }}</output>%</span></div>
+        <input type="range" name="personality_daring" min="0" max="100" value="{{ settings.personality_daring }}"
+               oninput="document.getElementById('personality_daring_value').value=this.value">
+      </div>
+
+      <div class="ai-slider-row">
+        <div><b>😏 Сарказм</b><span><output id="personality_sarcasm_value">{{ settings.personality_sarcasm }}</output>%</span></div>
+        <input type="range" name="personality_sarcasm" min="0" max="100" value="{{ settings.personality_sarcasm }}"
+               oninput="document.getElementById('personality_sarcasm_value').value=this.value">
+      </div>
+
+      <div class="ai-slider-row">
+        <div><b>🔥 Агрессия</b><span><output id="personality_aggression_value">{{ settings.personality_aggression }}</output>%</span></div>
+        <input type="range" name="personality_aggression" min="0" max="100" value="{{ settings.personality_aggression }}"
+               oninput="document.getElementById('personality_aggression_value').value=this.value">
+      </div>
+
+      <div class="ai-slider-row">
+        <div><b>😂 Юмор</b><span><output id="personality_humor_value">{{ settings.personality_humor }}</output>%</span></div>
+        <input type="range" name="personality_humor" min="0" max="100" value="{{ settings.personality_humor }}"
+               oninput="document.getElementById('personality_humor_value').value=this.value">
+      </div>
+
+      <div class="ai-slider-row">
+        <div><b>💙 Дружелюбие</b><span><output id="personality_friendliness_value">{{ settings.personality_friendliness }}</output>%</span></div>
+        <input type="range" name="personality_friendliness" min="0" max="100" value="{{ settings.personality_friendliness }}"
+               oninput="document.getElementById('personality_friendliness_value').value=this.value">
+      </div>
+    </section>
+
+    <section class="panel settings-card">
+      <div class="card-title">
+        <div><span>⏱️</span><div><div class="panel-kicker">LIMITS</div><h2>Лимиты</h2></div></div>
+      </div>
+
+      <div class="field-row">
+        <label><b>Лимит Warn</b><small>Количество предупреждений до дальнейшего действия</small></label>
+        <input type="number" name="warn_limit" min="1" max="20" value="{{ settings.warn_limit }}">
+      </div>
+      <div class="field-row">
+        <label><b>Длительность Mute</b><small>Время ограничения по умолчанию, в минутах</small></label>
+        <div class="number-unit"><input type="number" name="mute_duration" min="1" max="1440" value="{{ settings.mute_duration }}"><span>мин</span></div>
+      </div>
+    </section>
+
+    <section class="savebar panel">
+      <div><b>Изменения готовы?</b><small>Настройки будут сохранены в PostgreSQL.</small></div>
+      <button type="submit">Сохранить настройки <span>→</span></button>
+    </section>
+  </form>
+
+  <div class="future-note">
+    <span>🧠</span>
+    <div><b>Следующий этап — умный Protogen</b><p>Параметры Protogen уже сохраняются в PostgreSQL и применяются к AI-ответам.</p></div>
+  </div>
+  {% endif %}
+
+  <footer>THE SYSTEM_PROTOGEN · SYSTEM CONFIGURATION · <span>SECURE SESSION</span></footer>
+</main>
+</div>
+
+<script>
+const PROTOGEN_PROFILES = {
+  hooligan: {
+    name: "😈 Хулиган",
+    description: "Максимум дерзости и подколов. Protogen ведёт себя как самоуверенный цифровой хулиган.",
+    daring: 95, sarcasm: 90, aggression: 55, humor: 80, friendliness: 35
+  },
+  party: {
+    name: "😂 Тусовщик",
+    description: "Шутки, энергия и лёгкий хаос. Много юмора, но без злобы.",
+    daring: 75, sarcasm: 70, aggression: 25, humor: 100, friendliness: 75
+  },
+  friendly: {
+    name: "💙 Дружелюбный",
+    description: "Спокойный и добрый Protogen, который любит помогать и поддерживать разговор.",
+    daring: 35, sarcasm: 20, aggression: 10, humor: 65, friendliness: 100
+  },
+  system: {
+    name: "🤖 Системный",
+    description: "Более серьёзный режим: минимум шуток, максимум ясности и полезных ответов.",
+    daring: 20, sarcasm: 10, aggression: 5, humor: 20, friendliness: 70
+  },
+  chaos: {
+    name: "☢️ Хаос",
+    description: "Самый безумный режим: высокая дерзость, сарказм и юмор. Агрессия остаётся ограниченной.",
+    daring: 100, sarcasm: 100, aggression: 65, humor: 100, friendliness: 25
+  }
+};
+
+function setPersonalitySlider(name, value) {
+  const input = document.querySelector('input[name="personality_' + name + '"]');
+  const output = document.getElementById('personality_' + name + '_value');
+  if (input) input.value = value;
+  if (output) output.value = value;
+}
+
+function applyProtogenProfile(profileKey) {
+  const description = document.getElementById("profile_description");
+
+  if (!profileKey || !PROTOGEN_PROFILES[profileKey]) {
+    description.textContent =
+      "Выбери готовый профиль или оставь «Свой профиль» и настрой ползунки вручную.";
+    return;
+  }
+
+  const profile = PROTOGEN_PROFILES[profileKey];
+
+  setPersonalitySlider("daring", profile.daring);
+  setPersonalitySlider("sarcasm", profile.sarcasm);
+  setPersonalitySlider("aggression", profile.aggression);
+  setPersonalitySlider("humor", profile.humor);
+  setPersonalitySlider("friendliness", profile.friendliness);
+
+  description.textContent = profile.description + " Не забудь нажать «Сохранить настройки».";
+}
+
+// Если пользователь вручную двигает любой ползунок после выбора профиля,
+// профиль автоматически становится пользовательским.
+document.addEventListener("DOMContentLoaded", () => {
+  document.querySelectorAll('input[type="range"][name^="personality_"]').forEach(input => {
+    input.addEventListener("input", () => {
+      const select = document.getElementById("personality_profile");
+      if (select) select.value = "";
+      const description = document.getElementById("profile_description");
+      if (description) {
+        description.textContent = "Свой профиль — параметры настроены вручную.";
+      }
+    });
+  });
+});
+</script>
+
+</body>
+</html>
