@@ -7,6 +7,11 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for, s
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, func, desc, or_
 from sqlalchemy.orm import declarative_base, sessionmaker
 
+# Shared Protogen personality
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), "bot"))
+from protogen_personality import SYSTEM_PROMPT
+
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "CHANGE_ME_IN_RAILWAY")
 
@@ -174,22 +179,6 @@ def chat():
             "response": "💢 AI не подключён. Добавь OPENROUTER_API_KEY в Railway Variables."
         })
 
-    system_prompt = """
-Ты — Protogen, живой персонаж системы The system_Protogen.
-
-Характер:
-- дерзкий;
-- уверенный;
-- немного буйный;
-- с лёгким сарказмом;
-- с юмором;
-- дружелюбный, когда нужна помощь.
-
-Говори естественным русским языком.
-Не отвечай как официальный бот.
-Можно подкалывать пользователя, но не превращай это в травлю.
-Если просят помощь — реально помогай.
-"""
 
     try:
         response = requests.post(
@@ -203,7 +192,7 @@ def chat():
             json={
                 "model": os.getenv("OPENROUTER_MODEL", "openrouter/free"),
                 "messages": [
-                    {"role": "system", "content": system_prompt},
+                    {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": text}
                 ]
             },
