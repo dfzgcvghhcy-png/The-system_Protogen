@@ -5,7 +5,7 @@ import requests
 
 MAX_HISTORY = int(os.getenv("AI_MEMORY_MESSAGES", "12"))
 
-from protogen_personality import SYSTEM_PROMPT
+from protogen_personality import get_system_prompt
 
 _history = defaultdict(lambda: deque(maxlen=MAX_HISTORY))
 
@@ -39,7 +39,7 @@ def ask_protogen(text: str, user_key: str = "default"):
                 "messages": [
                     {
                         "role": "system",
-                        "content": SYSTEM_PROMPT
+                        "content": get_system_prompt()
                     },
                     *list(history)
                 ],
