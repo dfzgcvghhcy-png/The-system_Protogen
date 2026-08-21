@@ -337,3 +337,82 @@ footer{position:fixed;left:0;bottom:5px;width:100%;text-align:center;color:#4059
   .system-monitor{grid-template-columns:120px 1fr}
   .chat-modal{height:88vh}
 }
+
+
+/* =========================================================
+   ADMIN SETTINGS TRANSITION
+   Плавный "SYSTEM ACCESS" переход перед открытием админки.
+   ========================================================= */
+.admin-transition{
+  position:fixed;
+  inset:0;
+  z-index:9999;
+  pointer-events:none;
+  opacity:0;
+  background:
+    radial-gradient(circle at 50% 50%,rgba(155,69,255,.16),transparent 24%),
+    linear-gradient(180deg,rgba(1,3,8,.18),rgba(1,2,7,.96));
+  backdrop-filter:blur(0);
+  transition:opacity .42s ease,backdrop-filter .55s ease;
+}
+.admin-transition:before{
+  content:"";
+  position:absolute;
+  left:0;
+  right:0;
+  top:-10%;
+  height:2px;
+  background:linear-gradient(90deg,transparent,var(--cyan),#9b45ff,var(--cyan),transparent);
+  box-shadow:0 0 24px rgba(0,255,225,.55);
+  opacity:0;
+}
+.admin-transition:after{
+  content:"SYSTEM ACCESS  //  SECURE CONSOLE";
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%) scale(.94);
+  color:#bffef5;
+  font-size:9px;
+  font-weight:900;
+  letter-spacing:3px;
+  opacity:0;
+  text-shadow:0 0 18px rgba(0,255,225,.55);
+  white-space:nowrap;
+}
+body.admin-transitioning .admin-transition{
+  opacity:1;
+  backdrop-filter:blur(9px);
+}
+body.admin-transitioning .admin-transition:before{
+  opacity:1;
+  animation:adminScan .72s cubic-bezier(.4,0,.2,1) forwards;
+}
+body.admin-transitioning .admin-transition:after{
+  animation:adminAccess .72s ease forwards;
+}
+body.admin-transitioning .admin-cta{
+  border-color:var(--cyan);
+  color:#dffffb;
+  box-shadow:0 0 30px rgba(0,255,225,.18),inset 0 0 18px rgba(0,255,225,.05);
+}
+body.admin-transitioning .admin-cta b{
+  transform:translateX(5px);
+}
+.admin-cta b{
+  display:inline-block;
+  transition:transform .3s ease;
+}
+@keyframes adminScan{
+  0%{top:-10%;opacity:0}
+  15%{opacity:1}
+  100%{top:110%;opacity:0}
+}
+@keyframes adminAccess{
+  0%{opacity:0;transform:translate(-50%,-50%) scale(.94);letter-spacing:3px}
+  35%{opacity:1;transform:translate(-50%,-50%) scale(1);letter-spacing:3.6px}
+  100%{opacity:0;transform:translate(-50%,-50%) scale(1.04);letter-spacing:4px}
+}
+@media(prefers-reduced-motion:reduce){
+  .admin-transition,.admin-transition:before,.admin-transition:after{animation:none!important;transition:none!important}
+}

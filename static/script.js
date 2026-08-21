@@ -204,3 +204,32 @@
     }
   }, 2200);
 })();
+
+
+// ---------------------------------------------------------
+// ADMIN SETTINGS TRANSITION
+// Кнопка не открывает панель сразу: сначала короткий
+// плавный SYSTEM ACCESS эффект, затем /admin/login.
+// ---------------------------------------------------------
+(() => {
+  const adminLink = document.querySelector('.admin-cta');
+  if (!adminLink) return;
+
+  adminLink.addEventListener('click', (event) => {
+    const target = adminLink.href;
+    if (!target) return;
+
+    event.preventDefault();
+
+    // Защита от двойного клика.
+    if (document.body.classList.contains('admin-transitioning')) return;
+
+    document.body.classList.add('admin-transitioning');
+
+    // Даем анимации завершиться, после чего открываем
+    // существующую защищенную страницу входа.
+    window.setTimeout(() => {
+      window.location.href = target;
+    }, 720);
+  });
+})();
