@@ -21,9 +21,9 @@
         </div>
 
         <nav class="public-nav" aria-label="Основная навигация">
-            <a href="#chat">💬 ЧАТ</a>
+            <a href="#chat" id="topChatLink">💬 ЧАТ</a>
             <a href="#system">◈ СИСТЕМА</a>
-            <a class="settings-link" href="#system">⚙ НАСТРОЙКИ</a>
+            <a class="settings-link" href="#settings" id="openSettings">⚙ НАСТРОЙКИ</a>
         </nav>
 
         <div class="system-pill"><i></i> СИСТЕМА АКТИВНА</div>
@@ -40,7 +40,7 @@
 
             
             <div class="hero-actions">
-                <a class="chat-cta" href="#chat">◈ &nbsp; ЗАЙТИ В ЧАТ <b>→</b></a>
+                <a class="chat-cta" href="#chat" id="heroChatBtn">◈ &nbsp; ЗАЙТИ В ЧАТ <b>→</b></a>
                 <a class="admin-cta" href="/admin/login">⚙ &nbsp; НАСТРОЙКИ СИСТЕМЫ <b>→</b></a>
             </div>
 
@@ -63,7 +63,7 @@
             </div>
         </section>
 
-        <section class="bot-panel" id="chat">
+        <section class="bot-panel chat-closed" id="chat">
             <div class="panel-header">
                 <div class="panel-user">
                     <div class="panel-avatar">
@@ -107,7 +107,7 @@
                 <div><span>AI CORE</span><b>READY</b></div>
                 <div><span>SECURITY</span><b>LOCKED</b></div>
             </div>
-            <div class="system-note">Admin Console защищена авторизацией.</div>
+            <div class="system-note">Пользовательские настройки сохраняются только у тебя.</div>
         </aside>
     </main>
 
@@ -118,5 +118,58 @@
     </footer>
 
     <script src="/static/script.js"></script>
+
+    <!-- PUBLIC USER SETTINGS -->
+    <div class="settings-overlay" id="settingsOverlay" aria-hidden="true">
+        <section class="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+            <button class="settings-close" id="closeSettings" aria-label="Закрыть">×</button>
+            <div class="modal-kicker">USER CONSOLE // LOCAL</div>
+            <h2 id="settingsTitle">Настройки</h2>
+            <p class="modal-sub">Эти настройки принадлежат только тебе. Выбранные обои сохраняются локально в этом браузере и не меняют обои других пользователей.</p>
+
+            <div class="setting-section">
+                <div class="setting-title">
+                    <span>🖼️ ОБОИ</span>
+                    <small>Только для тебя</small>
+                </div>
+
+                <div class="wallpaper-grid" id="wallpaperGrid">
+                    <button class="wall-option active" data-wall="default">
+                        <span class="wall-preview wall-default"></span>
+                        <b>Protogen</b>
+                    </button>
+                    <button class="wall-option" data-wall="violet">
+                        <span class="wall-preview wall-violet"></span>
+                        <b>Violet Grid</b>
+                    </button>
+                    <button class="wall-option" data-wall="nebula">
+                        <span class="wall-preview wall-nebula"></span>
+                        <b>Deep Nebula</b>
+                    </button>
+                    <button class="wall-option" data-wall="cyber">
+                        <span class="wall-preview wall-cyber"></span>
+                        <b>Cyber Grid</b>
+                    </button>
+                </div>
+
+                <label class="upload-wallpaper">
+                    <input type="file" id="customWallpaper" accept="image/png,image/jpeg,image/webp">
+                    <span>＋ ЗАГРУЗИТЬ СВОЁ ИЗОБРАЖЕНИЕ</span>
+                    <small>до 4 МБ · хранится только в твоём браузере</small>
+                </label>
+
+                <button class="reset-wallpaper" id="resetWallpaper">↺ Вернуть Protogen</button>
+            </div>
+
+            <div class="settings-security">
+                <span>🔒</span>
+                <div>
+                    <strong>Админ-панель отдельно</strong>
+                    <small>Кнопка «Настройки системы» требует логин и пароль администратора.</small>
+                </div>
+            </div>
+        </section>
+    </div>
+
 </body>
 </html>
