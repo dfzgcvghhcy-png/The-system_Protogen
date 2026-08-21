@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ProtogenAdmin — Настройки</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='settings.css') }}">
+</head>
+<body>
+<div class="bg"></div><div class="grid"></div>
+
+<div class="shell">
+<header class="topbar">
+  <a class="brand" href="/admin">
+    <div class="brand-avatar"><img src="{{ url_for('static', filename='my_avatar.gif') }}" alt=""></div>
+    <div><div class="brand-name">ProtogenAdmin <span>Console</span></div><div class="brand-sub"><i></i> THE SYSTEM_PROTOGEN</div></div>
+  </a>
+  <nav>
+    <a href="/admin">🏠 Главная</a>
+    <a href="/admin/users">👥 Пользователи</a>
+    <a href="/admin#moderation">⚔️ Модерация</a>
+    <a href="/admin/history">📜 История</a>
+    <a href="/admin/statistics">📊 Статистика</a>
+    <a class="active" href="/admin/settings">⚙️ Настройки</a>
+  </nav>
+  <a class="logout" href="/admin/logout">↪ Выйти</a>
+</header>
+
+<main class="settings-main">
+  <section class="settings-hero">
+    <div>
+      <div class="eyebrow">SYSTEM CONFIGURATION</div>
+      <h1>Настройки</h1>
+      <p>Управление поведением Protogen через PostgreSQL.</p>
+    </div>
+    <div class="online-pill"><i></i> DATABASE CONFIG</div>
+  </section>
+
+  {% if saved %}
+  <div class="notice success">✓ Настройки сохранены.</div>
+  {% endif %}
+  {% if error %}
+  <div class="notice error">⚠️ {{ error }}</div>
+  {% endif %}
+
+  {% if settings %}
+  <form method="post" class="settings-form">
+
+    <section class="panel settings-card">
+      <div class="card-title">
+        <div><span>🛡️</span><div><div class="panel-kicker">MODERATION</div><h2>Модерация</h2></div></div>
+        <label class="switch"><input type="checkbox" name="moderation_enabled" {% if settings.moderation_enabled %}checked{% endif %}><i></i></label>
+      </div>
+      <p class="desc">Главный переключатель системы модерации.</p>
+
+      <div class="setting-row">
+        <div><b>⚠️ Warn</b><small>Разрешить предупреждения</small></div>
+        <label class="switch"><input type="checkbox" name="warn_enabled" {% if settings.warn_enabled %}checked{% endif %}><i></i></label>
+      </div>
+      <div class="setting-row">
+        <div><b>🔇 Mute</b><small>Разрешить временное ограничение</small></div>
+        <label class="switch"><input type="checkbox" name="mute_enabled" {% if settings.mute_enabled %}checked{% endif %}><i></i></label>
+      </div>
+      <div class="setting-row">
+        <div><b>🚫 Ban</b><small>Разрешить блокировку пользователей</small></div>
+        <label class="switch"><input type="checkbox" name="ban_enabled" {% if settings.ban_enabled %}checked{% endif %}><i></i></label>
+      </div>
+      <div class="setting-row">
+        <div><b>👢 Kick</b><small>Разрешить исключение пользователей</small></div>
+        <label class="switch"><input type="checkbox" name="kick_enabled" {% if settings.kick_enabled %}checked{% endif %}><i></i></label>
+      </div>
+    </section>
+
+    <section class="panel settings-card">
+      <div class="card-title">
+        <div><span>⚡</span><div><div class="panel-kicker">AUTOMATION</div><h2>Автоматизация</h2></div></div>
+      </div>
+
+      <div class="setting-row">
+        <div><b>🗑️ Автоудаление спама</b><small>Удалять сообщения, которые бот определяет как спам</small></div>
+        <label class="switch"><input type="checkbox" name="auto_delete_spam" {% if settings.auto_delete_spam %}checked{% endif %}><i></i></label>
+      </div>
+
+      <div class="setting-row">
+        <div><b>🧠 AI-модерация</b><small>Подготовлено для будущего подключения умной модерации</small></div>
+        <label class="switch ai"><input type="checkbox" name="ai_moderation_enabled" {% if settings.ai_moderation_enabled %}checked{% endif %}><i></i></label>
+      </div>
+    </section>
+
+
+    <section class="panel settings-card protogen-ai-card">
+      <div class="card-title">
+        <div><span>🐾</span><div><div class="panel-kicker">PROTOGEN AI</div><h2>Характер Protogen</h2></div></div>
+      </div>
+
+      <p class="desc">Настройки сохраняются в PostgreSQL и используются и на сайте, и в Telegram.</p>
+
+      <div class="ai-slider-row">
+        <div><b>😈 Дерзость</b><span><output id="personality_daring_value">{{ settings.personality_daring }}</output>%</span></div>
+        <input type="range" name="personality_daring" min="0" max="100" value="{{ settings.personality_daring }}"
+               oninput="document.getElementById('personality_daring_value').value=this.value">
+      </div>
+
+      <div class="ai-slider-row">
+        <div><b>😏 Сарказм</b><span><output id="personality_sarcasm_value">{{ settings.personality_sarcasm }}</output>%</span></div>
+        <input type="range" name="personality_sarcasm" min="0" max="100" value="{{ settings.personality_sarcasm }}"
+               oninput="document.getElementById('personality_sarcasm_value').value=this.value">
+      </div>
+
+      <div class="ai-slider-row">
+        <div><b>🔥 Агрессия</b><span><output id="personality_aggression_value">{{ settings.personality_aggression }}</output>%</span></div>
+        <input type="range" name="personality_aggression" min="0" max="100" value="{{ settings.personality_aggression }}"
+               oninput="document.getElementById('personality_aggression_value').value=this.value">
+      </div>
+
+      <div class="ai-slider-row">
+        <div><b>😂 Юмор</b><span><output id="personality_humor_value">{{ settings.personality_humor }}</output>%</span></div>
+        <input type="range" name="personality_humor" min="0" max="100" value="{{ settings.personality_humor }}"
+               oninput="document.getElementById('personality_humor_value').value=this.value">
+      </div>
+
+      <div class="ai-slider-row">
+        <div><b>💙 Дружелюбие</b><span><output id="personality_friendliness_value">{{ settings.personality_friendliness }}</output>%</span></div>
+        <input type="range" name="personality_friendliness" min="0" max="100" value="{{ settings.personality_friendliness }}"
+               oninput="document.getElementById('personality_friendliness_value').value=this.value">
+      </div>
+    </section>
+
+    <section class="panel settings-card">
+      <div class="card-title">
+        <div><span>⏱️</span><div><div class="panel-kicker">LIMITS</div><h2>Лимиты</h2></div></div>
+      </div>
+
+      <div class="field-row">
+        <label><b>Лимит Warn</b><small>Количество предупреждений до дальнейшего действия</small></label>
+        <input type="number" name="warn_limit" min="1" max="20" value="{{ settings.warn_limit }}">
+      </div>
+      <div class="field-row">
+        <label><b>Длительность Mute</b><small>Время ограничения по умолчанию, в минутах</small></label>
+        <div class="number-unit"><input type="number" name="mute_duration" min="1" max="1440" value="{{ settings.mute_duration }}"><span>мин</span></div>
+      </div>
+    </section>
+
+    <section class="savebar panel">
+      <div><b>Изменения готовы?</b><small>Настройки будут сохранены в PostgreSQL.</small></div>
+      <button type="submit">Сохранить настройки <span>→</span></button>
+    </section>
+  </form>
+
+  <div class="future-note">
+    <span>🧠</span>
+    <div><b>Следующий этап — умный Protogen</b><p>Параметры Protogen уже сохраняются в PostgreSQL и применяются к AI-ответам.</p></div>
+  </div>
+  {% endif %}
+
+  <footer>THE SYSTEM_PROTOGEN · SYSTEM CONFIGURATION · <span>SECURE SESSION</span></footer>
+</main>
+</div>
+</body>
+</html>
