@@ -119,6 +119,16 @@ class Punishment(Base):
     )
 
 
+class AIMessage(Base):
+    __tablename__ = "ai_messages"
+
+    id = Column(Integer, primary_key=True)
+    user_key = Column(String, nullable=False, index=True)
+    role = Column(String, nullable=False)
+    content = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
 class BotSetting(Base):
     __tablename__ = "bot_settings"
     id = Column(Integer, primary_key=True, default=1)
