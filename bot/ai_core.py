@@ -5,8 +5,7 @@ import requests
 
 MAX_HISTORY = int(os.getenv("AI_MEMORY_MESSAGES", "12"))
 
-SYSTEM_PROMPT = """
-Ты — Protogen, персонаж системы The system_Protogen.
+from protogen_personality import SYSTEM_PROMPT
 
 Характер:
 - буйный;
