@@ -4,16 +4,12 @@ from datetime import datetime, timedelta
 from functools import wraps
 
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, func, desc, or_
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, Text, func, desc, or_
 from sqlalchemy.orm import declarative_base, sessionmaker
-
-# Shared Protogen personality
-import sys
-sys.path.append(os.path.join(os.path.dirname(__file__), "bot"))
-from protogen_personality import get_system_prompt
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "CHANGE_ME_IN_RAILWAY")
+app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
 
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
@@ -80,42 +76,22 @@ class BotSetting(Base):
     ai_moderation_enabled = Column(Boolean, default=False)
     warn_limit = Column(Integer, default=3)
     mute_duration = Column(Integer, default=60)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    personality_daring = Column(Integer, default=75)
-    personality_sarcasm = Column(Integer, default=70)
-    personality_aggression = Column(Integer, default=45)
-    personality_humor = Column(Integer, default=85)
-    personality_friendliness = Column(Integer, default=60)
 
+class SiteSetting(Base):
+    __tablename__ = "site_settings"
+    id = Column(Integer, primary_key=True, default=1)
+    selected_wallpaper = Column(String, default="default")
+    custom_wallpaper = Column(Text, nullable=True)
+    custom_wallpaper_name = Column(String, nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 # Create missing tables only after ALL SQLAlchemy models are registered.
 if engine:
     Base.metadata.create_all(engine)
-
-    # Safe migration for existing PostgreSQL bot_settings table.
-    try:
-        from sqlalchemy import inspect, text as sa_text
-        inspector = inspect(engine)
-        if "bot_settings" in inspector.get_table_names():
-            existing = {c["name"] for c in inspector.get_columns("bot_settings")}
-            personality_columns = {
-                "personality_daring": "INTEGER DEFAULT 75",
-                "personality_sarcasm": "INTEGER DEFAULT 70",
-                "personality_aggression": "INTEGER DEFAULT 45",
-                "personality_humor": "INTEGER DEFAULT 85",
-                "personality_friendliness": "INTEGER DEFAULT 60",
-            }
-            with engine.begin() as connection:
-                for name, definition in personality_columns.items():
-                    if name not in existing:
-                        connection.execute(
-                            sa_text(f"ALTER TABLE bot_settings ADD COLUMN {name} {definition}")
-                        )
-        print("🗄️ Database tables checked/created")
-    except Exception as e:
-        print(f"⚠️ Web personality migration: {type(e).__name__}: {e}")
+    print("🗄️ Database tables checked/created")
 
 def admin_required(view):
     @wraps(view)
@@ -208,6 +184,22 @@ def chat():
             "response": "💢 AI не подключён. Добавь OPENROUTER_API_KEY в Railway Variables."
         })
 
+    system_prompt = """
+Ты — Protogen, живой персонаж системы The system_Protogen.
+
+Характер:
+- дерзкий;
+- уверенный;
+- немного буйный;
+- с лёгким сарказмом;
+- с юмором;
+- дружелюбный, когда нужна помощь.
+
+Говори естественным русским языком.
+Не отвечай как официальный бот.
+Можно подкалывать пользователя, но не превращай это в травлю.
+Если просят помощь — реально помогай.
+"""
 
     try:
         response = requests.post(
@@ -221,7 +213,7 @@ def chat():
             json={
                 "model": os.getenv("OPENROUTER_MODEL", "openrouter/free"),
                 "messages": [
-                    {"role": "system", "content": get_system_prompt()},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": text}
                 ]
             },
@@ -281,6 +273,151 @@ def admin_dashboard_api():
     except Exception as e:
         print(f"DASHBOARD DB ERROR: {type(e).__name__}: {e}")
         return jsonify({"database": "error", "error": f"{type(e).__name__}: {e}"}), 500
+
+
+# ============================================================
+# WALLPAPER SYSTEM
+# ============================================================
+
+ALLOWED_WALLPAPER_TYPES = {
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "image/gif",
+}
+
+
+def get_site_settings(db):
+    settings = db.query(SiteSetting).filter(SiteSetting.id == 1).first()
+    if not settings:
+        settings = SiteSetting(id=1, selected_wallpaper="default")
+        db.add(settings)
+        db.commit()
+        db.refresh(settings)
+    return settings
+
+
+@app.route("/api/admin/wallpaper", methods=["GET"])
+@admin_required
+def admin_wallpaper_get():
+    if not SessionLocal:
+        return jsonify({"error": "DATABASE_URL не настроен."}), 500
+
+    db = SessionLocal()
+    try:
+        settings = get_site_settings(db)
+        return jsonify({
+            "selected": settings.selected_wallpaper or "default",
+            "custom": bool(settings.custom_wallpaper),
+            "custom_name": settings.custom_wallpaper_name,
+            "custom_data": settings.custom_wallpaper,
+        })
+    except Exception as e:
+        db.rollback()
+        print(f"WALLPAPER GET ERROR: {type(e).__name__}: {e}")
+        return jsonify({"error": f"{type(e).__name__}: {e}"}), 500
+    finally:
+        db.close()
+
+
+@app.route("/api/admin/wallpaper", methods=["POST"])
+@admin_required
+def admin_wallpaper_select():
+    if not SessionLocal:
+        return jsonify({"error": "DATABASE_URL не настроен."}), 500
+
+    data = request.get_json(silent=True) or {}
+    selected = (data.get("selected") or "default").strip()
+    allowed_presets = {"default", "violet", "nebula", "matrix", "custom"}
+
+    if selected not in allowed_presets:
+        return jsonify({"error": "Неизвестная тема обоев."}), 400
+
+    db = SessionLocal()
+    try:
+        settings = get_site_settings(db)
+        if selected == "custom" and not settings.custom_wallpaper:
+            return jsonify({"error": "Сначала загрузи свои обои."}), 400
+        settings.selected_wallpaper = selected
+        settings.updated_at = datetime.utcnow()
+        db.commit()
+        return jsonify({"ok": True, "selected": selected})
+    except Exception as e:
+        db.rollback()
+        print(f"WALLPAPER SELECT ERROR: {type(e).__name__}: {e}")
+        return jsonify({"error": f"{type(e).__name__}: {e}"}), 500
+    finally:
+        db.close()
+
+
+@app.route("/api/admin/wallpaper/upload", methods=["POST"])
+@admin_required
+def admin_wallpaper_upload():
+    if not SessionLocal:
+        return jsonify({"error": "DATABASE_URL не настроен."}), 500
+
+    image = request.files.get("wallpaper")
+    if not image or not image.filename:
+        return jsonify({"error": "Файл обоев не выбран."}), 400
+
+    content_type = (image.mimetype or "").lower()
+    if content_type not in ALLOWED_WALLPAPER_TYPES:
+        return jsonify({"error": "Разрешены PNG, JPG, WEBP и GIF."}), 400
+
+    raw = image.read()
+    if not raw:
+        return jsonify({"error": "Файл пустой."}), 400
+    if len(raw) > 4 * 1024 * 1024:
+        return jsonify({"error": "Размер обоев не должен превышать 4 МБ."}), 400
+
+    import base64
+    data_url = f"data:{content_type};base64,{base64.b64encode(raw).decode('ascii')}"
+
+    db = SessionLocal()
+    try:
+        settings = get_site_settings(db)
+        settings.custom_wallpaper = data_url
+        settings.custom_wallpaper_name = image.filename[:180]
+        settings.selected_wallpaper = "custom"
+        settings.updated_at = datetime.utcnow()
+        db.commit()
+        return jsonify({
+            "ok": True,
+            "selected": "custom",
+            "custom": True,
+            "custom_name": settings.custom_wallpaper_name,
+            "custom_data": settings.custom_wallpaper,
+        })
+    except Exception as e:
+        db.rollback()
+        print(f"WALLPAPER UPLOAD ERROR: {type(e).__name__}: {e}")
+        return jsonify({"error": f"{type(e).__name__}: {e}"}), 500
+    finally:
+        db.close()
+
+
+@app.route("/api/admin/wallpaper/custom", methods=["DELETE"])
+@admin_required
+def admin_wallpaper_delete():
+    if not SessionLocal:
+        return jsonify({"error": "DATABASE_URL не настроен."}), 500
+
+    db = SessionLocal()
+    try:
+        settings = get_site_settings(db)
+        settings.custom_wallpaper = None
+        settings.custom_wallpaper_name = None
+        if settings.selected_wallpaper == "custom":
+            settings.selected_wallpaper = "default"
+        settings.updated_at = datetime.utcnow()
+        db.commit()
+        return jsonify({"ok": True, "selected": settings.selected_wallpaper})
+    except Exception as e:
+        db.rollback()
+        print(f"WALLPAPER DELETE ERROR: {type(e).__name__}: {e}")
+        return jsonify({"error": f"{type(e).__name__}: {e}"}), 500
+    finally:
+        db.close()
 
 
 # ============================================================
@@ -513,22 +650,8 @@ def admin_statistics():
     finally: db.close()
 
 
-DEFAULT_SETTINGS={
-    "moderation_enabled": True,
-    "auto_delete_spam": True,
-    "warn_enabled": True,
-    "mute_enabled": True,
-    "ban_enabled": True,
-    "kick_enabled": True,
-    "ai_moderation_enabled": False,
-    "warn_limit": 3,
-    "mute_duration": 60,
-    "personality_daring": 75,
-    "personality_sarcasm": 70,
-    "personality_aggression": 45,
-    "personality_humor": 85,
-    "personality_friendliness": 60,
-}
+DEFAULT_SETTINGS={"moderation_enabled":True,"auto_delete_spam":True,"warn_enabled":True,"mute_enabled":True,
+                  "ban_enabled":True,"kick_enabled":True,"ai_moderation_enabled":False,"warn_limit":3,"mute_duration":60}
 
 def get_bot_settings(db):
     s=db.query(BotSetting).filter(BotSetting.id==1).first()
@@ -550,18 +673,10 @@ def admin_settings():
             s.warn_enabled=flag("warn_enabled"); s.mute_enabled=flag("mute_enabled")
             s.ban_enabled=flag("ban_enabled"); s.kick_enabled=flag("kick_enabled")
             s.ai_moderation_enabled=flag("ai_moderation_enabled")
-
             try:
                 s.warn_limit=max(1,min(20,int(request.form.get("warn_limit","3"))))
                 s.mute_duration=max(1,min(1440,int(request.form.get("mute_duration","60"))))
-
-                s.personality_daring=max(0,min(100,int(request.form.get("personality_daring","75"))))
-                s.personality_sarcasm=max(0,min(100,int(request.form.get("personality_sarcasm","70"))))
-                s.personality_aggression=max(0,min(100,int(request.form.get("personality_aggression","45"))))
-                s.personality_humor=max(0,min(100,int(request.form.get("personality_humor","85"))))
-                s.personality_friendliness=max(0,min(100,int(request.form.get("personality_friendliness","60"))))
-            except ValueError:
-                error="Лимиты и параметры характера должны быть числами."
+            except ValueError: error="Лимит Warn и длительность Mute должны быть числами."
             if not error: s.updated_at=datetime.utcnow(); db.commit(); saved=True
         return render_template("settings.html",username=session.get("admin_username",ADMIN_USERNAME),settings=s,error=error,saved=saved)
     except Exception as e:
