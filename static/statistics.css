@@ -1,6 +1,6 @@
 /* Protogen Analytics — redesigned statistics */
 .stats-page{padding:26px 28px 24px}
-.stats-hero{min-height:142px;padding:28px 30px;margin-bottom:14px;display:flex;align-items:flex-end;justify-content:space-between;gap:20px;border:1px solid rgba(0,255,225,.16);border-radius:16px;background:linear-gradient(90deg,rgba(2,8,18,.88),rgba(4,8,18,.55)),url("/static/bg.png") center/cover;position:relative;overflow:hidden;box-shadow:0 18px 45px rgba(0,0,0,.25)}
+.stats-hero{height:185px;margin-bottom:14px;border:0;border-radius:14px;background:transparent;position:relative;overflow:hidden;box-shadow:none;line-height:0}.stats-hero img{display:block;width:100%;height:100%;object-fit:contain;object-position:center;max-width:none}
 .stats-hero:after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:linear-gradient(90deg,transparent,#00ffe1,#a84cff,transparent)}
 .stats-hero h1{margin:7px 0 5px;font-size:36px;letter-spacing:-1px}
 .stats-hero p{margin:0;color:#789092;font-size:12px}
@@ -21,7 +21,7 @@
 .stats-grid{display:grid;gap:12px;margin-bottom:12px}
 .top-grid{grid-template-columns:1.45fr 1fr}
 .middle-grid{grid-template-columns:1.35fr 1fr}
-.bottom-grid{grid-template-columns:1.3fr 1fr}
+.bottom-grid{grid-template-columns:1.3fr 1fr;grid-template-areas:"users moderation";align-items:stretch}.bottom-grid .top-users-panel{grid-area:users}.bottom-grid .moderation-detail{grid-area:moderation}
 .panel{border:1px solid rgba(0,255,225,.13);border-radius:16px;background:linear-gradient(145deg,rgba(4,15,24,.91),rgba(2,8,16,.86));box-shadow:0 16px 45px rgba(0,0,0,.24);padding:19px;overflow:hidden}
 .panel h2{font-size:17px;margin:5px 0 0;color:#e8ffff}
 .panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
@@ -59,6 +59,6 @@
 .moderation-detail{min-height:260px}.mod-row{margin-top:14px}.mod-row>div:first-child{display:flex;justify-content:space-between;font-size:9px;color:#83999a}.mod-row b{color:#d9eeee}.mod-track{height:5px;margin-top:7px;background:rgba(255,255,255,.045);border-radius:5px;overflow:hidden}.mod-track i{display:block;height:100%;border-radius:5px;background:#00d9ce;box-shadow:0 0 10px rgba(0,255,225,.18)}.mod-track i.mute{background:#7d42ee}.mod-track i.ban{background:#ff4d88}.mod-track i.kick{background:#c548ff}
 footer{text-align:center;color:#334d4e;font-size:8px;letter-spacing:1.7px;padding:5px 0 20px}footer span{color:#4a7778}
 
-@media(max-width:1250px){.stats-cards{grid-template-columns:repeat(3,1fr)}.top-grid,.middle-grid,.bottom-grid{grid-template-columns:1fr}.stats-hero{min-height:130px}}
-@media(max-width:820px){.stats-page{padding:18px 15px}.stats-cards{grid-template-columns:repeat(2,1fr)}.stats-hero{padding:22px;align-items:flex-start;flex-direction:column}.stats-hero h1{font-size:30px}.stats-live{align-self:flex-start}.chart-bars{gap:5px}.donut-row{gap:15px}.donut{width:125px;height:125px}.legend{width:155px}}
+@media(max-width:1250px){.stats-cards{grid-template-columns:repeat(3,1fr)}.top-grid,.middle-grid,.bottom-grid{grid-template-columns:1fr}.bottom-grid{grid-template-areas:"users" "moderation"}.stats-hero{height:160px}}
+@media(max-width:820px){.stats-page{padding:18px 15px}.stats-cards{grid-template-columns:repeat(2,1fr)}.stats-hero{height:140px}.stats-hero h1{font-size:30px}.stats-live{align-self:flex-start}.chart-bars{gap:5px}.donut-row{gap:15px}.donut{width:125px;height:125px}.legend{width:155px}}
 @media(max-width:520px){.stats-cards{grid-template-columns:1fr}.panel{padding:15px}.day-grid{gap:3px}.user-row{grid-template-columns:22px 34px 1fr auto}.donut-row{flex-direction:column}.legend{width:100%}}

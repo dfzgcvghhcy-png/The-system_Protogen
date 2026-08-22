@@ -19,13 +19,8 @@
     <section class="error-box">⚠️ {{ error }}</section>
   {% else %}
 
-  <section class="stats-hero">
-    <div>
-      <div class="eyebrow">АНАЛИТИКА // ПАНЕЛЬ УПРАВЛЕНИЯ</div>
-      <h1>Статистика</h1>
-      <p>Живая статистика сообщества из общей PostgreSQL базы.</p>
-    </div>
-    <div class="stats-live"><i></i> LIVE DATABASE <b>ONLINE</b></div>
+  <section class="stats-hero" aria-label="Статистика">
+    <img src="{{ url_for('static', filename='statistics_banner_bg.png') }}" alt="Статистика">
   </section>
 
   <section class="stats-cards">
