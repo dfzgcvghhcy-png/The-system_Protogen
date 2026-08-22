@@ -7,3 +7,31 @@
 @media(max-width:820px){.settings-hero{min-height:150px;padding:20px;align-items:flex-start;flex-direction:column}.settings-hero .hero-statuses{width:100%}
 .settings-layout{display:block}.settings-sidebar{position:static;height:auto;border-right:0;border-bottom:1px solid rgba(0,255,225,.11)}.side-identity{display:flex;align-items:center;gap:10px;text-align:left;padding:0 4px 14px}.side-avatar{width:48px;height:48px;margin:0}.side-name{font-size:12px}.side-role{margin:0}.side-online{margin:0 0 0 auto}.settings-nav{display:flex;overflow:auto;padding:12px 0 0}.settings-nav a{min-width:150px}.settings-hero{align-items:flex-start;flex-direction:column}.hero-statuses{width:100%}.profile-select-wrap{align-items:stretch;flex-direction:column}.profile-select-wrap select{width:100%}.savebar{flex-wrap:wrap}.save-copy{min-width:calc(100% - 58px)}.reset-btn,.save-btn{flex:1;min-width:160px}}
 @media(max-width:560px){.settings-content{padding:20px 12px}.settings-hero h1{font-size:29px}.limit-grid{grid-template-columns:1fr}.card-head{padding:18px 15px}.setting-list,.sliders{padding-left:13px;padding-right:13px}.profile-select-wrap,.profile-description,.preview-box,.db-info{margin-left:13px;margin-right:13px}.savebar{padding:13px}.reset-btn,.save-btn{width:100%;flex:none}.hero-statuses span{flex:1}.side-identity{flex-wrap:wrap}}
+
+/* Exact Protogen settings banner */
+.settings-hero{
+  position:relative;
+  width:100%;
+  max-width:1258px;
+  margin:0 auto 22px;
+  padding:0;
+  min-height:0;
+  aspect-ratio:1258 / 508;
+  border:0;
+  border-radius:0;
+  background:none;
+  box-shadow:none;
+  overflow:hidden;
+}
+.settings-hero:after{display:none}
+.settings-hero-image{
+  display:block;
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  object-position:center;
+}
+.settings-hero-copy,.settings-hero .hero-statuses{display:none}
+@media(max-width:820px){
+  .settings-hero{aspect-ratio:1258 / 508; margin-bottom:16px}
+}
