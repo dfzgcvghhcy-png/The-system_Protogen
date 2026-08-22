@@ -1,7 +1,7 @@
 from telegram import Update, ChatPermissions, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
-from database import Session, User, Punishment, Activity, BotSetting
+from database import Session, User, Punishment, Activity, BotSetting, Chat, ChatUser, ChatActivity, ChatPunishment
 from filters import is_admin, bot_can_restrict
 from datetime import datetime, timezone, timedelta
 import pytz
@@ -48,6 +48,77 @@ async def check_callback_setting(query,name):
 
 
 SITE_URL = "https://web-production-c2beb.up.railway.app"
+
+
+# =========================================================
+# MULTI-SERVER TRACKING
+# =========================================================
+def _ensure_chat(session, chat):
+    if not chat or chat.type not in ("group", "supergroup"):
+        return None
+    row = session.get(Chat, chat.id)
+    now = datetime.utcnow()
+    if not row:
+        row = Chat(
+            chat_id=chat.id,
+            title=getattr(chat, "title", None),
+            username=getattr(chat, "username", None),
+            chat_type=getattr(chat, "type", None),
+            first_seen=now,
+            last_seen=now,
+            is_active=True,
+        )
+        session.add(row)
+    else:
+        row.title = getattr(chat, "title", None) or row.title
+        row.username = getattr(chat, "username", None)
+        row.chat_type = getattr(chat, "type", None)
+        row.last_seen = now
+        row.is_active = True
+    return row
+
+
+def _ensure_chat_user(session, chat, tg_user, status=None, joined_at=None, count_message=False):
+    if not chat or not tg_user or tg_user.is_bot or chat.type not in ("group", "supergroup"):
+        return None
+    _ensure_chat(session, chat)
+    row = (session.query(ChatUser)
+           .filter(ChatUser.chat_id == chat.id, ChatUser.user_id == tg_user.id)
+           .first())
+    now = datetime.utcnow()
+    if not row:
+        row = ChatUser(
+            chat_id=chat.id, user_id=tg_user.id,
+            username=tg_user.username, first_name=tg_user.first_name,
+            last_name=tg_user.last_name, status=status or "member",
+            first_seen=now, last_seen=now, joined_at=joined_at,
+            messages_count=1 if count_message else 0,
+        )
+        session.add(row)
+    else:
+        row.username=tg_user.username; row.first_name=tg_user.first_name; row.last_name=tg_user.last_name
+        row.last_seen=now
+        if status: row.status=status
+        if joined_at and not row.joined_at: row.joined_at=joined_at
+        if count_message: row.messages_count=(row.messages_count or 0)+1
+    return row
+
+
+def _record_chat_punishment(session, chat_id, user_id, action, reason, moderator_id):
+    if not chat_id or action not in {"warn","unwarn","mute","unmute","ban","unban","kick"}:
+        return
+    row = (session.query(ChatUser)
+           .filter(ChatUser.chat_id == chat_id, ChatUser.user_id == user_id)
+           .first())
+    if not row:
+        row = ChatUser(chat_id=chat_id, user_id=user_id, status="member", first_seen=datetime.utcnow(), last_seen=datetime.utcnow())
+        session.add(row)
+    if action == "warn": row.warns=(row.warns or 0)+1
+    elif action == "unwarn": row.warns=max(0,(row.warns or 0)-1)
+    elif action == "mute": row.mutes=(row.mutes or 0)+1
+    elif action == "ban": row.bans=(row.bans or 0)+1
+    elif action == "kick": row.kicks=(row.kicks or 0)+1
+    session.add(ChatPunishment(chat_id=chat_id,user_id=user_id,type=action,reason=reason or "Не указана",moderator_id=moderator_id))
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -136,7 +207,9 @@ async def warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             user.warns += 1
 
-        session.add(Punishment(user_id=target.id, type="warn", reason=" ".join(context.args) if context.args else "Не указана", moderator_id=update.effective_user.id))
+        reason = " ".join(context.args) if context.args else "Не указана"
+        session.add(Punishment(user_id=target.id, type="warn", reason=reason, moderator_id=update.effective_user.id))
+        _record_chat_punishment(session, update.effective_chat.id, target.id, "warn", reason, update.effective_user.id)
         session.commit()
         warns_count = user.warns
     finally:
@@ -179,7 +252,9 @@ async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     session = Session()
     try:
-        session.add(Punishment(user_id=target.id, type="ban", reason=" ".join(context.args) if context.args else "Не указана", moderator_id=update.effective_user.id))
+        reason = " ".join(context.args) if context.args else "Не указана"
+        session.add(Punishment(user_id=target.id, type="ban", reason=reason, moderator_id=update.effective_user.id))
+        _record_chat_punishment(session, update.effective_chat.id, target.id, "ban", reason, update.effective_user.id)
         session.commit()
     finally:
         session.close()
@@ -261,7 +336,9 @@ async def mute(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     session = Session()
     try:
-        session.add(Punishment(user_id=target.id, type="mute", reason=" ".join(context.args) if context.args else "Не указана", moderator_id=update.effective_user.id))
+        reason = " ".join(context.args) if context.args else "Не указана"
+        session.add(Punishment(user_id=target.id, type="mute", reason=reason, moderator_id=update.effective_user.id))
+        _record_chat_punishment(session, update.effective_chat.id, target.id, "mute", reason, update.effective_user.id)
         session.commit()
     finally:
         session.close()
@@ -599,6 +676,9 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             count_message=True,
         )
 
+        chat = update.effective_chat
+        server_user = _ensure_chat_user(session, chat, user_tg, status=status, count_message=True)
+
         # Дневная статистика. Используем UTC-полночь, чтобы запись
         # однозначно совпадала для PostgreSQL и SQLite.
         today = datetime.utcnow().replace(
@@ -626,6 +706,16 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             session.add(activity)
         else:
             activity.messages_count = (activity.messages_count or 0) + 1
+
+        if server_user is not None:
+            chat_activity = (session.query(ChatActivity)
+                .filter(ChatActivity.chat_id == update.effective_chat.id,
+                        ChatActivity.user_id == user_tg.id,
+                        ChatActivity.day == today).first())
+            if chat_activity is None:
+                session.add(ChatActivity(chat_id=update.effective_chat.id, user_id=user_tg.id, day=today, messages_count=1))
+            else:
+                chat_activity.messages_count=(chat_activity.messages_count or 0)+1
 
         session.commit()
 
@@ -664,6 +754,9 @@ async def track_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
             joined_at=joined_at,
             count_message=False,
         )
+        session.commit()
+
+        _ensure_chat_user(session, update.effective_chat, tg_user, status=new_status, joined_at=joined_at, count_message=False)
         session.commit()
         print(f"MEMBER TRACKED: {tg_user.id} -> {new_status}")
     except Exception as e:
@@ -720,6 +813,7 @@ async def track_my_chat_member(update: Update, context: ContextTypes.DEFAULT_TYP
                 status=member.status,
                 count_message=False,
             )
+            _ensure_chat_user(session, chat, tg_user, status=member.status, count_message=False)
 
         session.commit()
 
@@ -1240,6 +1334,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         moderator_id=query.from_user.id,
                     )
                 )
+                _record_chat_punishment(session, chat_id, user_id, "mute", f"Мут через панель: {duration_name}", query.from_user.id)
                 session.commit()
             finally:
                 session.close()
@@ -1341,6 +1436,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             moderator_id=query.from_user.id,
                         )
                     )
+                    _record_chat_punishment(session, chat_id, user_id, "unwarn", "Варн снят через панель", query.from_user.id)
 
                     session.commit()
                     warns_count = user.warns
@@ -1393,6 +1489,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             moderator_id=query.from_user.id,
                         )
                     )
+                    _record_chat_punishment(session, chat_id, user_id, "warn", "Выдано через панель", query.from_user.id)
                     session.commit()
                     warns_count = user.warns
                 finally:
@@ -1556,6 +1653,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         moderator_id=query.from_user.id,
                     )
                 )
+                _record_chat_punishment(session, chat_id, user_id, punishment_type, "Выдано через панель", query.from_user.id)
                 session.commit()
             finally:
                 session.close()
@@ -1649,6 +1747,7 @@ async def custom_reason_message(update: Update, context: ContextTypes.DEFAULT_TY
                 reason=reason,
                 moderator_id=update.effective_user.id,
             ))
+            _record_chat_punishment(session, update.effective_chat.id, user_id, "warn", reason, update.effective_user.id)
             session.commit()
             count = user.warns or 0
         finally:
