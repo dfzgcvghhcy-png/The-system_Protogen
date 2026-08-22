@@ -3,27 +3,40 @@
   const $$ = (s, root = document) => [...root.querySelectorAll(s)];
 
   // ---------------------------------------------------------
-  // INLINE CHAT — visible next to the hero, like the reference.
-  // Repeated clicks only focus/highlight it; they never close it.
+  // CHAT PANEL — hidden by default, toggle on click.
   // ---------------------------------------------------------
   const chatPanel = $('#chatPanel');
   const heroChatBtn = $('#heroChatBtn');
+  const topChatBtn = $('#topChatBtn');
   const input = $('#input');
   const messages = $('#messages');
 
-  function focusChat() {
+  function setChat(open, focusInput = false) {
     if (!chatPanel) return;
-    chatPanel.classList.remove('chat-focus');
-    void chatPanel.offsetWidth;
-    chatPanel.classList.add('chat-focus');
-    chatPanel.scrollIntoView({behavior:'smooth', block:'center'});
-    setTimeout(() => input?.focus(), 320);
+    document.body.classList.toggle('chat-open', open);
+    chatPanel.classList.toggle('is-open', open);
+    chatPanel.setAttribute('aria-hidden', open ? 'false' : 'true');
+    if (heroChatBtn) heroChatBtn.setAttribute('aria-expanded', String(open));
+    if (topChatBtn) topChatBtn.classList.toggle('active', open);
+
+    if (open) {
+      window.setTimeout(() => {
+        if (focusInput) input?.focus();
+        messages?.scrollTo({top: messages.scrollHeight, behavior:'smooth'});
+      }, 220);
+    }
+  }
+
+  function toggleChat(focusInput = true) {
+    setChat(!chatPanel?.classList.contains('is-open'), focusInput);
   }
 
   heroChatBtn?.addEventListener('click', (e) => {
     e.preventDefault();
-    focusChat();
+    toggleChat(true);
   });
+
+  topChatBtn?.addEventListener('click', () => toggleChat(true));
 
   function addMessage(text, type = 'bot') {
     if (!messages) return null;
