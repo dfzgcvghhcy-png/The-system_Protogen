@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from functools import wraps
 
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
-from sqlalchemy import create_engine, Column, Integer, BigInteger, String, DateTime, Boolean, Text, func, desc, or_
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, Text, func, desc, or_, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 app = Flask(__name__)
@@ -93,60 +93,15 @@ class SiteSetting(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
-class Chat(Base):
-    __tablename__ = "chats"
-    chat_id = Column(BigInteger, primary_key=True)
-    title = Column(String, nullable=True)
-    username = Column(String, nullable=True)
-    chat_type = Column(String, nullable=True)
-    first_seen = Column(DateTime, default=datetime.utcnow)
-    last_seen = Column(DateTime, default=datetime.utcnow)
-    is_active = Column(Boolean, default=True)
-
-
-class ChatUser(Base):
-    __tablename__ = "chat_users"
-    id = Column(Integer, primary_key=True)
-    chat_id = Column(BigInteger, nullable=False, index=True)
-    user_id = Column(BigInteger, nullable=False, index=True)
-    username = Column(String, nullable=True)
-    first_name = Column(String, nullable=True)
-    last_name = Column(String, nullable=True)
-    status = Column(String, default="member")
-    first_seen = Column(DateTime, default=datetime.utcnow)
-    last_seen = Column(DateTime, default=datetime.utcnow)
-    joined_at = Column(DateTime, nullable=True)
-    messages_count = Column(Integer, default=0)
-    warns = Column(Integer, default=0)
-    mutes = Column(Integer, default=0)
-    bans = Column(Integer, default=0)
-    kicks = Column(Integer, default=0)
-
-
-class ChatActivity(Base):
-    __tablename__ = "chat_activity"
-    id = Column(Integer, primary_key=True)
-    chat_id = Column(BigInteger, nullable=False, index=True)
-    user_id = Column(BigInteger, nullable=False, index=True)
-    day = Column(DateTime, nullable=False, index=True)
-    messages_count = Column(Integer, default=0)
-
-
-class ChatPunishment(Base):
-    __tablename__ = "chat_punishments"
-    id = Column(Integer, primary_key=True)
-    chat_id = Column(BigInteger, nullable=False, index=True)
-    user_id = Column(BigInteger, nullable=False, index=True)
-    type = Column(String, nullable=False)
-    reason = Column(String, default="Не указана")
-    moderator_id = Column(BigInteger, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
-
-
 # Create missing tables only after ALL SQLAlchemy models are registered.
 if engine:
     Base.metadata.create_all(engine)
-    print("🗄️ Database tables checked/created")
+    # Safe migration: add personality columns to an existing PostgreSQL table.
+    with engine.begin() as connection:
+        for column, default in (("personality_daring",75),("personality_sarcasm",70),("personality_aggression",45),("personality_humor",85),("personality_friendliness",60)):
+            connection.execute(text(f"ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS {column} INTEGER DEFAULT {default}"))
+        connection.execute(text("""UPDATE bot_settings SET personality_daring=COALESCE(personality_daring,75), personality_sarcasm=COALESCE(personality_sarcasm,70), personality_aggression=COALESCE(personality_aggression,45), personality_humor=COALESCE(personality_humor,85), personality_friendliness=COALESCE(personality_friendliness,60) WHERE id=1"""))
+    print("🗄️ Database tables checked/created; personality columns synced")
 
 def admin_required(view):
     @wraps(view)
@@ -215,74 +170,6 @@ def dashboard_data():
             "recent": recent,
             "activity": activity,
         }
-    finally:
-        db.close()
-
-
-
-
-# ============================================================
-# PUBLIC LIVE STATISTICS / MULTI-SERVER
-# ============================================================
-def _public_server_stats(db, chat_id=None):
-    now = datetime.utcnow()
-    cutoff = now - timedelta(hours=24)
-    q = db.query(ChatUser)
-    if chat_id is not None:
-        q = q.filter(ChatUser.chat_id == chat_id)
-    users = q.count()
-    messages = db.query(func.coalesce(func.sum(ChatUser.messages_count), 0))
-    active = db.query(func.count(ChatUser.id)).filter(ChatUser.last_seen >= cutoff)
-    actions = db.query(func.count(ChatPunishment.id))
-    if chat_id is not None:
-        messages = messages.filter(ChatUser.chat_id == chat_id)
-        active = active.filter(ChatUser.chat_id == chat_id)
-        actions = actions.filter(ChatPunishment.chat_id == chat_id)
-    return {
-        "users": int(users or 0),
-        "messages": int(messages.scalar() or 0),
-        "active_users": int(active.scalar() or 0),
-        "actions": int(actions.scalar() or 0),
-        "stability": "ONLINE",
-    }
-
-
-@app.route("/api/public/servers")
-def public_servers():
-    if not SessionLocal:
-        return jsonify({"servers": [], "database": "offline"})
-    db=SessionLocal()
-    try:
-        rows=db.query(Chat).filter(Chat.is_active == True).order_by(Chat.title.asc(), Chat.chat_id.asc()).all()
-        servers=[]
-        for row in rows:
-            stats=_public_server_stats(db,row.chat_id)
-            servers.append({"chat_id":str(row.chat_id),"title":row.title or f"Server {row.chat_id}","username":row.username,"type":row.chat_type,**stats})
-        return jsonify({"database":"online","servers":servers})
-    finally:
-        db.close()
-
-
-@app.route("/api/public/stats")
-def public_stats():
-    if not SessionLocal:
-        return jsonify({"database":"offline","error":"DATABASE_URL не настроен."}),500
-    raw=request.args.get("chat_id","").strip()
-    chat_id=None
-    if raw and raw.lower() not in {"all","0"}:
-        try: chat_id=int(raw)
-        except ValueError: return jsonify({"error":"Неверный chat_id."}),400
-    db=SessionLocal()
-    try:
-        stats=_public_server_stats(db,chat_id)
-        if chat_id is None:
-            # A user is counted once across all servers.
-            stats["users"]=int(db.query(func.count(func.distinct(ChatUser.user_id))).scalar() or 0)
-        server=None
-        if chat_id is not None:
-            server=db.get(Chat,chat_id)
-            if not server: return jsonify({"error":"Сервер ещё не отслеживается."}),404
-        return jsonify({"database":"online","scope":"all" if chat_id is None else "server","server":({"chat_id":str(server.chat_id),"title":server.title or str(server.chat_id)} if server else None),"stats":stats,"updated_at":datetime.utcnow().isoformat()+"Z"})
     finally:
         db.close()
 
@@ -797,15 +684,15 @@ def admin_settings():
             s.warn_enabled=flag("warn_enabled"); s.mute_enabled=flag("mute_enabled")
             s.ban_enabled=flag("ban_enabled"); s.kick_enabled=flag("kick_enabled")
             s.ai_moderation_enabled=flag("ai_moderation_enabled")
+            for attr, default in (("personality_daring",75),("personality_sarcasm",70),("personality_aggression",45),("personality_humor",85),("personality_friendliness",60)):
+                try:
+                    setattr(s, attr, max(0, min(100, int(request.form.get(attr, getattr(s, attr) if getattr(s, attr) is not None else default)))))
+                except (TypeError, ValueError):
+                    setattr(s, attr, default)
             try:
                 s.warn_limit=max(1,min(20,int(request.form.get("warn_limit","3"))))
                 s.mute_duration=max(1,min(1440,int(request.form.get("mute_duration","60"))))
-                s.personality_daring=max(0,min(100,int(request.form.get("personality_daring","75"))))
-                s.personality_sarcasm=max(0,min(100,int(request.form.get("personality_sarcasm","70"))))
-                s.personality_aggression=max(0,min(100,int(request.form.get("personality_aggression","45"))))
-                s.personality_humor=max(0,min(100,int(request.form.get("personality_humor","85"))))
-                s.personality_friendliness=max(0,min(100,int(request.form.get("personality_friendliness","60"))))
-            except ValueError: error="Лимиты и параметры характера должны быть числами."
+            except ValueError: error="Лимит Warn и длительность Mute должны быть числами."
             if not error: s.updated_at=datetime.utcnow(); db.commit(); saved=True
         return render_template("settings.html",username=session.get("admin_username",ADMIN_USERNAME),settings=s,error=error,saved=saved)
     except Exception as e:
