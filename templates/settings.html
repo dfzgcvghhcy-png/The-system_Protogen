@@ -16,15 +16,7 @@
 {% include '_admin_topbar.html' %}
 <main class="settings-content">
       <section class="settings-hero" aria-label="Настройки системы">
-        <div class="settings-hero-copy">
-          <div class="eyebrow">SYSTEM CONFIGURATION // ADMIN CONTROL</div>
-          <h1>Настройки системы</h1>
-          <p>Управление системой, модерацией, AI и поведением Protogen.</p>
-        </div>
-        <div class="hero-statuses">
-          <span><i></i> DATABASE <b>ONLINE</b></span>
-          <span><i></i> BOT STATUS <b>ONLINE</b></span>
-        </div>
+        <img class="settings-hero-image" src="{{ url_for('static', filename='settings_banner_bg.png') }}" alt="Настройки Protogen">
       </section>
 
       {% if saved %}
