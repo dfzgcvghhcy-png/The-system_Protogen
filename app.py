@@ -76,6 +76,11 @@ class BotSetting(Base):
     ai_moderation_enabled = Column(Boolean, default=False)
     warn_limit = Column(Integer, default=3)
     mute_duration = Column(Integer, default=60)
+    personality_daring = Column(Integer, default=75)
+    personality_sarcasm = Column(Integer, default=70)
+    personality_aggression = Column(Integer, default=45)
+    personality_humor = Column(Integer, default=85)
+    personality_friendliness = Column(Integer, default=60)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
@@ -769,7 +774,8 @@ def admin_statistics():
 
 
 DEFAULT_SETTINGS={"moderation_enabled":True,"auto_delete_spam":True,"warn_enabled":True,"mute_enabled":True,
-                  "ban_enabled":True,"kick_enabled":True,"ai_moderation_enabled":False,"warn_limit":3,"mute_duration":60}
+                  "ban_enabled":True,"kick_enabled":True,"ai_moderation_enabled":False,"warn_limit":3,"mute_duration":60,
+                  "personality_daring":75,"personality_sarcasm":70,"personality_aggression":45,"personality_humor":85,"personality_friendliness":60}
 
 def get_bot_settings(db):
     s=db.query(BotSetting).filter(BotSetting.id==1).first()
@@ -794,7 +800,12 @@ def admin_settings():
             try:
                 s.warn_limit=max(1,min(20,int(request.form.get("warn_limit","3"))))
                 s.mute_duration=max(1,min(1440,int(request.form.get("mute_duration","60"))))
-            except ValueError: error="Лимит Warn и длительность Mute должны быть числами."
+                s.personality_daring=max(0,min(100,int(request.form.get("personality_daring","75"))))
+                s.personality_sarcasm=max(0,min(100,int(request.form.get("personality_sarcasm","70"))))
+                s.personality_aggression=max(0,min(100,int(request.form.get("personality_aggression","45"))))
+                s.personality_humor=max(0,min(100,int(request.form.get("personality_humor","85"))))
+                s.personality_friendliness=max(0,min(100,int(request.form.get("personality_friendliness","60"))))
+            except ValueError: error="Лимиты и параметры характера должны быть числами."
             if not error: s.updated_at=datetime.utcnow(); db.commit(); saved=True
         return render_template("settings.html",username=session.get("admin_username",ADMIN_USERNAME),settings=s,error=error,saved=saved)
     except Exception as e:
