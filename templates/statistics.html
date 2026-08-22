@@ -19,14 +19,7 @@
     <section class="error-box">⚠️ {{ error }}</section>
   {% else %}
 
-  <section class="stats-hero">
-    <div>
-      <div class="eyebrow">АНАЛИТИКА // ПАНЕЛЬ УПРАВЛЕНИЯ</div>
-      <h1>Статистика</h1>
-      <p>Живая статистика сообщества из общей PostgreSQL базы.</p>
-    </div>
-    <div class="stats-live"><i></i> LIVE DATABASE <b>ONLINE</b></div>
-  </section>
+  <section class="stats-hero" aria-label="Статистика"></section>
 
   <section class="stats-cards">
     <article class="stat-card purple">
@@ -58,44 +51,6 @@
       <div class="metric-icon">◷</div><small>ВРЕМЯ РАБОТЫ</small>
       <strong class="uptime">{{ data.uptime }}</strong>
       <em>текущая сессия web</em>
-    </article>
-  </section>
-
-  <section class="stats-grid top-grid">
-    <article class="panel chart-panel">
-      <div class="panel-head">
-        <div><span class="panel-kicker">ACTIVITY</span><h2>Активность сообщений</h2></div>
-        <span class="select-like">7 дней⌄</span>
-      </div>
-      <div class="chart-bars">
-        {% set max_value = data.max_activity %}
-        {% for item in data.activity %}
-        <div class="chart-bar">
-          <b>{{ item.messages }}</b>
-          <div class="bar-track"><i style="height:{{ ((item.messages / max_value) * 100)|round(1) if max_value else 4 }}%"></i></div>
-          <span>{{ item.day }}</span>
-        </div>
-        {% endfor %}
-      </div>
-    </article>
-
-    <article class="panel moderation-panel">
-      <div class="panel-head">
-        <div><span class="panel-kicker">MODERATION</span><h2>Типы действий</h2></div>
-        <a href="/admin/history">История →</a>
-      </div>
-      {% set mod_total = data.actions %}
-      <div class="donut-row">
-        <div class="donut" style="background:{{ data.donut_style }};">
-          <div><b>{{ data.actions }}</b><span>всего</span></div>
-        </div>
-        <div class="legend">
-          {% for item in data.moderation %}
-          <div><i class="legend-dot {{ item.key }}"></i><span>{{ item.label }}</span><b>{{ item.value }}</b></div>
-          {% endfor %}
-        </div>
-      </div>
-      {% if not mod_total %}<div class="mini-empty">Действий модерации пока нет.</div>{% endif %}
     </article>
   </section>
 
