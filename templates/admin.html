@@ -7,19 +7,14 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
 </head>
 <body class="admin-dashboard-page">
-  <div class="bg"></div>
-  <div class="grid"></div>
-  <div class="scanlines"></div>
-
+  <div class="bg"></div><div class="grid"></div><div class="scanlines"></div>
   <div class="admin-app">
     <aside class="admin-sidebar">
       <div class="sidebar-identity">
         <div class="sidebar-avatar"><img src="{{ url_for('static', filename='my_avatar.gif') }}" alt="Protogen"></div>
-        <div class="sidebar-name">PROTOGEN</div>
-        <div class="sidebar-role">ADMINISTRATOR</div>
+        <div class="sidebar-name">PROTOGEN</div><div class="sidebar-role">ADMINISTRATOR</div>
         <div class="sidebar-online"><i></i> ОНЛАЙН</div>
       </div>
-
       <nav class="admin-nav" aria-label="Административная навигация">
         <a class="active" href="/admin"><span>⌂</span><b>ГЛАВНАЯ</b><small>Панель управления</small></a>
         <a href="/admin/users"><span>♙</span><b>ПОЛЬЗОВАТЕЛИ</b><small>Управление участниками</small></a>
@@ -28,99 +23,92 @@
         <a href="/admin/statistics"><span>▥</span><b>СТАТИСТИКА</b><small>Аналитика системы</small></a>
         <a href="/admin/settings"><span>⚙</span><b>НАСТРОЙКИ</b><small>Конфигурация бота</small></a>
       </nav>
-
-      <a class="sidebar-logout" href="/admin/logout">
-        <span>↪</span><div><b>ВЫЙТИ</b><small>Завершить сессию</small></div>
-      </a>
+      <a class="sidebar-logout" href="/admin/logout"><span>↪</span><div><b>ВЫЙТИ</b><small>Завершить сессию</small></div></a>
     </aside>
 
     <div class="admin-main-wrap">
       <header class="admin-topbar">
-        <div class="topbar-brand">
-          <div class="brand-name">ProtogenAdmin <span>Console</span></div>
-          <div class="brand-sub"><i></i> THE SYSTEM_PROTOGEN</div>
-        </div>
-        <div class="topbar-system"><i></i> SYSTEM ONLINE</div>
+        <div class="topbar-brand"><div class="brand-name">ProtogenAdmin <span>Console</span></div><div class="brand-sub"><i></i> THE SYSTEM_PROTOGEN</div></div>
+        <div class="topbar-status"><span><i></i> DATABASE <b>ONLINE</b></span><span><i></i> BOT STATUS <b>ONLINE</b></span></div>
       </header>
 
       <main id="dashboard" class="admin-main">
         <section class="dashboard-hero">
-          <div class="hero-copy">
-            <div class="eyebrow">ADMIN CONSOLE // LIVE CONTROL</div>
-            <h1>Добро пожаловать, <span>{{ username }}</span> <em>👋</em></h1>
-            <p>Центр управления <b>The system_Protogen</b> — статистика, мониторинг и быстрые действия.</p>
-          </div>
+          <div class="hero-copy"><div class="eyebrow">SYSTEM CONTROL // ADMIN PANEL</div><h1>Добро пожаловать, <span>{{ username }}</span> <em>👋</em></h1><p>Управление системой, модерацией, AI и поведением Protogen.</p></div>
+          <div class="hero-art"><img src="{{ url_for('static', filename='my_avatar.gif') }}" alt="Protogen Core"></div>
           <div class="hero-signal"><i></i><span>SYSTEM CORE</span><b>ONLINE</b></div>
         </section>
 
         <section class="cards" id="statistics">
           <article class="stat-card"><div class="stat-icon">👥</div><div><span>Участники</span><strong id="users">—</strong><small>в базе</small></div></article>
-          <article class="stat-card"><div class="stat-icon">🟢</div><div><span>Активны за 24ч</span><strong id="active">—</strong><small>онлайн-активность</small></div></article>
-          <article class="stat-card"><div class="stat-icon">💬</div><div><span>Сообщения</span><strong id="messages">—</strong><small>всего</small></div></article>
-          <article class="stat-card warn"><div class="stat-icon">⚠️</div><div><span>Варны</span><strong id="warns">—</strong><small>накоплено</small></div></article>
-          <article class="stat-card mute"><div class="stat-icon">🔇</div><div><span>Муты</span><strong id="mutes">—</strong><small>накоплено</small></div></article>
-          <article class="stat-card ban"><div class="stat-icon">🚫</div><div><span>Баны</span><strong id="bans">—</strong><small>накоплено</small></div></article>
-          <article class="stat-card kick"><div class="stat-icon">👢</div><div><span>Кики</span><strong id="kicks">—</strong><small>накоплено</small></div></article>
+          <article class="stat-card"><div class="stat-icon pulse">⌁</div><div><span>Активные</span><strong id="active">—</strong><small>за 24 часа</small></div></article>
+          <article class="stat-card"><div class="stat-icon">▣</div><div><span>Сообщения</span><strong id="messages">—</strong><small>всего сообщений</small></div></article>
+          <article class="stat-card mute"><div class="stat-icon">🔇</div><div><span>Муты</span><strong id="mutes">—</strong><small>активные</small></div></article>
+          <article class="stat-card ban"><div class="stat-icon">⊘</div><div><span>Баны</span><strong id="bans">—</strong><small>активные</small></div></article>
+          <article class="stat-card kick"><div class="stat-icon">♜</div><div><span>Действия</span><strong id="actions">—</strong><small>сегодня</small></div></article>
         </section>
 
-        <section class="dashboard-grid">
-          <article class="panel activity" id="users-panel">
-            <div class="panel-head"><div><span class="panel-kicker">ACTIVITY</span><h2>Активность сообщений</h2></div><button id="refresh" class="ghost">↻ Обновить</button></div>
-            <div id="chart" class="chart"><div class="loading">Загрузка статистики…</div></div>
+        <section class="dashboard-grid-v2">
+          <article class="panel activity compact-panel">
+            <div class="panel-head"><div><span class="panel-kicker">ACTIVITY</span><h2>Активность сообщений</h2></div><button id="refresh" class="period">7 дней⌄</button></div>
+            <div id="chart" class="chart-v2"><div class="loading">Загрузка статистики…</div></div>
           </article>
 
-          <article class="panel status" id="system">
-            <div class="panel-kicker">SYSTEM</div><h2>Состояние</h2>
-            <div class="status-row"><span>🔐 Авторизация</span><b>Активна</b></div>
-            <div class="status-row"><span>🗄️ PostgreSQL</span><b id="db-status">Проверка…</b></div>
-            <div class="status-row"><span>🤖 Bot</span><b>Online</b></div>
-            <div class="status-row"><span>🌐 API</span><b>Online</b></div>
+          <article class="panel status compact-panel">
+            <div class="panel-head"><div><span class="panel-kicker">SYSTEM</span><h2>Система</h2></div></div>
+            <div class="system-list">
+              <div><span>▤</span><label>База данных</label><b id="db-status">Проверка…</b></div>
+              <div><span>➤</span><label>Telegram API</label><b>ONLINE</b></div>
+              <div><span>✦</span><label>OpenAI API</label><b>ONLINE</b></div>
+              <div><span>♢</span><label>Система модерации</label><b>АКТИВНА</b></div>
+              <div><span>✦</span><label>AI Модуль</label><b>АКТИВЕН</b></div>
+            </div>
           </article>
-        </section>
 
-        <section class="panel visual-system">
-          <div class="panel-head"><div><span class="panel-kicker">VISUAL SYSTEM</span><h2>Protogen Core</h2></div><span class="live"><i></i> LIVE</span></div>
-          <div class="visual-core">
-            <div class="visual-avatar"><img src="{{ url_for('static', filename='my_avatar.gif') }}" alt="Protogen"></div>
+          <article class="panel ai-panel compact-panel">
+            <div class="panel-head"><div><span class="panel-kicker">PROTOGEN AI</span><h2>Protogen AI</h2></div><span class="live"><i></i> LIVE</span></div>
+            <div class="ai-core"><div class="ai-avatar"><img src="{{ url_for('static', filename='my_avatar.gif') }}" alt="Protogen AI"></div><div class="ai-meta"><p>Режим: <b>ACTIVE</b></p><p>Модель: <b>GPT</b></p><p>Температура: <b>0.7</b></p></div></div>
             <div class="visual-wave" id="protoWave"></div>
-            <span>SYNC ONLINE · SIGNAL STABLE</span>
-          </div>
-        </section>
+          </article>
 
-        <section class="panel history" id="history">
-          <div class="panel-head"><div><span class="panel-kicker">MODERATION</span><h2>Последние действия</h2></div><span class="live"><i></i> LIVE DATA</span></div>
-          <div id="recent" class="recent"><div class="loading">Загрузка истории…</div></div>
-        </section>
+          <article class="panel recent-panel">
+            <div class="panel-head"><div><span class="panel-kicker">MODERATION</span><h2>Последние действия</h2></div><button class="small-link" onclick="location.href='/admin/history'">Смотреть все</button></div>
+            <div id="recent" class="recent-v2"><div class="loading">Загрузка истории…</div></div>
+          </article>
 
-        <section class="panel moderation" id="moderation">
-          <div class="panel-kicker">MODERATION</div><h2>Управление</h2>
-          <p class="muted">Действия модерации выполняются через Telegram-панель. Веб-панель отображает статистику и историю из общей PostgreSQL базы.</p>
-          <div class="mod-grid"><div>⚠️ <b>Warn</b><span>История предупреждений</span></div><div>🔇 <b>Mute</b><span>История мутов</span></div><div>🚫 <b>Ban</b><span>История банов</span></div><div>👢 <b>Kick</b><span>История киков</span></div></div>
-        </section>
+          <article class="panel top-users-panel">
+            <div class="panel-head"><div><span class="panel-kicker">RANKING</span><h2>Топ пользователей</h2></div><span class="period-label">7 дней</span></div>
+            <div id="topUsers" class="top-users"><div class="empty">Статистика пользователей появится после загрузки данных.</div></div>
+          </article>
 
-        <footer>THE SYSTEM_PROTOGEN · PROTOGEN ADMIN CONSOLE · <span>SECURE SESSION</span></footer>
+          <article class="panel quick-panel">
+            <div class="panel-head"><div><span class="panel-kicker">COMMAND CENTER</span><h2>Быстрые действия</h2></div></div>
+            <div class="quick-list">
+              <button onclick="loadDashboard()"><span>⟳</span><div><b>Обновить статистику</b><small>Получить актуальные данные</small></div></button>
+              <button onclick="location.href='/admin/statistics'"><span>ϟ</span><div><b>Статистика</b><small>Открыть аналитику системы</small></div></button>
+              <button onclick="location.href='/admin/history'"><span>♢</span><div><b>Проверка системы</b><small>Журнал и диагностика</small></div></button>
+              <button onclick="location.href='/admin/settings'"><span>☁</span><div><b>Настройки</b><small>Конфигурация Protogen</small></div></button>
+            </div>
+          </article>
+        </section>
+        <footer>PROTOGEN CORE v2.0 · THE SYSTEM_PROTOGEN · <span>SECURE ADMIN SESSION</span></footer>
       </main>
     </div>
   </div>
-
 <script>
-const $ = id => document.getElementById(id);
-const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
-function icon(type){ return ({warn:'⚠️',unwarn:'🧹',mute:'🔇',ban:'🚫',kick:'👢'})[type] || '📌'; }
-async function loadDashboard(){
-  try{
-    const r=await fetch('/api/admin/dashboard',{cache:'no-store'}); const d=await r.json(); if(!r.ok) throw new Error(d.error||'API error');
-    $('users').textContent=d.stats.users; $('active').textContent=d.stats.active_users; $('messages').textContent=d.stats.messages;
-    $('warns').textContent=d.stats.warns; $('mutes').textContent=d.stats.mutes; $('bans').textContent=d.stats.bans; $('kicks').textContent=d.stats.kicks;
-    $('db-status').textContent=d.database==='online'?'Online':'Offline'; $('db-status').className=d.database==='online'?'ok':'bad';
-    const rows=d.activity||[];
-    $('chart').innerHTML=rows.length?rows.map(x=>`<div class="bar-wrap"><span>${esc(x.day)}</span><div class="bar"><i style="height:${Math.max(8,x.messages/Math.max(...rows.map(y=>y.messages),1)*100)}%"></i></div><b>${x.messages}</b></div>`).join(''):'<div class="empty">Пока нет дневной статистики.</div>';
-    const recent=d.recent||[];
-    $('recent').innerHTML=recent.length?recent.map(x=>`<div class="event"><div class="event-icon">${icon(x.type)}</div><div class="event-main"><strong>${esc(x.user)} <small>ID ${esc(x.user_id)}</small></strong><span>${esc(x.type)} · ${esc(x.reason)}</span></div><time>${esc(x.created_at)}</time></div>`).join(''):'<div class="empty">История пока пустая.</div>';
-  }catch(e){ $('db-status').textContent='Ошибка'; $('db-status').className='bad'; $('recent').innerHTML='<div class="empty">Не удалось загрузить данные: '+esc(e.message)+'</div>'; }
+const $=id=>document.getElementById(id); const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+function icon(t){return({warn:'⚠',unwarn:'⌁',mute:'⊘',ban:'⊘',kick:'♜'})[t]||'◇'}
+function renderTopUsers(rows){
+  const el=$('topUsers');
+  if(!rows.length){el.innerHTML='<div class="empty">Нет данных о пользователях.</div>';return}
+  el.innerHTML=rows.slice(0,4).map((x,i)=>`<div class="top-user"><strong>${i+1}</strong><div class="mini-avatar">${esc((x.username||x.user||'?').slice(0,1).toUpperCase())}</div><b>${esc(x.username||x.user||'Пользователь')}</b><span>${esc(x.messages??x.count??0)} сообщений</span></div>`).join('');
 }
-$('refresh').addEventListener('click',loadDashboard); loadDashboard(); setInterval(loadDashboard,30000);
-const wave=$('protoWave'); if(wave) wave.innerHTML=Array.from({length:34},(_,i)=>`<i style="--h:${12+(i*17)%48}px"></i>`).join('');
-</script>
-</body>
-</html>
+async function loadDashboard(){try{const r=await fetch('/api/admin/dashboard',{cache:'no-store'});const d=await r.json();if(!r.ok)throw Error(d.error||'API error');
+$('users').textContent=d.stats.users;$('active').textContent=d.stats.active_users;$('messages').textContent=d.stats.messages;$('mutes').textContent=d.stats.mutes;$('bans').textContent=d.stats.bans;
+$('actions').textContent=(Number(d.stats.warns||0)+Number(d.stats.mutes||0)+Number(d.stats.bans||0)+Number(d.stats.kicks||0));$('db-status').textContent=d.database==='online'?'ONLINE':'OFFLINE';$('db-status').className=d.database==='online'?'ok':'bad';
+const rows=d.activity||[];const max=Math.max(...rows.map(x=>Number(x.messages)||0),1);$('chart').innerHTML=rows.length?rows.slice(-7).map(x=>`<div class="bar-wrap"><div class="bar"><i style="height:${Math.max(7,(Number(x.messages)||0)/max*100)}%"></i></div><span>${esc(x.day)}</span><b>${esc(x.messages)}</b></div>`).join(''):'<div class="empty">Пока нет дневной статистики.</div>';
+const recent=d.recent||[];$('recent').innerHTML=recent.length?recent.slice(0,4).map(x=>`<div class="event-v2"><div class="event-icon">${icon(x.type)}</div><div><b>${esc(x.user)}</b><small>${esc(x.type)} · ${esc(x.reason)}</small></div><time>${esc(x.created_at)}</time></div>`).join(''):'<div class="empty">История пока пустая.</div>';
+renderTopUsers(d.top_users||d.users_top||[]);
+}catch(e){$('db-status').textContent='ERROR';$('db-status').className='bad';$('recent').innerHTML='<div class="empty">Не удалось загрузить данные: '+esc(e.message)+'</div>';}}
+$('refresh').addEventListener('click',loadDashboard);loadDashboard();setInterval(loadDashboard,30000);const wave=$('protoWave');if(wave)wave.innerHTML=Array.from({length:34},(_,i)=>`<i style="--h:${12+(i*17)%48}px"></i>`).join('');
+</script></body></html>
