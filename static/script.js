@@ -3,39 +3,26 @@
   const $$ = (s, root = document) => [...root.querySelectorAll(s)];
 
   // ---------------------------------------------------------
-  // CHAT MODAL
-  // "ЗАЙТИ В ЧАТ" opens it. Repeated clicks keep it OPEN.
-  // Only X, backdrop click, or Escape closes it.
+  // INLINE CHAT — visible next to the hero, like the reference.
+  // Repeated clicks only focus/highlight it; they never close it.
   // ---------------------------------------------------------
-  const chatOverlay = $('#chatOverlay');
+  const chatPanel = $('#chatPanel');
   const heroChatBtn = $('#heroChatBtn');
-  const closeChat = $('#closeChat');
   const input = $('#input');
   const messages = $('#messages');
 
-  function openChat() {
-    if (!chatOverlay) return;
-    chatOverlay.classList.add('open');
-    chatOverlay.setAttribute('aria-hidden', 'false');
-    setTimeout(() => input?.focus(), 160);
-  }
-
-  function hideChat() {
-    if (!chatOverlay) return;
-    chatOverlay.classList.remove('open');
-    chatOverlay.setAttribute('aria-hidden', 'true');
+  function focusChat() {
+    if (!chatPanel) return;
+    chatPanel.classList.remove('chat-focus');
+    void chatPanel.offsetWidth;
+    chatPanel.classList.add('chat-focus');
+    chatPanel.scrollIntoView({behavior:'smooth', block:'center'});
+    setTimeout(() => input?.focus(), 320);
   }
 
   heroChatBtn?.addEventListener('click', (e) => {
     e.preventDefault();
-    openChat();
-  });
-  closeChat?.addEventListener('click', hideChat);
-  chatOverlay?.addEventListener('click', (e) => {
-    if (e.target === chatOverlay) hideChat();
-  });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') hideChat();
+    focusChat();
   });
 
   function addMessage(text, type = 'bot') {
@@ -233,4 +220,86 @@
     }, 720);
   });
 })();
-\n\n// ---------------------------------------------------------\n// REAL LIVE MULTI-SERVER STATISTICS\n// Public endpoint: no admin credentials and no sensitive data.\n// ---------------------------------------------------------\n(() => {\n  const selector = document.getElementById('serverSelector');\n  const ids = {\n    users: document.getElementById('statUsers'),\n    online: document.getElementById('statOnline'),\n    messages: document.getElementById('statMessages'),\n    actions: document.getElementById('statActions'),\n    stability: document.getElementById('statStability'),\n  };\n  const updated = document.getElementById('statsUpdated');\n  const cards = [...document.querySelectorAll('.stat-item')];\n  if (!selector || !ids.users) return;\n\n  const fmt = value => new Intl.NumberFormat('ru-RU').format(Number(value || 0));\n  let serversLoaded = false;\n\n  function loading(on) { cards.forEach(c => c.classList.toggle('updating', on)); }\n\n  async function loadServers() {\n    try {\n      const res = await fetch('/api/public/servers', {cache:'no-store'});\n      const data = await res.json();\n      if (!res.ok) throw new Error(data.error || 'servers');\n      const current = selector.value;\n      selector.innerHTML = '<option value="all">ВСЕ СЕРВЕРЫ</option>';\n      (data.servers || []).forEach(server => {\n        const option = document.createElement('option');\n        option.value = server.chat_id;\n        option.textContent = `🟢 ${server.title}`;\n        selector.appendChild(option);\n      });\n      if ([...selector.options].some(o => o.value === current)) selector.value = current;\n      serversLoaded = true;\n    } catch (e) {\n      console.warn('SERVERS API:', e);\n    }\n  }\n\n  async function loadStats() {\n    loading(true);\n    try {\n      const scope = selector.value || 'all';\n      const res = await fetch(`/api/public/stats?chat_id=${encodeURIComponent(scope)}`, {cache:'no-store'});\n      const data = await res.json();\n      if (!res.ok) throw new Error(data.error || 'stats');\n      const s = data.stats || {};\n      ids.users.textContent = fmt(s.users);\n      ids.online.textContent = fmt(s.active_users);\n      ids.messages.textContent = fmt(s.messages);\n      ids.actions.textContent = fmt(s.actions);\n      ids.stability.textContent = s.stability || 'ONLINE';\n      if (updated) {\n        const d = data.updated_at ? new Date(data.updated_at) : new Date();\n        updated.textContent = `LIVE // ${d.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}`;\n      }\n    } catch (e) {\n      console.warn('STATS API:', e);\n      ids.stability.textContent = 'OFFLINE';\n    } finally {\n      setTimeout(() => loading(false), 120);\n    }\n  }\n\n  selector.addEventListener('change', loadStats);\n  (async () => {\n    await loadServers();\n    await loadStats();\n    setInterval(async () => {\n      await loadStats();\n      if (serversLoaded) await loadServers();\n    }, 15000);\n  })();\n})();\n
+
+
+// ---------------------------------------------------------
+// REAL LIVE MULTI-SERVER STATISTICS
+// ---------------------------------------------------------
+(() => {
+  const selector = document.getElementById('serverSelector');
+  const ids = {
+    users: document.getElementById('statUsers'),
+    online: document.getElementById('statOnline'),
+    messages: document.getElementById('statMessages'),
+    actions: document.getElementById('statActions'),
+    stability: document.getElementById('statStability'),
+  };
+  const updated = document.getElementById('statsUpdated');
+  const cards = [...document.querySelectorAll('.stat-item')];
+  if (!selector || !ids.users) return;
+
+  const fmt = value => new Intl.NumberFormat('ru-RU').format(Number.isFinite(Number(value)) ? Number(value) : 0);
+  let serversLoaded = false;
+
+  function setValues(s) {
+    ids.users.textContent = fmt(s.users);
+    ids.online.textContent = fmt(s.active_users);
+    ids.messages.textContent = fmt(s.messages);
+    ids.actions.textContent = fmt(s.actions);
+    ids.stability.textContent = s.stability || 'ONLINE';
+  }
+
+  function loading(on) { cards.forEach(c => c.classList.toggle('updating', on)); }
+
+  async function loadServers() {
+    try {
+      const res = await fetch('/api/public/servers', {cache:'no-store'});
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'servers');
+      const current = selector.value || 'all';
+      selector.innerHTML = '<option value="all">ВСЕ СЕРВЕРЫ</option>';
+      (data.servers || []).forEach(server => {
+        const option = document.createElement('option');
+        option.value = server.chat_id;
+        option.textContent = `🟢 ${server.title}`;
+        selector.appendChild(option);
+      });
+      if ([...selector.options].some(o => o.value === current)) selector.value = current;
+      serversLoaded = true;
+    } catch (e) {
+      console.warn('SERVERS API:', e);
+    }
+  }
+
+  async function loadStats() {
+    loading(true);
+    try {
+      const scope = selector.value || 'all';
+      const res = await fetch(`/api/public/stats?chat_id=${encodeURIComponent(scope)}`, {cache:'no-store'});
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'stats');
+      setValues(data.stats || {});
+      if (updated) {
+        const d = data.updated_at ? new Date(data.updated_at) : new Date();
+        updated.textContent = `LIVE // ${d.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}`;
+      }
+    } catch (e) {
+      console.warn('STATS API:', e);
+      // Never leave visual dashes on the screen.
+      setValues({users:0, active_users:0, messages:0, actions:0, stability:'OFFLINE'});
+      if (updated) updated.textContent = 'LIVE // DATABASE WAITING';
+    } finally {
+      setTimeout(() => loading(false), 120);
+    }
+  }
+
+  selector.addEventListener('change', loadStats);
+  (async () => {
+    await loadServers();
+    await loadStats();
+    setInterval(async () => {
+      await loadStats();
+      if (serversLoaded) await loadServers();
+    }, 15000);
+  })();
+})();
