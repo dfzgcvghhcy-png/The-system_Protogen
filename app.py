@@ -105,6 +105,33 @@ if engine:
         connection.execute(text("""UPDATE bot_settings SET personality_daring=COALESCE(personality_daring,75), personality_sarcasm=COALESCE(personality_sarcasm,70), personality_aggression=COALESCE(personality_aggression,45), personality_humor=COALESCE(personality_humor,85), personality_friendliness=COALESCE(personality_friendliness,60) WHERE id=1"""))
     print("🗄️ Database tables checked/created; personality columns synced")
 
+DEFAULT_BOT_SETTINGS = {
+    "moderation_enabled": True,
+    "auto_delete_spam": True,
+    "warn_enabled": True,
+    "mute_enabled": True,
+    "ban_enabled": True,
+    "kick_enabled": True,
+    "ai_moderation_enabled": False,
+    "warn_limit": 3,
+    "mute_duration": 60,
+    "personality_daring": 75,
+    "personality_sarcasm": 70,
+    "personality_aggression": 45,
+    "personality_humor": 85,
+    "personality_friendliness": 60,
+}
+
+def get_bot_settings(db):
+    """Return the singleton BotSetting row, creating it when necessary."""
+    settings = db.query(BotSetting).filter(BotSetting.id == 1).first()
+    if settings is None:
+        settings = BotSetting(id=1, **DEFAULT_BOT_SETTINGS)
+        db.add(settings)
+        db.commit()
+        db.refresh(settings)
+    return settings
+
 def admin_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
