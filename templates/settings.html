@@ -10,10 +10,11 @@
 <body class="settings-page">
 <div class="bg"></div><div class="grid"></div>
 
+<div class="admin-app">
+  {% include '_admin_sidebar.html' %}
+  <div class="admin-main-wrap">
+    {% include '_admin_topbar.html' %}
 
-{% include '_admin_sidebar.html' %}
-<div class="admin-main-wrap">
-{% include '_admin_topbar.html' %}
 <main class="settings-content">
       <section class="settings-hero">
         <div>
@@ -151,6 +152,9 @@
       {% endif %}
 
       <footer>PROTOGEN SYSTEM // ADMIN PANEL · SECURE CONNECTION</footer>
-    </main>
+    
+    
+  </div>
 </div>
-</body></html>
+</body>
+</html>
