@@ -5,6 +5,7 @@ from sqlalchemy import (
     create_engine,
     Column,
     Integer,
+    BigInteger,
     String,
     DateTime,
     Boolean,
@@ -383,6 +384,64 @@ class BotSetting(Base):
         default=datetime.utcnow,
         onupdate=datetime.utcnow,
     )
+
+
+# ============================================================
+# MULTI-SERVER STATISTICS
+# ============================================================
+
+class Chat(Base):
+    __tablename__ = "chats"
+
+    chat_id = Column(BigInteger, primary_key=True)
+    title = Column(String, nullable=True)
+    username = Column(String, nullable=True)
+    chat_type = Column(String, nullable=True)
+    first_seen = Column(DateTime, default=datetime.utcnow)
+    last_seen = Column(DateTime, default=datetime.utcnow)
+    is_active = Column(Boolean, default=True)
+
+
+class ChatUser(Base):
+    __tablename__ = "chat_users"
+
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    user_id = Column(BigInteger, nullable=False, index=True)
+    username = Column(String, nullable=True)
+    first_name = Column(String, nullable=True)
+    last_name = Column(String, nullable=True)
+    status = Column(String, default="member")
+    first_seen = Column(DateTime, default=datetime.utcnow)
+    last_seen = Column(DateTime, default=datetime.utcnow)
+    joined_at = Column(DateTime, nullable=True)
+    messages_count = Column(Integer, default=0)
+    warns = Column(Integer, default=0)
+    mutes = Column(Integer, default=0)
+    bans = Column(Integer, default=0)
+    kicks = Column(Integer, default=0)
+
+
+class ChatActivity(Base):
+    __tablename__ = "chat_activity"
+
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    user_id = Column(BigInteger, nullable=False, index=True)
+    day = Column(DateTime, nullable=False, index=True)
+    messages_count = Column(Integer, default=0)
+
+
+class ChatPunishment(Base):
+    __tablename__ = "chat_punishments"
+
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    user_id = Column(BigInteger, nullable=False, index=True)
+    type = Column(String, nullable=False)
+    reason = Column(String, default="Не указана")
+    moderator_id = Column(BigInteger, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
 # ============================================================
