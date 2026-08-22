@@ -15,8 +15,8 @@
 <div class="admin-main-wrap">
 {% include '_admin_topbar.html' %}
 <main class="settings-content">
-      <section class="settings-hero">
-        <div>
+      <section class="settings-hero" aria-label="Настройки системы">
+        <div class="settings-hero-copy">
           <div class="eyebrow">SYSTEM CONFIGURATION // ADMIN CONTROL</div>
           <h1>Настройки системы</h1>
           <p>Управление системой, модерацией, AI и поведением Protogen.</p>
@@ -153,4 +153,109 @@
       <footer>PROTOGEN SYSTEM // ADMIN PANEL · SECURE CONNECTION</footer>
     </main>
 </div>
+<script>
+(() => {
+  const sliders = [...document.querySelectorAll('[data-personality]')];
+  const profiles = {
+    hooligan: {daring:90,sarcasm:85,aggression:75,humor:70,friendliness:35,desc:'Дерзкий профиль: уверенный тон, больше подколов и напора.'},
+    party: {daring:65,sarcasm:60,aggression:25,humor:95,friendliness:80,desc:'Тусовщик: максимум юмора и дружелюбия, минимум агрессии.'},
+    friendly: {daring:30,sarcasm:20,aggression:10,humor:65,friendliness:100,desc:'Дружелюбный профиль: спокойный, полезный и максимально доброжелательный.'},
+    system: {daring:20,sarcasm:10,aggression:5,humor:20,friendliness:55,desc:'Системный профиль: сдержанный и точный стиль общения.'},
+    chaos: {daring:100,sarcasm:90,aggression:90,humor:85,friendliness:20,desc:'Хаос: самый дерзкий и непредсказуемый режим Protogen.'}
+  };
+
+  function syncSlider(input) {
+    const value = Math.max(0, Math.min(100, Number(input.value) || 0));
+    input.value = value;
+    input.style.setProperty('--value', value + '%');
+    const out = document.getElementById(input.name + '_value');
+    if (out) out.value = value;
+    const row = input.closest('.personality-slider');
+    const output = row?.querySelector('output');
+    if (output) output.textContent = value;
+  }
+
+  sliders.forEach(input => {
+    syncSlider(input);
+    input.addEventListener('input', () => {
+      syncSlider(input);
+      markDirty();
+    });
+  });
+
+  window.applyProtogenProfile = function(name) {
+    const profile = profiles[name];
+    if (!profile) return;
+    sliders.forEach(input => {
+      const key = input.dataset.personality;
+      if (profile[key] !== undefined) {
+        input.value = profile[key];
+        syncSlider(input);
+      }
+    });
+    const desc = document.getElementById('profile_description');
+    if (desc) desc.textContent = profile.desc;
+    markDirty();
+  };
+
+  function markDirty() {
+    const bar = document.getElementById('savebar');
+    const title = document.getElementById('saveTitle');
+    const subtitle = document.getElementById('saveSubtitle');
+    if (bar) bar.classList.add('dirty');
+    if (title) title.textContent = 'ЕСТЬ НЕСОХРАНЁННЫЕ ИЗМЕНЕНИЯ';
+    if (subtitle) subtitle.textContent = 'Изменения будут записаны в PostgreSQL после сохранения.';
+  }
+
+  document.querySelectorAll('[data-step]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const input = document.getElementById(btn.dataset.step);
+      if (!input) return;
+      const min = Number(input.min || 0), max = Number(input.max || 999999);
+      const next = Math.max(min, Math.min(max, Number(input.value || min) + Number(btn.dataset.dir || 1)));
+      input.value = next;
+      input.dispatchEvent(new Event('input', {bubbles:true}));
+      const meter = document.getElementById(btn.dataset.step === 'warn_limit' ? 'warnMeter' : 'muteMeter');
+      const meterValue = document.getElementById(btn.dataset.step === 'warn_limit' ? 'warnMeterValue' : 'muteMeterValue');
+      if (meter) meter.style.width = ((next - min) / (max - min || 1) * 100) + '%';
+      if (meterValue) meterValue.textContent = next;
+      markDirty();
+    });
+  });
+
+  const form = document.getElementById('settingsForm');
+  form?.querySelectorAll('input[type="checkbox"], select, input[type="number"]').forEach(el => {
+    el.addEventListener('change', markDirty);
+  });
+
+  const reset = document.getElementById('resetBtn');
+  reset?.addEventListener('click', () => {
+    sliders.forEach(input => {
+      const defaults = {daring:75,sarcasm:70,aggression:45,humor:85,friendliness:60};
+      const key = input.dataset.personality;
+      input.value = defaults[key];
+      syncSlider(input);
+    });
+    document.querySelectorAll('input[type="checkbox"]').forEach(input => {
+      if (input.name === 'ai_moderation_enabled') input.checked = false;
+      else if (input.name) input.checked = true;
+    });
+    const warn = document.getElementById('warn_limit');
+    const mute = document.getElementById('mute_duration');
+    if (warn) warn.value = 3;
+    if (mute) mute.value = 60;
+    document.getElementById('warnMeterValue')?.replaceChildren(document.createTextNode('3'));
+    document.getElementById('muteMeterValue')?.replaceChildren(document.createTextNode('60'));
+    document.getElementById('warnMeter')?.style.setProperty('width','10%');
+    document.getElementById('muteMeter')?.style.setProperty('width',(60/1440*100)+'%');
+    markDirty();
+  });
+
+  // Initialize meters and slider fills on first render.
+  const warn = document.getElementById('warn_limit');
+  const mute = document.getElementById('mute_duration');
+  if (warn) document.getElementById('warnMeter')?.style.setProperty('width',(Number(warn.value)/20*100)+'%');
+  if (mute) document.getElementById('muteMeter')?.style.setProperty('width',(Number(mute.value)/1440*100)+'%');
+})();
+</script>
 </body></html>
