@@ -70,14 +70,19 @@
         <section class="system-stats">
           <div class="stats-heading">
             <span><i></i> ОБЩАЯ СТАТИСТИКА СИСТЕМЫ</span>
-            <small>LIVE // PROTOGEN CORE</small>
+            <div class="stats-controls">
+              <select id="serverSelector" aria-label="Сервер">
+                <option value="all">ВСЕ СЕРВЕРЫ</option>
+              </select>
+              <small id="statsUpdated">LIVE // PROTOGEN CORE</small>
+            </div>
           </div>
           <div class="stats-grid">
-            <div class="stat-item"><b>♙</b><strong>1,248</strong><span>ПОЛЬЗОВАТЕЛЕЙ</span></div>
-            <div class="stat-item"><b>⌁</b><strong>24</strong><span>ОНЛАЙН</span></div>
-            <div class="stat-item"><b>▣</b><strong>3,421</strong><span>СООБЩЕНИЙ СЕГОДНЯ</span></div>
-            <div class="stat-item"><b>⚒</b><strong>128</strong><span>ДЕЙСТВИЙ МОДЕРАЦИИ</span></div>
-            <div class="stat-item"><b>◇</b><strong>98.7%</strong><span>СТАБИЛЬНОСТЬ</span></div>
+            <div class="stat-item"><b>♙</b><strong id="statUsers">—</strong><span>ПОЛЬЗОВАТЕЛЕЙ</span></div>
+            <div class="stat-item"><b>⌁</b><strong id="statOnline">—</strong><span>ОНЛАЙН</span></div>
+            <div class="stat-item"><b>▣</b><strong id="statMessages">—</strong><span>СООБЩЕНИЙ</span></div>
+            <div class="stat-item"><b>⚒</b><strong id="statActions">—</strong><span>ДЕЙСТВИЙ МОДЕРАЦИИ</span></div>
+            <div class="stat-item"><b>◇</b><strong id="statStability">—</strong><span>СТАБИЛЬНОСТЬ</span></div>
           </div>
         </section>
       </div>
