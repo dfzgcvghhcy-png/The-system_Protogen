@@ -10,28 +10,9 @@
 <body>
 <div class="bg"></div><div class="grid"></div>
 
-<div class="shell">
-<header class="topbar">
-  <a class="brand" href="/admin">
-    <div class="brand-avatar"><img src="{{ url_for('static', filename='my_avatar.gif') }}" alt=""></div>
-    <div>
-      <div class="brand-name">ProtogenAdmin <span>Console</span></div>
-      <div class="brand-sub"><i></i> THE SYSTEM_PROTOGEN</div>
-    </div>
-  </a>
-
-  <nav>
-    <a href="/admin">🏠 Главная</a>
-    <a href="/admin/users">👥 Пользователи</a>
-    <a href="/admin#moderation">⚔️ Модерация</a>
-    <a class="active" href="/admin/history">📜 История</a>
-    <a href="/admin#statistics">📊 Статистика</a>
-    <a href="/admin#settings">⚙️ Настройки</a>
-  </nav>
-
-  <a class="logout" href="/admin/logout">↪ Выйти</a>
-</header>
-
+{% include '_admin_sidebar.html' %}
+<div class="admin-main-wrap">
+{% include '_admin_topbar.html' %}
 <main class="history-main">
   <section class="history-hero">
     <div>
