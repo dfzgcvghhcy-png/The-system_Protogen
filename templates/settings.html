@@ -44,25 +44,26 @@
         <a href="#ai" data-target="ai"><span>🧠</span><b>Protogen AI</b><small>Характер и поведение</small></a>
         <a href="#automation" data-target="automation"><span>⚡</span><b>Автоматизация</b><small>Умные функции</small></a>
         <a href="#limits" data-target="limits"><span>⏱</span><b>Лимиты</b><small>Ограничения системы</small></a>
-        <a href="#system" data-target="system"><span>▤</span><b>Система</b><small>Мониторинг и ядро</small></a>
       </nav>
 
-      <div class="side-spacer"></div>
-      <a class="side-logout" href="/admin/logout"><span>↪</span><b>Выйти</b><small>Завершить сессию</small></a>
+      <div class="side-system">
+        <div class="side-system-kicker">SYSTEM CORE</div>
+        <div class="core-row"><span class="core-dot"></span><b>DATABASE</b><em>ONLINE</em></div>
+        <div class="core-row"><span class="core-dot"></span><b>BOT</b><em>ONLINE</em></div>
+        <div class="core-wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      </div>
     </aside>
 
     <main class="settings-content">
       <section class="settings-hero">
-        <div class="hero-art">
-          <div class="hero-copy">
-            <div class="eyebrow">SYSTEM CONFIGURATION // ADMIN CONTROL</div>
-            <h1>Настройки системы</h1>
-            <p>Управление системой, модерацией, AI и поведением Protogen.</p>
-          </div>
-          <div class="hero-statuses">
-            <span><i></i> DATABASE <b>ONLINE</b></span>
-            <span><i></i> BOT STATUS <b>ONLINE</b></span>
-          </div>
+        <div>
+          <div class="eyebrow">SYSTEM CONFIGURATION // ADMIN CONTROL</div>
+          <h1>Настройки системы</h1>
+          <p>Управление системой, модерацией, AI и поведением Protogen.</p>
+        </div>
+        <div class="hero-statuses">
+          <span><i></i> DATABASE <b>ONLINE</b></span>
+          <span><i></i> BOT STATUS <b>ONLINE</b></span>
         </div>
       </section>
 
@@ -175,7 +176,7 @@
                   <div class="limit-meter"><span id="muteMeter"></span></div><em><span id="muteMeterValue">{{ settings.mute_duration }}</span> / 1440 мин</em>
                 </div>
               </div>
-              <div class="db-info" id="system"><span>▣</span><div><b>INFORMATION</b><small>Изменения сохраняются в базе данных и применяются после сохранения конфигурации.</small></div></div>
+              <div class="db-info"><span>▣</span><div><b>INFORMATION</b><small>Изменения сохраняются в базе данных и применяются после сохранения конфигурации.</small></div></div>
             </section>
           </div>
         </div>
@@ -219,7 +220,8 @@ const previewTemplates = [
 
 function input(name){ return document.querySelector('[name="personality_' + name + '"]'); }
 function output(name){ return document.getElementById('personality_' + name + '_value'); }
-function setSlider(name, value){ if(input(name)) input(name).value=value; if(output(name)) output(name).value=value; }
+function setSlider(name, value){ if(input(name)){ input(name).value=value; updateSliderVisual(input(name)); } if(output(name)) output(name).value=value; }
+function updateSliderVisual(el){ if(!el) return; const min=Number(el.min)||0, max=Number(el.max)||100, value=Number(el.value)||0; const percent=((value-min)/(max-min))*100; el.style.setProperty('--value', percent + '%'); }
 function state(){ return {
   daring:+input('daring').value, sarcasm:+input('sarcasm').value, aggression:+input('aggression').value,
   humor:+input('humor').value, friendliness:+input('friendliness').value
@@ -264,12 +266,16 @@ function syncAutomation(){
 }
 
 document.addEventListener('DOMContentLoaded',()=>{
-  document.querySelectorAll('input[type="range"]').forEach(el=>el.addEventListener('input',()=>{
+  document.querySelectorAll('input[type="range"]').forEach(el=>{
+    updateSliderVisual(el);
+    el.addEventListener('input',()=>{
+    updateSliderVisual(el);
     const key=el.dataset.personality; if(output(key)) output(key).value=el.value;
     const select=document.getElementById('personality_profile'); if(select) select.value='';
     const d=document.getElementById('profile_description'); if(d) d.textContent='Свой профиль — параметры настроены вручную.';
     markDirty(); updatePreview();
-  }));
+    });
+  });
   document.querySelectorAll('.settings-form input, .settings-form select').forEach(el=>el.addEventListener('change',()=>{ markDirty(); updateMeters(); syncAutomation(); }));
   document.querySelectorAll('[data-step]').forEach(btn=>btn.addEventListener('click',()=>{
     const el=document.getElementById(btn.dataset.step); const dir=+btn.dataset.dir; const step=el.id==='mute_duration'?5:1;

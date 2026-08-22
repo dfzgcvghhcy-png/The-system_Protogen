@@ -6,415 +6,121 @@
   <title>ProtogenAdmin Console</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
 </head>
-<body>
+<body class="admin-dashboard-page">
   <div class="bg"></div>
   <div class="grid"></div>
   <div class="scanlines"></div>
 
-  <div class="shell">
-    <header class="topbar">
-      <a class="brand" href="/admin">
-        <div class="brand-avatar"><img src="{{ url_for('static', filename='my_avatar.gif') }}" alt="Protogen"></div>
-        <div>
+  <div class="admin-app">
+    <aside class="admin-sidebar">
+      <div class="sidebar-identity">
+        <div class="sidebar-avatar"><img src="{{ url_for('static', filename='my_avatar.gif') }}" alt="Protogen"></div>
+        <div class="sidebar-name">PROTOGEN</div>
+        <div class="sidebar-role">ADMINISTRATOR</div>
+        <div class="sidebar-online"><i></i> ОНЛАЙН</div>
+      </div>
+
+      <nav class="admin-nav" aria-label="Административная навигация">
+        <a class="active" href="/admin"><span>⌂</span><b>ГЛАВНАЯ</b><small>Панель управления</small></a>
+        <a href="/admin/users"><span>♙</span><b>ПОЛЬЗОВАТЕЛИ</b><small>Управление участниками</small></a>
+        <a href="/admin#moderation"><span>♜</span><b>МОДЕРАЦИЯ</b><small>Действия и наказания</small></a>
+        <a href="/admin/history"><span>▣</span><b>ИСТОРИЯ</b><small>Логи и события</small></a>
+        <a href="/admin/statistics"><span>▥</span><b>СТАТИСТИКА</b><small>Аналитика системы</small></a>
+        <a href="/admin/settings"><span>⚙</span><b>НАСТРОЙКИ</b><small>Конфигурация бота</small></a>
+      </nav>
+
+      <a class="sidebar-logout" href="/admin/logout">
+        <span>↪</span><div><b>ВЫЙТИ</b><small>Завершить сессию</small></div>
+      </a>
+    </aside>
+
+    <div class="admin-main-wrap">
+      <header class="admin-topbar">
+        <div class="topbar-brand">
           <div class="brand-name">ProtogenAdmin <span>Console</span></div>
           <div class="brand-sub"><i></i> THE SYSTEM_PROTOGEN</div>
         </div>
-      </a>
+        <div class="topbar-system"><i></i> SYSTEM ONLINE</div>
+      </header>
 
-      <nav>
-        <a class="active" href="#dashboard">🏠 Главная</a>
-        <a href="/admin/users">👥 Пользователи</a>
-        <a href="#moderation">⚔️ Модерация</a>
-        <a href="/admin/history">📜 История</a>
-        <a href="/admin/statistics">📊 Статистика</a>
-        <a href="/admin/settings">⚙️ Настройки</a>
-      </nav>
+      <main id="dashboard" class="admin-main">
+        <section class="dashboard-hero">
+          <div class="hero-copy">
+            <div class="eyebrow">ADMIN CONSOLE // LIVE CONTROL</div>
+            <h1>Добро пожаловать, <span>{{ username }}</span> <em>👋</em></h1>
+            <p>Центр управления <b>The system_Protogen</b> — статистика, мониторинг и быстрые действия.</p>
+          </div>
+          <div class="hero-signal"><i></i><span>SYSTEM CORE</span><b>ONLINE</b></div>
+        </section>
 
-      <a class="logout" href="/admin/logout">↪ Выйти</a>
-    </header>
+        <section class="cards" id="statistics">
+          <article class="stat-card"><div class="stat-icon">👥</div><div><span>Участники</span><strong id="users">—</strong><small>в базе</small></div></article>
+          <article class="stat-card"><div class="stat-icon">🟢</div><div><span>Активны за 24ч</span><strong id="active">—</strong><small>онлайн-активность</small></div></article>
+          <article class="stat-card"><div class="stat-icon">💬</div><div><span>Сообщения</span><strong id="messages">—</strong><small>всего</small></div></article>
+          <article class="stat-card warn"><div class="stat-icon">⚠️</div><div><span>Варны</span><strong id="warns">—</strong><small>накоплено</small></div></article>
+          <article class="stat-card mute"><div class="stat-icon">🔇</div><div><span>Муты</span><strong id="mutes">—</strong><small>накоплено</small></div></article>
+          <article class="stat-card ban"><div class="stat-icon">🚫</div><div><span>Баны</span><strong id="bans">—</strong><small>накоплено</small></div></article>
+          <article class="stat-card kick"><div class="stat-icon">👢</div><div><span>Кики</span><strong id="kicks">—</strong><small>накоплено</small></div></article>
+        </section>
 
-    <main id="dashboard">
-      <section class="hero">
-        <div>
-          <div class="eyebrow">ADMIN CONSOLE // LIVE CONTROL</div>
-          <h1>Добро пожаловать, <span>{{ username }}</span> <em>👋</em></h1>
-          <p>Центр управления <b>The system_Protogen</b> — статистика, мониторинг и быстрые действия.</p>
-        </div>
-        <div class="online-pill"><i></i> SYSTEM ONLINE</div>
-      </section>
+        <section class="dashboard-grid">
+          <article class="panel activity" id="users-panel">
+            <div class="panel-head"><div><span class="panel-kicker">ACTIVITY</span><h2>Активность сообщений</h2></div><button id="refresh" class="ghost">↻ Обновить</button></div>
+            <div id="chart" class="chart"><div class="loading">Загрузка статистики…</div></div>
+          </article>
 
-      <section class="dashboard-layout">
-        <div class="dashboard-main">
-          <section class="cards" id="statistics">
-            <article class="stat-card">
-              <div class="stat-icon">👥</div>
-              <div><span>Участники</span><strong id="users">—</strong><small>в базе</small></div>
-            </article>
-            <article class="stat-card">
-              <div class="stat-icon">🟢</div>
-              <div><span>Активны за 24ч</span><strong id="active">—</strong><small>онлайн-активность</small></div>
-            </article>
-            <article class="stat-card">
-              <div class="stat-icon">💬</div>
-              <div><span>Сообщения</span><strong id="messages">—</strong><small>всего</small></div>
-            </article>
-            <article class="stat-card warn">
-              <div class="stat-icon">⚠️</div>
-              <div><span>Варны</span><strong id="warns">—</strong><small>накоплено</small></div>
-            </article>
-            <article class="stat-card mute">
-              <div class="stat-icon">🔇</div>
-              <div><span>Муты</span><strong id="mutes">—</strong><small>накоплено</small></div>
-            </article>
-            <article class="stat-card ban">
-              <div class="stat-icon">🚫</div>
-              <div><span>Баны</span><strong id="bans">—</strong><small>накоплено</small></div>
-            </article>
-            <article class="stat-card kick">
-              <div class="stat-icon">👢</div>
-              <div><span>Кики</span><strong id="kicks">—</strong><small>накоплено</small></div>
-            </article>
-          </section>
+          <article class="panel status" id="system">
+            <div class="panel-kicker">SYSTEM</div><h2>Состояние</h2>
+            <div class="status-row"><span>🔐 Авторизация</span><b>Активна</b></div>
+            <div class="status-row"><span>🗄️ PostgreSQL</span><b id="db-status">Проверка…</b></div>
+            <div class="status-row"><span>🤖 Bot</span><b>Online</b></div>
+            <div class="status-row"><span>🌐 API</span><b>Online</b></div>
+          </article>
+        </section>
 
-          <section class="two-col">
-            <article class="panel activity" id="users">
-              <div class="panel-head">
-                <div><span class="panel-kicker">ACTIVITY</span><h2>Активность сообщений</h2></div>
-                <button id="refresh" class="ghost">↻ Обновить</button>
-              </div>
-              <div id="chart" class="chart"><div class="loading">Загрузка статистики…</div></div>
-            </article>
+        <section class="panel visual-system">
+          <div class="panel-head"><div><span class="panel-kicker">VISUAL SYSTEM</span><h2>Protogen Core</h2></div><span class="live"><i></i> LIVE</span></div>
+          <div class="visual-core">
+            <div class="visual-avatar"><img src="{{ url_for('static', filename='my_avatar.gif') }}" alt="Protogen"></div>
+            <div class="visual-wave" id="protoWave"></div>
+            <span>SYNC ONLINE · SIGNAL STABLE</span>
+          </div>
+        </section>
 
-            <article class="panel status" id="settings">
-              <div class="panel-kicker">SYSTEM</div><h2>Состояние</h2>
-              <div class="status-row"><span>🔐 Авторизация</span><b>Активна</b></div>
-              <div class="status-row"><span>🗄️ PostgreSQL</span><b id="db-status">Проверка…</b></div>
-              <div class="status-row"><span>🤖 Bot</span><b>Online</b></div>
-              <div class="status-row"><span>🌐 API</span><b id="api-status">Проверка…</b></div>
-            </article>
-          </section>
+        <section class="panel history" id="history">
+          <div class="panel-head"><div><span class="panel-kicker">MODERATION</span><h2>Последние действия</h2></div><span class="live"><i></i> LIVE DATA</span></div>
+          <div id="recent" class="recent"><div class="loading">Загрузка истории…</div></div>
+        </section>
 
-          <section class="panel history" id="history">
-            <div class="panel-head">
-              <div><span class="panel-kicker">MODERATION</span><h2>Последние действия</h2></div>
-              <span class="live"><i></i> LIVE DATA</span>
-            </div>
-            <div id="recent" class="recent"><div class="loading">Загрузка истории…</div></div>
-          </section>
+        <section class="panel moderation" id="moderation">
+          <div class="panel-kicker">MODERATION</div><h2>Управление</h2>
+          <p class="muted">Действия модерации выполняются через Telegram-панель. Веб-панель отображает статистику и историю из общей PostgreSQL базы.</p>
+          <div class="mod-grid"><div>⚠️ <b>Warn</b><span>История предупреждений</span></div><div>🔇 <b>Mute</b><span>История мутов</span></div><div>🚫 <b>Ban</b><span>История банов</span></div><div>👢 <b>Kick</b><span>История киков</span></div></div>
+        </section>
 
-          <section class="panel moderation" id="moderation">
-            <div class="panel-kicker">MODERATION</div>
-            <h2>Управление</h2>
-            <p class="muted">Действия модерации выполняются через Telegram-панель. Веб-панель отображает статистику и историю из общей PostgreSQL базы.</p>
-            <div class="mod-grid">
-              <a href="/admin/history"><span>⚠️</span><b>Warn</b><small>История предупреждений</small></a>
-              <a href="/admin/history"><span>🔇</span><b>Mute</b><small>История мутов</small></a>
-              <a href="/admin/history"><span>🚫</span><b>Ban</b><small>История банов</small></a>
-              <a href="/admin/history"><span>👢</span><b>Kick</b><small>История киков</small></a>
-            </div>
-          </section>
-        </div>
-
-        <aside class="dashboard-side">
-          <section class="side-panel wallpaper-panel neon-panel">
-            <div class="side-title">
-              <div><span class="panel-kicker">VISUAL SYSTEM</span><h2>Обои</h2></div>
-              <span class="tiny-status">LOCAL</span>
-            </div>
-            <div class="wallpapers" id="wallpapers">
-              <button class="wallpaper active" data-wall="default"><span></span><b>Protogen</b></button>
-              <button class="wallpaper" data-wall="violet"><span></span><b>Violet Grid</b></button>
-              <button class="wallpaper" data-wall="nebula"><span></span><b>Deep Nebula</b></button>
-              <button class="wallpaper" data-wall="matrix"><span></span><b>Cyber Grid</b></button>
-              <button class="wallpaper custom-wall" data-wall="custom" id="customWallpaperCard">
-                <span id="customWallpaperPreview"></span><b id="customWallpaperLabel">Мои обои</b>
-              </button>
-            </div>
-            <div class="wallpaper-upload">
-              <input id="wallpaperFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
-              <label for="wallpaperFile" class="upload-btn">＋ Загрузить свои обои</label>
-              <button id="deleteWallpaper" class="delete-btn" type="button">Удалить</button>
-              <small>PNG · JPG · WEBP · GIF · до 4 МБ</small>
-            </div>
-          </section>
-
-          <section class="side-panel proto-panel neon-panel">
-            <div class="side-title">
-              <div><span class="panel-kicker">CORE VISUALIZER</span><h2>Animated Protogen</h2></div>
-              <span class="live"><i></i> LIVE</span>
-            </div>
-            <div class="proto-stage">
-              <div class="proto-ring ring-a"></div>
-              <div class="proto-ring ring-b"></div>
-              <div class="proto-scan"></div>
-              <div class="proto-avatar">
-                <img src="{{ url_for('static', filename='my_avatar.gif') }}" alt="Protogen core">
-              </div>
-              <div class="proto-wave" id="protoWave"></div>
-              <div class="proto-label">SYSTEM CORE // 100%</div><div class="proto-readout">SYNC <b>ONLINE</b> · SIGNAL STABLE</div>
-            </div>
-          </section>
-
-          <section class="side-panel monitor-panel neon-panel">
-            <div class="side-title">
-              <div><span class="panel-kicker">SYSTEM MONITOR</span><h2>Мониторинг</h2></div>
-              <button id="monitorRefresh" class="icon-btn" title="Обновить">↻</button>
-            </div>
-            <div class="monitor-grid">
-              <div class="metric">
-                <div><span>CPU</span><b id="cpuValue">—</b></div>
-                <div class="meter"><i id="cpuBar"></i></div>
-              </div>
-              <div class="metric">
-                <div><span>RAM</span><b id="ramValue">—</b></div>
-                <div class="meter"><i id="ramBar"></i></div>
-              </div>
-              <div class="metric">
-                <div><span>PING</span><b id="pingValue">—</b></div>
-                <div class="meter"><i id="pingBar"></i></div>
-              </div>
-              <div class="metric uptime">
-                <div><span>UPTIME</span><b id="uptimeValue">00:00:00</b></div>
-                <div class="uptime-line"><i></i><small>session active</small></div>
-              </div>
-            </div>
-            <p class="monitor-note">CPU/RAM здесь являются визуальным client-side монитором; реальные серверные значения можно подключить отдельным API.</p>
-          </section>
-
-          <section class="side-panel quick-panel">
-            <div class="side-title">
-              <div><span class="panel-kicker">COMMAND CENTER</span><h2>Quick Actions</h2></div>
-            </div>
-            <div class="quick-grid">
-              <a href="/admin/users"><span>👥</span>Users</a>
-              <a href="/admin/history"><span>📜</span>Logs</a>
-              <a href="/admin/statistics"><span>📊</span>Stats</a>
-              <a href="/admin/settings"><span>⚙️</span>Settings</a>
-            </div>
-          </section>
-        </aside>
-      </section>
-
-      <footer>THE SYSTEM_PROTOGEN · PROTOGEN ADMIN CONSOLE · <span>SECURE SESSION</span></footer>
-    </main>
+        <footer>THE SYSTEM_PROTOGEN · PROTOGEN ADMIN CONSOLE · <span>SECURE SESSION</span></footer>
+      </main>
+    </div>
   </div>
 
 <script>
-const wave = document.getElementById("protoWave");
-if(wave) wave.innerHTML = Array.from({length:28}, () => "<i></i>").join("");
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
-const pageStarted = Date.now();
-
-function icon(type){
-  return ({warn:'⚠️',unwarn:'🧹',mute:'🔇',ban:'🚫',kick:'👢'})[type] || '📌';
-}
-
+function icon(type){ return ({warn:'⚠️',unwarn:'🧹',mute:'🔇',ban:'🚫',kick:'👢'})[type] || '📌'; }
 async function loadDashboard(){
-  const started = performance.now();
   try{
-    const r = await fetch('/api/admin/dashboard', {cache:'no-store'});
-    const latency = Math.round(performance.now() - started);
-    $('pingValue').textContent = latency + 'ms';
-    $('pingBar').style.width = Math.min(100, Math.max(8, 100 - latency)) + '%';
-    $('api-status').textContent = 'Online';
-    $('api-status').className = 'ok';
-
-    const d = await r.json();
-    if(!r.ok) throw new Error(d.error || 'API error');
-
-    $('users').textContent = d.stats.users;
-    $('active').textContent = d.stats.active_users;
-    $('messages').textContent = d.stats.messages;
-    $('warns').textContent = d.stats.warns;
-    $('mutes').textContent = d.stats.mutes;
-    $('bans').textContent = d.stats.bans;
-    $('kicks').textContent = d.stats.kicks;
-    $('db-status').textContent = d.database === 'online' ? 'Online' : 'Offline';
-    $('db-status').className = d.database === 'online' ? 'ok' : 'bad';
-
-    const rows = d.activity || [];
-    if(!rows.length){
-      $('chart').innerHTML = '<div class="empty">Пока нет дневной статистики.</div>';
-    } else {
-      const max = Math.max(...rows.map(x => x.messages), 1);
-      $('chart').innerHTML = rows.map(x => `
-        <div class="bar-wrap">
-          <span>${esc(x.day)}</span>
-          <div class="bar"><i style="height:${Math.max(8, x.messages/max*100)}%"></i></div>
-          <b>${x.messages}</b>
-        </div>`).join('');
-    }
-
-    const recent = d.recent || [];
-    $('recent').innerHTML = recent.length ? recent.map(x => `
-      <div class="event">
-        <div class="event-icon">${icon(x.type)}</div>
-        <div class="event-main">
-          <strong>${esc(x.user)} <small>ID ${esc(x.user_id)}</small></strong>
-          <span>${esc(x.type)} · ${esc(x.reason)}</span>
-        </div>
-        <time>${esc(x.created_at)}</time>
-      </div>`).join('') : '<div class="empty">История пока пустая.</div>';
-  }catch(e){
-    $('db-status').textContent = 'Ошибка';
-    $('db-status').className = 'bad';
-    $('api-status').textContent = 'Ошибка';
-    $('api-status').className = 'bad';
-    $('recent').innerHTML = '<div class="empty">Не удалось загрузить данные: '+esc(e.message)+'</div>';
-  }
+    const r=await fetch('/api/admin/dashboard',{cache:'no-store'}); const d=await r.json(); if(!r.ok) throw new Error(d.error||'API error');
+    $('users').textContent=d.stats.users; $('active').textContent=d.stats.active_users; $('messages').textContent=d.stats.messages;
+    $('warns').textContent=d.stats.warns; $('mutes').textContent=d.stats.mutes; $('bans').textContent=d.stats.bans; $('kicks').textContent=d.stats.kicks;
+    $('db-status').textContent=d.database==='online'?'Online':'Offline'; $('db-status').className=d.database==='online'?'ok':'bad';
+    const rows=d.activity||[];
+    $('chart').innerHTML=rows.length?rows.map(x=>`<div class="bar-wrap"><span>${esc(x.day)}</span><div class="bar"><i style="height:${Math.max(8,x.messages/Math.max(...rows.map(y=>y.messages),1)*100)}%"></i></div><b>${x.messages}</b></div>`).join(''):'<div class="empty">Пока нет дневной статистики.</div>';
+    const recent=d.recent||[];
+    $('recent').innerHTML=recent.length?recent.map(x=>`<div class="event"><div class="event-icon">${icon(x.type)}</div><div class="event-main"><strong>${esc(x.user)} <small>ID ${esc(x.user_id)}</small></strong><span>${esc(x.type)} · ${esc(x.reason)}</span></div><time>${esc(x.created_at)}</time></div>`).join(''):'<div class="empty">История пока пустая.</div>';
+  }catch(e){ $('db-status').textContent='Ошибка'; $('db-status').className='bad'; $('recent').innerHTML='<div class="empty">Не удалось загрузить данные: '+esc(e.message)+'</div>'; }
 }
-
-function updateMonitor(){
-  const t = Date.now();
-  const cpu = Math.round(28 + Math.abs(Math.sin(t / 1900)) * 37 + Math.random() * 10);
-  const ram = Math.round(42 + Math.abs(Math.sin(t / 3100)) * 25 + Math.random() * 7);
-  $('cpuValue').textContent = cpu + '%';
-  $('ramValue').textContent = ram + '%';
-  $('cpuBar').style.width = cpu + '%';
-  $('ramBar').style.width = ram + '%';
-}
-
-function updateUptime(){
-  let sec = Math.floor((Date.now() - pageStarted) / 1000);
-  const h = String(Math.floor(sec / 3600)).padStart(2,'0');
-  sec %= 3600;
-  const m = String(Math.floor(sec / 60)).padStart(2,'0');
-  const s = String(sec % 60).padStart(2,'0');
-  $('uptimeValue').textContent = `${h}:${m}:${s}`;
-}
-
-const wallpaperButtons = document.querySelectorAll('.wallpaper');
-const bg = document.querySelector('.bg');
-const customCard = document.getElementById('customWallpaperCard');
-const customPreview = document.getElementById('customWallpaperPreview');
-const customLabel = document.getElementById('customWallpaperLabel');
-const wallpaperFile = document.getElementById('wallpaperFile');
-const deleteWallpaper = document.getElementById('deleteWallpaper');
-
-function clearCustomBackground(){
-  bg.style.background = '';
-  bg.style.backgroundImage = '';
-}
-
-function applyWallpaper(wall, customData=null){
-  document.body.dataset.wallpaper = wall;
-  wallpaperButtons.forEach(x => x.classList.toggle('active', x.dataset.wall === wall));
-
-  if(wall === 'custom' && customData){
-    document.body.dataset.wallpaper = 'custom';
-    bg.style.background = `linear-gradient(180deg,rgba(1,5,8,.48),rgba(1,5,8,.82)),url("${customData}") center/cover fixed`;
-  }else{
-    clearCustomBackground();
-  }
-}
-
-async function loadWallpaper(){
-  try{
-    const r = await fetch('/api/admin/wallpaper', {cache:'no-store'});
-    const data = await r.json();
-    if(!r.ok) throw new Error(data.error || 'Wallpaper API error');
-
-    if(data.custom && data.custom_data){
-      customPreview.style.backgroundImage = `url("${data.custom_data}")`;
-      customPreview.classList.add('has-image');
-      customLabel.textContent = data.custom_name || 'Мои обои';
-      deleteWallpaper.disabled = false;
-    }else{
-      customPreview.style.backgroundImage = '';
-      customPreview.classList.remove('has-image');
-      customLabel.textContent = 'Мои обои';
-      deleteWallpaper.disabled = true;
-    }
-
-    applyWallpaper(data.selected || 'default', data.custom_data || null);
-  }catch(e){
-    console.error('WALLPAPER LOAD:', e);
-  }
-}
-
-async function selectWallpaper(wall){
-  try{
-    const r = await fetch('/api/admin/wallpaper', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({selected:wall})
-    });
-    const data = await r.json();
-    if(!r.ok) throw new Error(data.error || 'Не удалось применить обои');
-    applyWallpaper(data.selected, data.custom_data || null);
-  }catch(e){
-    alert(e.message);
-  }
-}
-
-wallpaperButtons.forEach(btn => {
-  btn.addEventListener('click', () => selectWallpaper(btn.dataset.wall));
-});
-
-wallpaperFile.addEventListener('change', async () => {
-  const file = wallpaperFile.files?.[0];
-  if(!file) return;
-
-  if(file.size > 4 * 1024 * 1024){
-    alert('Файл слишком большой. Максимум 4 МБ.');
-    wallpaperFile.value = '';
-    return;
-  }
-
-  const form = new FormData();
-  form.append('wallpaper', file);
-
-  const label = document.querySelector('.upload-btn');
-  const original = label.textContent;
-  label.textContent = 'Загрузка…';
-
-  try{
-    const r = await fetch('/api/admin/wallpaper/upload', {method:'POST', body:form});
-    const data = await r.json();
-    if(!r.ok) throw new Error(data.error || 'Не удалось загрузить обои');
-
-    customPreview.style.backgroundImage = `url("${data.custom_data}")`;
-    customPreview.classList.add('has-image');
-    customLabel.textContent = data.custom_name || 'Мои обои';
-    deleteWallpaper.disabled = false;
-    applyWallpaper('custom', data.custom_data);
-  }catch(e){
-    alert(e.message);
-  }finally{
-    label.textContent = original;
-    wallpaperFile.value = '';
-  }
-});
-
-deleteWallpaper.addEventListener('click', async () => {
-  if(deleteWallpaper.disabled) return;
-  if(!confirm('Удалить загруженные обои?')) return;
-
-  try{
-    const r = await fetch('/api/admin/wallpaper/custom', {method:'DELETE'});
-    const data = await r.json();
-    if(!r.ok) throw new Error(data.error || 'Не удалось удалить обои');
-    customPreview.style.backgroundImage = '';
-    customPreview.classList.remove('has-image');
-    customLabel.textContent = 'Мои обои';
-    deleteWallpaper.disabled = true;
-    applyWallpaper(data.selected || 'default');
-  }catch(e){
-    alert(e.message);
-  }
-});
-
-loadWallpaper();
-
-$('refresh').addEventListener('click', loadDashboard);
-$('monitorRefresh').addEventListener('click', () => { updateMonitor(); loadDashboard(); });
-loadDashboard();
-updateMonitor();
-updateUptime();
-setInterval(loadDashboard, 30000);
-setInterval(updateMonitor, 2200);
-setInterval(updateUptime, 1000);
+$('refresh').addEventListener('click',loadDashboard); loadDashboard(); setInterval(loadDashboard,30000);
+const wave=$('protoWave'); if(wave) wave.innerHTML=Array.from({length:34},(_,i)=>`<i style="--h:${12+(i*17)%48}px"></i>`).join('');
 </script>
 </body>
 </html>
