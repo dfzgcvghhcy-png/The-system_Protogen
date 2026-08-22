@@ -8,108 +8,165 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='statistics.css') }}">
 </head>
 <body>
-<div class="bg"></div><div class="grid"></div>
+<div class="bg"></div><div class="grid"></div><div class="scanlines"></div>
 
 {% include '_admin_sidebar.html' %}
 <div class="admin-main-wrap">
 {% include '_admin_topbar.html' %}
+
 <main class="stats-page">
-    {% if error %}
-      <section class="error-box">⚠️ {{ error }}</section>
-    {% else %}
-      <section class="stats-hero">
-        <div>
-          <div class="eyebrow">ANALYTICS // ADMIN CONSOLE</div>
-          <h1>Статистика</h1>
-          <p>Живая статистика чата из общей PostgreSQL базы.</p>
+  {% if error %}
+    <section class="error-box">⚠️ {{ error }}</section>
+  {% else %}
+
+  <section class="stats-hero">
+    <div>
+      <div class="eyebrow">АНАЛИТИКА // ПАНЕЛЬ УПРАВЛЕНИЯ</div>
+      <h1>Статистика</h1>
+      <p>Живая статистика сообщества из общей PostgreSQL базы.</p>
+    </div>
+    <div class="stats-live"><i></i> LIVE DATABASE <b>ONLINE</b></div>
+  </section>
+
+  <section class="stats-cards">
+    <article class="stat-card purple">
+      <div class="metric-icon">♟</div><small>УЧАСТНИКИ</small>
+      <strong>{{ "{:,}".format(data.users).replace(",", " ") }}</strong>
+      <em>в базе</em>
+    </article>
+    <article class="stat-card cyan">
+      <div class="metric-icon">◉</div><small>АКТИВНЫЕ</small>
+      <strong>{{ "{:,}".format(data.active).replace(",", " ") }}</strong>
+      <em>за последние 24 часа</em>
+    </article>
+    <article class="stat-card purple">
+      <div class="metric-icon">▣</div><small>СООБЩЕНИЯ</small>
+      <strong>{{ "{:,}".format(data.messages).replace(",", " ") }}</strong>
+      <em>всего в базе</em>
+    </article>
+    <article class="stat-card cyan">
+      <div class="metric-icon">⚒</div><small>ДЕЙСТВИЯ</small>
+      <strong>{{ "{:,}".format(data.actions).replace(",", " ") }}</strong>
+      <em>модерация</em>
+    </article>
+    <article class="stat-card pink">
+      <div class="metric-icon">⊘</div><small>БАНЫ</small>
+      <strong>{{ "{:,}".format(data.bans).replace(",", " ") }}</strong>
+      <em>всего выдано</em>
+    </article>
+    <article class="stat-card cyan">
+      <div class="metric-icon">◷</div><small>ВРЕМЯ РАБОТЫ</small>
+      <strong class="uptime">{{ data.uptime }}</strong>
+      <em>текущая сессия web</em>
+    </article>
+  </section>
+
+  <section class="stats-grid top-grid">
+    <article class="panel chart-panel">
+      <div class="panel-head">
+        <div><span class="panel-kicker">ACTIVITY</span><h2>Активность сообщений</h2></div>
+        <span class="select-like">7 дней⌄</span>
+      </div>
+      <div class="chart-bars">
+        {% set max_value = data.max_activity %}
+        {% for item in data.activity %}
+        <div class="chart-bar">
+          <b>{{ item.messages }}</b>
+          <div class="bar-track"><i style="height:{{ ((item.messages / max_value) * 100)|round(1) if max_value else 4 }}%"></i></div>
+          <span>{{ item.day }}</span>
         </div>
-        <div class="online-pill"><i></i> LIVE DATABASE</div>
-      </section>
+        {% endfor %}
+      </div>
+    </article>
 
-      <section class="stats-cards">
-        <article><span>👥</span><small>Участники</small><b>{{ data.users }}</b><em>в базе</em></article>
-        <article><span>🟢</span><small>Активны за 24ч</small><b>{{ data.active }}</b><em>онлайн-активность</em></article>
-        <article><span>💬</span><small>Сообщения</small><b>{{ data.messages }}</b><em>всего</em></article>
-        <article><span>📜</span><small>Действия</small><b>{{ data.actions }}</b><em>модерация</em></article>
-      </section>
-
-      <section class="stats-two">
-        <article class="panel stat-panel">
-          <div class="panel-head">
-            <div><span class="panel-kicker">ACTIVITY</span><h2>Сообщения по дням</h2></div>
-            <span class="hint">последние 14 дней</span>
-          </div>
-
-          {% if data.activity %}
-            {% set max_value = data.activity|map(attribute='messages')|max %}
-            <div class="bars">
-              {% for item in data.activity %}
-                <div class="bar-item">
-                  <strong>{{ item.messages }}</strong>
-                  <div class="bar-bg">
-                    <i style="height:{{ [((item.messages / max_value) * 100), 100]|min if max_value else 8 }}%"></i>
-                  </div>
-                  <span>{{ item.day }}</span>
-                </div>
-              {% endfor %}
-            </div>
-          {% else %}
-            <div class="empty">Пока нет дневной статистики.</div>
-          {% endif %}
-        </article>
-
-        <article class="panel stat-panel">
-          <div class="panel-head">
-            <div><span class="panel-kicker">MODERATION</span><h2>Модерация</h2></div>
-            <a href="/admin#history">История →</a>
-          </div>
-
-          <div class="mod-line"><span>⚠️ Warn</span><b>{{ data.warns }}</b></div>
-          <div class="progress"><i style="width:{{ [data.warns * 8, 100]|min }}%"></i></div>
-
-          <div class="mod-line"><span>🔇 Mute</span><b>{{ data.mutes }}</b></div>
-          <div class="progress"><i style="width:{{ [data.mutes * 8, 100]|min }}%"></i></div>
-
-          <div class="mod-line"><span>🚫 Ban</span><b>{{ data.bans }}</b></div>
-          <div class="progress"><i style="width:{{ [data.bans * 8, 100]|min }}%"></i></div>
-
-          <div class="mod-line"><span>👢 Kick</span><b>{{ data.kicks }}</b></div>
-          <div class="progress"><i style="width:{{ [data.kicks * 8, 100]|min }}%"></i></div>
-        </article>
-      </section>
-
-      <section class="stats-two">
-        <article class="panel">
-          <div class="panel-head">
-            <div><span class="panel-kicker">TOP USERS</span><h2>Самые активные</h2></div>
-            <a href="/admin#users">Пользователи →</a>
-          </div>
-
-          {% for u in data.top_users %}
-            <div class="top-user">
-              <span class="rank">{{ loop.index }}</span>
-              <span class="avatar-letter">{{ u.name[:1]|upper }}</span>
-              <div><strong>{{ u.name }}</strong><small>ID {{ u.id }}</small></div>
-              <b>{{ u.messages }} <small>сообщ.</small></b>
-            </div>
-          {% else %}
-            <div class="empty">Пользователей пока нет.</div>
+    <article class="panel moderation-panel">
+      <div class="panel-head">
+        <div><span class="panel-kicker">MODERATION</span><h2>Типы действий</h2></div>
+        <a href="/admin/history">История →</a>
+      </div>
+      {% set mod_total = data.actions %}
+      <div class="donut-row">
+        <div class="donut" style="background:{{ data.donut_style }};">
+          <div><b>{{ data.actions }}</b><span>всего</span></div>
+        </div>
+        <div class="legend">
+          {% for item in data.moderation %}
+          <div><i class="legend-dot {{ item.key }}"></i><span>{{ item.label }}</span><b>{{ item.value }}</b></div>
           {% endfor %}
-        </article>
+        </div>
+      </div>
+      {% if not mod_total %}<div class="mini-empty">Действий модерации пока нет.</div>{% endif %}
+    </article>
+  </section>
 
-        <article class="panel">
-          <div class="panel-kicker">SYSTEM INSIGHTS</div>
-          <h2>Обзор</h2>
-          <div class="insight"><span>Среднее сообщений на участника</span><b>{{ (data.messages / data.users)|round(1) if data.users else 0 }}</b></div>
-          <div class="insight"><span>Активных за 24 часа</span><b>{{ ((data.active / data.users) * 100)|round(1) if data.users else 0 }}%</b></div>
-          <div class="insight"><span>База данных</span><b class="ok">ONLINE</b></div>
-          <div class="insight"><span>Состояние панели</span><b class="ok">ONLINE</b></div>
-        </article>
-      </section>
+  <section class="stats-grid middle-grid">
+    <article class="panel">
+      <div class="panel-head">
+        <div><span class="panel-kicker">ACTIVITY LOG</span><h2>Активность по дням</h2></div>
+        <span class="muted">последние 7 дней</span>
+      </div>
+      <div class="day-grid">
+        {% for item in data.activity %}
+          <div class="day-cell">
+            <span>{{ item.day }}</span>
+            <i style="height:{{ ((item.messages / data.max_activity) * 100)|round(1) if data.max_activity else 12 }}%;opacity:{{ 0.35 + ((item.messages / data.max_activity) * 0.65) if data.max_activity else 0.35 }}"></i>
+            <b>{{ item.messages }}</b>
+          </div>
+        {% endfor %}
+      </div>
+    </article>
 
-      <footer>THE SYSTEM_PROTOGEN · ANALYTICS CONSOLE · <span>SECURE SESSION</span></footer>
-    {% endif %}
-  </main>
+    <article class="panel">
+      <div class="panel-head">
+        <div><span class="panel-kicker">SYSTEM INSIGHTS</span><h2>Состояние системы</h2></div>
+        <span class="live-dot"><i></i> LIVE</span>
+      </div>
+      <div class="system-list">
+        <div><span>◉ PostgreSQL</span><b>ONLINE</b></div>
+        <div><span>◈ Среднее сообщений / участника</span><b>{{ data.avg_messages }}</b></div>
+        <div><span>♟ Активность за 24 часа</span><b>{{ data.active_percent }}%</b></div>
+        <div><span>◷ Web-сессия</span><b>{{ data.uptime }}</b></div>
+      </div>
+    </article>
+  </section>
+
+  <section class="stats-grid bottom-grid">
+    <article class="panel top-users-panel">
+      <div class="panel-head">
+        <div><span class="panel-kicker">TOP USERS</span><h2>Самые активные</h2></div>
+        <a href="/admin/users">Пользователи →</a>
+      </div>
+      <div class="user-table">
+        {% for u in data.top_users %}
+        <div class="user-row">
+          <span class="rank">{{ loop.index }}</span>
+          <span class="user-avatar">{{ u.name[:1]|upper }}</span>
+          <div class="user-name"><strong>{{ u.name }}</strong><small>{{ u.username or ("ID " ~ u.id) }}</small></div>
+          <b>{{ "{:,}".format(u.messages).replace(",", " ") }} <small>сообщ.</small></b>
+        </div>
+        {% else %}
+        <div class="mini-empty">Пользователей пока нет.</div>
+        {% endfor %}
+      </div>
+    </article>
+
+    <article class="panel moderation-detail">
+      <div class="panel-head">
+        <div><span class="panel-kicker">MODERATION</span><h2>Активность модерации</h2></div>
+      </div>
+      {% for item in data.moderation %}
+        {% set pct = ((item.value / mod_total) * 100)|round(1) if mod_total else 0 %}
+        <div class="mod-row">
+          <div><span>{{ item.icon }} {{ item.short }}</span><b>{{ item.value }}</b></div>
+          <div class="mod-track"><i class="{{ item.key }}" style="width:{{ pct }}%"></i></div>
+        </div>
+      {% endfor %}
+    </article>
+  </section>
+
+  <footer>THE SYSTEM_PROTOGEN · ANALYTICS CONSOLE · <span>LIVE DATA</span></footer>
+  {% endif %}
+</main>
 </div>
 </body>
 </html>
