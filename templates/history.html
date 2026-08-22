@@ -15,12 +15,7 @@
 {% include '_admin_topbar.html' %}
 <main class="history-main">
   <section class="history-hero" aria-label="История действий">
-    <div class="history-hero-copy">
-      <div class="eyebrow">MODERATION LOG</div>
-      <h1>История действий</h1>
-      <p>Единый журнал модерации из PostgreSQL — без изменения логики Telegram-бота.</p>
-    </div>
-    <div class="online-pill"><i></i> LIVE DATABASE</div>
+    <img src="{{ url_for('static', filename='history_banner_bg.png') }}" alt="История действий — журнал модерации" class="history-banner">
   </section>
 
   <section class="history-toolbar panel">
