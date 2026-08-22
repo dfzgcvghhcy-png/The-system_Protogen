@@ -7,6 +7,8 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for, s
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, Text, func, desc, or_, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
+APP_STARTED_AT = datetime.utcnow()
+
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "CHANGE_ME_IN_RAILWAY")
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
@@ -633,42 +635,155 @@ def admin_history_api():
 @app.route("/admin/statistics")
 @admin_required
 def admin_statistics():
+    """Live analytics from the current PostgreSQL database."""
     if not SessionLocal:
-        return render_template("statistics.html", username=session.get("admin_username", ADMIN_USERNAME), data=None, error="DATABASE_URL не настроен.")
-    db=SessionLocal()
+        return render_template(
+            "statistics.html",
+            username=session.get("admin_username", ADMIN_USERNAME),
+            data=None,
+            error="DATABASE_URL не настроен.",
+        )
+
+    db = SessionLocal()
     try:
-        users=db.query(func.count(User.id)).scalar() or 0
-        messages=db.query(func.coalesce(func.sum(User.messages_count),0)).scalar() or 0
-        warns=db.query(func.coalesce(func.sum(User.warns),0)).scalar() or 0
-        mutes=db.query(func.coalesce(func.sum(User.mutes),0)).scalar() or 0
-        bans=db.query(func.coalesce(func.sum(User.bans),0)).scalar() or 0
-        kicks=db.query(func.coalesce(func.sum(User.kicks),0)).scalar() or 0
-        active=db.query(func.count(User.id)).filter(User.last_seen >= datetime.utcnow()-timedelta(hours=24)).scalar() or 0
-        rows=db.query(Activity.day,func.sum(Activity.messages_count)).group_by(Activity.day).order_by(desc(Activity.day)).limit(14).all()
-        activity=[{"day":d.strftime("%d.%m") if d else "—","messages":int(c or 0)} for d,c in reversed(rows)]
-        top=db.query(User).order_by(desc(func.coalesce(User.messages_count,0))).limit(10).all()
-        top_users=[]
+        now = datetime.utcnow()
+        day_24h = now - timedelta(hours=24)
+        day_7 = now - timedelta(days=7)
+
+        users = db.query(func.count(User.id)).scalar() or 0
+        messages = db.query(func.coalesce(func.sum(User.messages_count), 0)).scalar() or 0
+        warns = db.query(func.coalesce(func.sum(User.warns), 0)).scalar() or 0
+        mutes = db.query(func.coalesce(func.sum(User.mutes), 0)).scalar() or 0
+        bans = db.query(func.coalesce(func.sum(User.bans), 0)).scalar() or 0
+        kicks = db.query(func.coalesce(func.sum(User.kicks), 0)).scalar() or 0
+        actions = int(warns + mutes + bans + kicks)
+
+        active = (
+            db.query(func.count(User.id))
+            .filter(User.last_seen >= day_24h)
+            .scalar() or 0
+        )
+
+        # Activity is stored per user/day. Aggregate it by calendar day so
+        # the chart never shows fabricated values.
+        activity_rows = (
+            db.query(
+                func.date(Activity.day).label("day"),
+                func.coalesce(func.sum(Activity.messages_count), 0).label("messages"),
+            )
+            .filter(Activity.day >= day_7)
+            .group_by(func.date(Activity.day))
+            .order_by(func.date(Activity.day))
+            .all()
+        )
+
+        activity_map = {
+            str(day): int(count or 0)
+            for day, count in activity_rows
+        }
+
+        activity = []
+        for offset in range(6, -1, -1):
+            d = (now - timedelta(days=offset)).date()
+            key = str(d)
+            activity.append({
+                "day": d.strftime("%d.%m"),
+                "messages": activity_map.get(key, 0),
+            })
+
+        max_activity = max((x["messages"] for x in activity), default=0)
+
+        top = (
+            db.query(User)
+            .order_by(desc(func.coalesce(User.messages_count, 0)))
+            .limit(5)
+            .all()
+        )
+        top_users = []
         for u in top:
-            name=f"{u.first_name or ''} {u.last_name or ''}".strip() or (f"@{u.username}" if u.username else str(u.id))
-            top_users.append({"id":u.id,"name":name,"messages":int(u.messages_count or 0)})
-        return render_template("statistics.html",username=session.get("admin_username",ADMIN_USERNAME),
-            data={"users":int(users),"active":int(active),"messages":int(messages),"warns":int(warns),"mutes":int(mutes),
-                  "bans":int(bans),"kicks":int(kicks),"actions":int(warns+mutes+bans+kicks),"activity":activity,"top_users":top_users},error=None)
+            name = (
+                f"{u.first_name or ''} {u.last_name or ''}".strip()
+                or (f"@{u.username}" if u.username else str(u.id))
+            )
+            top_users.append({
+                "id": u.id,
+                "name": name,
+                "username": f"@{u.username}" if u.username else "",
+                "messages": int(u.messages_count or 0),
+            })
+
+        moderation = [
+            {"key": "warn", "label": "Предупреждения", "short": "Warn", "value": int(warns), "icon": "⚠️"},
+            {"key": "mute", "label": "Муты", "short": "Mute", "value": int(mutes), "icon": "🔇"},
+            {"key": "ban", "label": "Баны", "short": "Ban", "value": int(bans), "icon": "🚫"},
+            {"key": "kick", "label": "Кики", "short": "Kick", "value": int(kicks), "icon": "👢"},
+        ]
+
+        # CSS conic-gradient for the real moderation proportions.
+        if actions:
+            p1 = warns / actions * 100
+            p2 = (warns + mutes) / actions * 100
+            p3 = (warns + mutes + bans) / actions * 100
+            donut_style = (
+                f"conic-gradient(#00d9ce 0 {p1:.2f}%, "
+                f"#7d42ee {p1:.2f}% {p2:.2f}%, "
+                f"#ff4d88 {p2:.2f}% {p3:.2f}%, "
+                f"#c548ff {p3:.2f}% 100%)"
+            )
+        else:
+            donut_style = "conic-gradient(#142433 0 100%)"
+
+        uptime_seconds = max(0, int((now - APP_STARTED_AT).total_seconds()))
+        uptime_days, remainder = divmod(uptime_seconds, 86400)
+        uptime_hours, remainder = divmod(remainder, 3600)
+        uptime_minutes, _ = divmod(remainder, 60)
+        uptime = (
+            f"{uptime_days}д {uptime_hours}ч"
+            if uptime_days
+            else f"{uptime_hours}ч {uptime_minutes}м"
+        )
+
+        avg_messages = round(messages / users, 1) if users else 0
+        active_percent = round((active / users) * 100, 1) if users else 0
+
+        data = {
+            "users": int(users),
+            "active": int(active),
+            "messages": int(messages),
+            "actions": actions,
+            "bans": int(bans),
+            "warns": int(warns),
+            "mutes": int(mutes),
+            "kicks": int(kicks),
+            "activity": activity,
+            "max_activity": max_activity,
+            "top_users": top_users,
+            "moderation": moderation,
+            "donut_style": donut_style,
+            "uptime": uptime,
+            "avg_messages": avg_messages,
+            "active_percent": active_percent,
+            "database": "ONLINE",
+        }
+
+        return render_template(
+            "statistics.html",
+            username=session.get("admin_username", ADMIN_USERNAME),
+            data=data,
+            error=None,
+        )
+
     except Exception as e:
         print(f"STATISTICS PAGE ERROR: {type(e).__name__}: {e}")
-        return render_template("statistics.html",username=session.get("admin_username",ADMIN_USERNAME),data=None,error=f"{type(e).__name__}: {e}")
-    finally: db.close()
+        return render_template(
+            "statistics.html",
+            username=session.get("admin_username", ADMIN_USERNAME),
+            data=None,
+            error=f"{type(e).__name__}: {e}",
+        )
+    finally:
+        db.close()
 
-
-DEFAULT_SETTINGS={"moderation_enabled":True,"auto_delete_spam":True,"warn_enabled":True,"mute_enabled":True,
-                  "ban_enabled":True,"kick_enabled":True,"ai_moderation_enabled":False,"warn_limit":3,"mute_duration":60,
-                  "personality_daring":75,"personality_sarcasm":70,"personality_aggression":45,"personality_humor":85,"personality_friendliness":60}
-
-def get_bot_settings(db):
-    s=db.query(BotSetting).filter(BotSetting.id==1).first()
-    if not s:
-        s=BotSetting(id=1,**DEFAULT_SETTINGS); db.add(s); db.commit(); db.refresh(s)
-    return s
 
 @app.route("/admin/settings",methods=["GET","POST"])
 @admin_required
