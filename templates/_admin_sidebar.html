@@ -2,17 +2,22 @@
   <div class="sidebar-identity">
     <div class="sidebar-avatar"><img src="{{ url_for('static', filename='my_avatar.png') }}" alt="Protogen"></div>
     <div class="sidebar-name">PROTOGEN</div>
-    <div class="sidebar-role">ADMINISTRATOR</div>
+    <div class="sidebar-role">{{ panel_role_label }}</div>
     <div class="sidebar-online"><i></i> ОНЛАЙН</div>
   </div>
 
   <nav class="admin-nav" aria-label="Административная навигация">
     <a class="{% if request.path == '/admin' %}active{% endif %}" href="/admin"><span>⌂</span><b>ГЛАВНАЯ</b><small>Панель управления</small></a>
     <a class="{% if request.path.startswith('/admin/users') %}active{% endif %}" href="/admin/users"><span>♙</span><b>ПОЛЬЗОВАТЕЛИ</b><small>Управление участниками</small></a>
-    <a href="/admin#moderation"><span>♜</span><b>МОДЕРАЦИЯ</b><small>Действия и наказания</small></a>
+
+    {% if is_creator %}
     <a class="{% if request.path.startswith('/admin/history') %}active{% endif %}" href="/admin/history"><span>▣</span><b>ИСТОРИЯ</b><small>Логи и события</small></a>
+    {% endif %}
+
+    {% if is_admin %}
     <a class="{% if request.path.startswith('/admin/statistics') %}active{% endif %}" href="/admin/statistics"><span>▥</span><b>СТАТИСТИКА</b><small>Аналитика системы</small></a>
-    <a class="{% if request.path.startswith('/admin/settings') %}active{% endif %}" href="/admin/settings"><span>⚙</span><b>НАСТРОЙКИ</b><small>Конфигурация бота</small></a>
+    <a class="{% if request.path.startswith('/admin/settings') %}active{% endif %}" href="/admin/settings"><span>⚙</span><b>НАСТРОЙКИ</b><small>{% if is_creator %}Конфигурация бота{% else %}Только просмотр{% endif %}</small></a>
+    {% endif %}
   </nav>
 
   <a class="sidebar-logout" href="/admin/logout">

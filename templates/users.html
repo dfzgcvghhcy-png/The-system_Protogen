@@ -46,6 +46,7 @@
       <footer>THE SYSTEM_PROTOGEN · USER DATABASE · <span>SECURE SESSION</span></footer>
     </section>
 
+    {% if is_creator %}
     <aside class="quick-actions panel">
       <div class="quick-actions-head"><div><div class="panel-kicker">COMMAND CENTER</div><h2>Быстрые действия</h2></div><span class="quick-live"><i></i> LIVE</span></div>
       <div class="selected-user-box" id="selectedUserBox"><span class="selected-dot">●</span><div><small>ВЫБРАННЫЙ ПОЛЬЗОВАТЕЛЬ</small><b id="selectedUserName">Не выбран</b><em id="selectedUserId">Выберите пользователя в таблице</em></div></div>
@@ -55,6 +56,12 @@
       <a class="quick-action" href="{{ url_for('admin_users_export') }}"><span>⇩</span><div><b>Экспорт данных</b><small>Скачать всех пользователей в CSV</small></div></a>
       <div class="quick-hint">Действия выполняются через Telegram Bot API и PostgreSQL.</div>
     </aside>
+    {% else %}
+    <aside class="quick-actions panel quick-actions-locked" data-denied>
+      <div class="quick-actions-head"><div><div class="panel-kicker">COMMAND CENTER</div><h2>Доступ закрыт</h2></div><span class="quick-live locked">LOCKED</span></div>
+      <div class="locked-center"><div class="locked-icon">⊘</div><b>Доступ запрещен</b><small>Быстрые действия доступны только Создателю.</small><button type="button" onclick="showAccessDenied()">Проверить доступ</button></div>
+    </aside>
+    {% endif %}
   </div>
 </main>
 </div>
@@ -72,6 +79,7 @@
   </div>
 </div>
 
+{% if is_creator %}
 <script>
 const selected={id:null,name:null};
 const modal=document.getElementById('quickModal');
@@ -123,4 +131,5 @@ document.getElementById('modalSubmit').addEventListener('click',async()=>{
   finally{button.disabled=false;button.textContent='Выполнить';}
 });
 </script>
+{% endif %}
 </body></html>

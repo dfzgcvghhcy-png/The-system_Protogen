@@ -10,3 +10,5 @@
 
 /* Approved settings artwork is self-contained: do not overlay duplicate HTML content. */
 .settings-page .settings-hero-copy,.settings-page .settings-hero .hero-statuses{display:none!important}
+
+.settings-read-only .settings-form{position:relative}.settings-read-only .settings-form:after{content:'READ ONLY // CREATOR REQUIRED';position:absolute;top:0;right:0;z-index:5;padding:7px 10px;border:1px solid rgba(255,70,130,.25);border-radius:8px;background:rgba(30,5,17,.82);color:#ff7f9f;font-size:7px;letter-spacing:1px;font-weight:900}.settings-read-only input,.settings-read-only select,.settings-read-only button{cursor:not-allowed}.settings-read-only .savebar{opacity:.72}.access-lock-banner{display:block}

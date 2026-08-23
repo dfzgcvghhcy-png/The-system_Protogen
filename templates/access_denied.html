@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ProtogenAdmin — Доступ запрещен</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
+<style>
+.access-denied{min-height:100vh;display:grid;place-items:center;padding:25px}.denied-card{width:min(520px,100%);padding:34px;border:1px solid rgba(255,70,130,.35);border-radius:22px;background:linear-gradient(145deg,rgba(12,7,25,.97),rgba(3,11,20,.97));box-shadow:0 25px 90px rgba(0,0,0,.6),0 0 45px rgba(255,60,120,.07);text-align:center}.denied-icon{width:78px;height:78px;margin:0 auto 18px;display:grid;place-items:center;border-radius:22px;border:1px solid rgba(255,70,130,.45);color:#ff6f9b;font-size:35px;box-shadow:0 0 30px rgba(255,70,130,.12)}.denied-kicker{font-size:9px;letter-spacing:2px;color:#ff6f9b;font-weight:900}.denied-card h1{margin:8px 0;font-size:30px}.denied-card p{color:#718994;font-size:11px;line-height:1.7}.denied-card b{color:#dbeaf0}.denied-actions{display:flex;justify-content:center;gap:9px;margin-top:22px;flex-wrap:wrap}.denied-actions a,.denied-actions button{border-radius:10px;padding:11px 15px;text-decoration:none;font:inherit;font-size:9px;font-weight:900;cursor:pointer}.denied-actions a{border:1px solid rgba(0,255,225,.25);background:rgba(0,255,225,.04);color:#00ffe1}.denied-actions button{border:1px solid rgba(255,70,130,.3);background:rgba(255,70,130,.06);color:#ff91ae}.denied-role{margin-top:16px;color:#526b75;font-size:8px;letter-spacing:1px}</style>
+</head>
+<body><div class="bg"></div><div class="grid"></div><div class="scanlines"></div>
+<main class="access-denied">
+  <section class="denied-card">
+    <div class="denied-icon">⊘</div>
+    <div class="denied-kicker">SECURITY // ACCESS CONTROL</div>
+    <h1>Доступ запрещен</h1>
+    <p>У твоей роли <b>{{ panel_role_label }}</b> нет доступа к этому разделу системы.</p>
+    <div class="denied-role">ТРЕБУЕТСЯ: {{ ROLE_LABELS[required_role] if required_role in ROLE_LABELS else required_role|upper }}</div>
+    <div class="denied-actions"><a href="/admin">← На главную</a><button type="button" id="repeatDenied">▶ Повторить сигнал</button></div>
+  </section>
+</main>
+<audio id="accessDeniedSound" preload="auto" autoplay src="{{ url_for('static', filename='access-denied.mp3') }}"></audio>
+<script>const audio=document.getElementById('accessDeniedSound');document.getElementById('repeatDenied').addEventListener('click',()=>{audio.currentTime=0;audio.play().catch(()=>{});});window.addEventListener('load',()=>audio.play().catch(()=>{}));</script>
+</body></html>
