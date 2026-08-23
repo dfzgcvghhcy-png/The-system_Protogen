@@ -461,9 +461,17 @@ body.admin-transitioning .admin-cta b{
    при открытом чате не уезжает по вертикали.
    ========================================================= */
 @media (min-width: 921px){
+  html.chat-open-lock,
+  html.chat-open-lock body{
+    overflow:hidden !important;
+    height:100vh !important;
+    min-height:100vh !important;
+  }
+
   body.chat-open{
-    overflow:hidden;
-    height:100vh;
+    overflow:hidden !important;
+    height:100vh !important;
+    min-height:100vh !important;
   }
 
   body.chat-open .hero-area{

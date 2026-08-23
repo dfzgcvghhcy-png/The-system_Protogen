@@ -14,6 +14,7 @@
   function setChat(open, focusInput = false) {
     if (!chatPanel) return;
     document.body.classList.toggle('chat-open', open);
+    document.documentElement.classList.toggle('chat-open-lock', open);
     chatPanel.classList.toggle('is-open', open);
     chatPanel.setAttribute('aria-hidden', open ? 'false' : 'true');
     if (heroChatBtn) heroChatBtn.setAttribute('aria-expanded', String(open));
