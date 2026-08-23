@@ -10,6 +10,7 @@
   <div class="bg"></div><div class="grid"></div><div class="scanlines"></div>
   <div class="admin-app">
     {% include '_admin_sidebar.html' %}
+
     <div class="admin-main-wrap">
       <header class="admin-topbar">
         <div class="topbar-brand"><div class="brand-name">ProtogenAdmin <span>Console</span></div><div class="brand-sub"><i></i> THE SYSTEM_PROTOGEN</div></div>
@@ -55,7 +56,7 @@
           </article>
 
           <article class="panel recent-panel">
-            <div class="panel-head"><div><span class="panel-kicker">MODERATION</span><h2>Последние действия</h2></div>{% if is_creator %}<button class="small-link" onclick="location.href='/admin/history'">Смотреть все</button>{% else %}<button class="small-link" type="button" onclick="showAccessDenied()">Доступ закрыт</button>{% endif %}</div>
+            <div class="panel-head"><div><span class="panel-kicker">MODERATION</span><h2>Последние действия</h2></div><button class="small-link" onclick="location.href='/admin/history'">Смотреть все</button></div>
             <div id="recent" class="recent-v2"><div class="loading">Загрузка истории…</div></div>
           </article>
 
@@ -64,15 +65,17 @@
             <div id="topUsers" class="top-users"><div class="empty">Статистика пользователей появится после загрузки данных.</div></div>
           </article>
 
+          {% if is_creator %}
           <article class="panel quick-panel">
             <div class="panel-head"><div><span class="panel-kicker">COMMAND CENTER</span><h2>Быстрые действия</h2></div></div>
             <div class="quick-list">
               <button onclick="loadDashboard()"><span>⟳</span><div><b>Обновить статистику</b><small>Получить актуальные данные</small></div></button>
-              {% if is_admin %}<button onclick="location.href='/admin/statistics'"><span>ϟ</span><div><b>Статистика</b><small>Открыть аналитику системы</small></div></button>{% else %}<button onclick="showAccessDenied()"><span>ϟ</span><div><b>Статистика</b><small>Требуется Администратор</small></div></button>{% endif %}
-              {% if is_creator %}<button onclick="location.href='/admin/history'"><span>♢</span><div><b>Проверка системы</b><small>Журнал и диагностика</small></div></button>{% else %}<button onclick="showAccessDenied()"><span>♢</span><div><b>Проверка системы</b><small>Только Создатель</small></div></button>{% endif %}
-              {% if is_admin %}<button onclick="location.href='/admin/settings'"><span>☁</span><div><b>Настройки</b><small>{% if is_creator %}Конфигурация Protogen{% else %}Только просмотр{% endif %}</small></div></button>{% else %}<button onclick="showAccessDenied()"><span>☁</span><div><b>Настройки</b><small>Требуется Администратор</small></div></button>{% endif %}
+              <button onclick="location.href='/admin/statistics'"><span>ϟ</span><div><b>Статистика</b><small>Открыть аналитику системы</small></div></button>
+              <button onclick="location.href='/admin/history'"><span>♢</span><div><b>Проверка системы</b><small>Журнал и диагностика</small></div></button>
+              <button onclick="location.href='/admin/settings'"><span>☁</span><div><b>Настройки</b><small>Конфигурация Protogen</small></div></button>
             </div>
           </article>
+          {% endif %}
         </section>
         <footer>PROTOGEN CORE v2.0 · THE SYSTEM_PROTOGEN · <span>SECURE ADMIN SESSION</span></footer>
       </main>

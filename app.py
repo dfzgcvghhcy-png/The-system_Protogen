@@ -8,6 +8,7 @@ from functools import wraps
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, send_file
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, Text, func, desc, or_, text
 from sqlalchemy.orm import declarative_base, sessionmaker
+from werkzeug.security import generate_password_hash, check_password_hash
 
 APP_STARTED_AT = datetime.utcnow()
 
@@ -15,42 +16,8 @@ app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "CHANGE_ME_IN_RAILWAY")
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
 
-# Web-panel accounts. ADMIN_USERNAME/ADMIN_PASSWORD remain the creator
-# credentials for backwards compatibility with the existing Railway setup.
-CREATOR_USERNAME = os.getenv("CREATOR_USERNAME") or os.getenv("ADMIN_USERNAME", "admin")
-CREATOR_PASSWORD = os.getenv("CREATOR_PASSWORD") or os.getenv("ADMIN_PASSWORD", "")
-PANEL_ADMIN_USERNAME = os.getenv("PANEL_ADMIN_USERNAME", "")
-PANEL_ADMIN_PASSWORD = os.getenv("PANEL_ADMIN_PASSWORD", "")
-MODERATOR_USERNAME = os.getenv("MODERATOR_USERNAME", "")
-MODERATOR_PASSWORD = os.getenv("MODERATOR_PASSWORD", "")
-
-ROLE_LEVELS = {"moderator": 10, "admin": 20, "creator": 30}
-ROLE_LABELS = {"moderator": "МОДЕРАТОР", "admin": "АДМИНИСТРАТОР", "creator": "СОЗДАТЕЛЬ"}
-
-def current_role():
-    return session.get("admin_role")
-
-def role_allowed(required_role):
-    role = current_role()
-    return bool(role and ROLE_LEVELS.get(role, 0) >= ROLE_LEVELS[required_role])
-
-def role_required(required_role):
-    def decorator(view):
-        @wraps(view)
-        def wrapped(*args, **kwargs):
-            if not session.get("admin_authenticated"):
-                return redirect(url_for("admin_login"))
-            if not role_allowed(required_role):
-                return render_template(
-                    "access_denied.html",
-                    username=session.get("admin_username", CREATOR_USERNAME),
-                    role=current_role() or "member",
-                    required_role=required_role,
-                ), 403
-            return view(*args, **kwargs)
-        return wrapped
-    return decorator
-
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "creator")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 if DATABASE_URL:
@@ -131,6 +98,17 @@ class SiteSetting(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class WebAccount(Base):
+    __tablename__ = "web_accounts"
+    id = Column(Integer, primary_key=True)
+    username = Column(String(80), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False)
+    role = Column(String(20), nullable=False, default="moderator")
+    active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_login = Column(DateTime, nullable=True)
+
+
 # Create missing tables only after ALL SQLAlchemy models are registered.
 if engine:
     Base.metadata.create_all(engine)
@@ -139,23 +117,74 @@ if engine:
         for column, default in (("personality_daring",75),("personality_sarcasm",70),("personality_aggression",45),("personality_humor",85),("personality_friendliness",60)):
             connection.execute(text(f"ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS {column} INTEGER DEFAULT {default}"))
         connection.execute(text("""UPDATE bot_settings SET personality_daring=COALESCE(personality_daring,75), personality_sarcasm=COALESCE(personality_sarcasm,70), personality_aggression=COALESCE(personality_aggression,45), personality_humor=COALESCE(personality_humor,85), personality_friendliness=COALESCE(personality_friendliness,60) WHERE id=1"""))
+    # Seed the first creator account from Railway Variables only once.
+    # After that, all additional panel users live in PostgreSQL.
+    if ADMIN_PASSWORD:
+        with SessionLocal() as seed_db:
+            creator = seed_db.query(WebAccount).filter(WebAccount.username == ADMIN_USERNAME).first()
+            if not creator:
+                seed_db.add(WebAccount(
+                    username=ADMIN_USERNAME,
+                    password_hash=generate_password_hash(ADMIN_PASSWORD),
+                    role="creator",
+                    active=True,
+                ))
+                seed_db.commit()
+                print(f"🔐 Creator account seeded: {ADMIN_USERNAME}")
+
     print("🗄️ Database tables checked/created; personality columns synced")
 
+ROLE_NAMES = {
+    "moderator": "МОДЕРАТОР",
+    "admin": "АДМИНИСТРАТОР",
+    "creator": "СОЗДАТЕЛЬ",
+}
+
+ROLE_LEVELS = {"moderator": 1, "admin": 2, "creator": 3}
+
+
+def current_role():
+    return session.get("admin_role") or "moderator"
+
+
+def has_role(required):
+    return ROLE_LEVELS.get(current_role(), 0) >= ROLE_LEVELS.get(required, 99)
+
+
 def admin_required(view):
-    """Any authenticated panel role can open the dashboard/users area."""
-    return role_required("moderator")(view)
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if not session.get("admin_authenticated"):
+            return redirect(url_for("admin_login"))
+        return view(*args, **kwargs)
+    return wrapped
+
+
+def role_required(required_role):
+    def decorator(view):
+        @wraps(view)
+        def wrapped(*args, **kwargs):
+            if not session.get("admin_authenticated"):
+                return redirect(url_for("admin_login"))
+            if not has_role(required_role):
+                return redirect(url_for("access_denied", required=required_role))
+            return view(*args, **kwargs)
+        return wrapped
+    return decorator
+
+
+def creator_required(view):
+    return role_required("creator")(view)
 
 
 @app.context_processor
-def inject_panel_role():
-    role = current_role() or "moderator"
+def inject_panel_user():
+    role = current_role()
     return {
         "panel_role": role,
-        "panel_role_label": ROLE_LABELS.get(role, "ГОСТЬ"),
-        "panel_role_level": ROLE_LEVELS.get(role, 0),
-        "ROLE_LABELS": ROLE_LABELS,
+        "panel_role_name": ROLE_NAMES.get(role, "ПОЛЬЗОВАТЕЛЬ"),
         "is_creator": role == "creator",
-        "is_admin": role in {"admin", "creator"},
+        "is_admin_or_creator": has_role("admin"),
     }
 
 
@@ -304,34 +333,37 @@ def admin_login():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
-
-        accounts = []
-        if CREATOR_PASSWORD:
-            accounts.append((CREATOR_USERNAME, CREATOR_PASSWORD, "creator"))
-        if PANEL_ADMIN_USERNAME and PANEL_ADMIN_PASSWORD:
-            accounts.append((PANEL_ADMIN_USERNAME, PANEL_ADMIN_PASSWORD, "admin"))
-        if MODERATOR_USERNAME and MODERATOR_PASSWORD:
-            accounts.append((MODERATOR_USERNAME, MODERATOR_PASSWORD, "moderator"))
-
-        matched_role = next((role for u, p, role in accounts if username == u and password == p), None)
-        if matched_role:
-            session.clear()
-            session["admin_authenticated"] = True
-            session["admin_username"] = username
-            session["admin_role"] = matched_role
-            return redirect(url_for("admin_dashboard"))
-
-        if not accounts:
-            error = "Добавь пароль создателя: ADMIN_PASSWORD или CREATOR_PASSWORD в Railway Variables."
+        if not SessionLocal:
+            error = "DATABASE_URL не настроен в Railway Variables."
         else:
-            error = "Неверный логин или пароль."
+            db = SessionLocal()
+            try:
+                account = db.query(WebAccount).filter(WebAccount.username == username, WebAccount.active.is_(True)).first()
+                if account and check_password_hash(account.password_hash, password):
+                    account.last_login = datetime.utcnow()
+                    db.commit()
+                    session.clear()
+                    session["admin_authenticated"] = True
+                    session["admin_username"] = account.username
+                    session["admin_role"] = account.role
+                    return redirect(url_for("admin_dashboard"))
+                error = "Неверный логин или пароль."
+            finally:
+                db.close()
     return render_template("admin_login.html", error=error)
+
+
+@app.route("/admin/access-denied")
+def access_denied():
+    if not session.get("admin_authenticated"):
+        return redirect(url_for("admin_login"))
+    return render_template("access_denied.html", role=current_role())
 
 
 @app.route("/admin")
 @admin_required
 def admin_dashboard():
-    return render_template("admin.html", username=session.get("admin_username", CREATOR_USERNAME))
+    return render_template("admin.html", username=session.get("admin_username", ADMIN_USERNAME))
 
 
 @app.route("/api/admin/dashboard")
@@ -508,7 +540,7 @@ def admin_wallpaper_delete():
 @admin_required
 def admin_users():
     if not SessionLocal:
-        return render_template("users.html", username=session.get("admin_username", CREATOR_USERNAME), users=[], query="", error="DATABASE_URL не настроен.")
+        return render_template("users.html", username=session.get("admin_username", ADMIN_USERNAME), users=[], query="", error="DATABASE_URL не настроен.", accounts=[])
     query = request.args.get("q", "").strip()
     db = SessionLocal()
     try:
@@ -521,10 +553,11 @@ def admin_users():
             conditions.extend([User.username.ilike(like), User.first_name.ilike(like), User.last_name.ilike(like)])
             q = q.filter(or_(*conditions))
         users = q.order_by(desc(User.last_seen)).limit(100).all()
-        return render_template("users.html", username=session.get("admin_username", CREATOR_USERNAME), users=users, query=query, error=None)
+        accounts = db.query(WebAccount).order_by(WebAccount.created_at.asc()).all() if has_role("creator") else []
+        return render_template("users.html", username=session.get("admin_username", ADMIN_USERNAME), users=users, query=query, error=None, accounts=accounts)
     except Exception as e:
         print(f"USERS PAGE ERROR: {type(e).__name__}: {e}")
-        return render_template("users.html", username=session.get("admin_username", CREATOR_USERNAME), users=[], query=query, error=f"{type(e).__name__}: {e}")
+        return render_template("users.html", username=session.get("admin_username", ADMIN_USERNAME), users=[], query=query, error=f"{type(e).__name__}: {e}", accounts=[])
     finally:
         db.close()
 
@@ -538,10 +571,10 @@ def admin_user_profile(user_id):
     try:
         user = db.get(User, user_id)
         if not user:
-            return render_template("user_profile.html", username=session.get("admin_username", CREATOR_USERNAME), user=None, punishments=[], activity=[])
+            return render_template("user_profile.html", username=session.get("admin_username", ADMIN_USERNAME), user=None, punishments=[], activity=[])
         punishments = db.query(Punishment).filter(Punishment.user_id == user_id).order_by(desc(Punishment.created_at)).limit(100).all()
         activity = db.query(Activity).filter(Activity.user_id == user_id).order_by(desc(Activity.day)).limit(30).all()
-        return render_template("user_profile.html", username=session.get("admin_username", CREATOR_USERNAME), user=user, punishments=punishments, activity=activity)
+        return render_template("user_profile.html", username=session.get("admin_username", ADMIN_USERNAME), user=user, punishments=punishments, activity=activity)
     finally:
         db.close()
 
@@ -733,7 +766,7 @@ def admin_user_quick_action(user_id):
 
 
 @app.route("/admin/users/export")
-@role_required("creator")
+@admin_required
 def admin_users_export():
     if not SessionLocal:
         return jsonify({"error": "DATABASE_URL не настроен."}), 500
@@ -796,7 +829,7 @@ def admin_history():
     if not SessionLocal:
         return render_template(
             "history.html",
-            username=session.get("admin_username", CREATOR_USERNAME),
+            username=session.get("admin_username", ADMIN_USERNAME),
             rows=[],
             query="",
             action_type="",
@@ -836,7 +869,7 @@ def admin_history():
 
         return render_template(
             "history.html",
-            username=session.get("admin_username", CREATOR_USERNAME),
+            username=session.get("admin_username", ADMIN_USERNAME),
             rows=rows,
             query=query,
             action_type=action_type,
@@ -846,7 +879,7 @@ def admin_history():
         print(f"HISTORY PAGE ERROR: {type(e).__name__}: {e}")
         return render_template(
             "history.html",
-            username=session.get("admin_username", CREATOR_USERNAME),
+            username=session.get("admin_username", ADMIN_USERNAME),
             rows=[],
             query=query,
             action_type=action_type,
@@ -920,7 +953,7 @@ def admin_statistics():
     if not SessionLocal:
         return render_template(
             "statistics.html",
-            username=session.get("admin_username", CREATOR_USERNAME),
+            username=session.get("admin_username", ADMIN_USERNAME),
             data=None,
             error="DATABASE_URL не настроен.",
         )
@@ -1049,7 +1082,7 @@ def admin_statistics():
 
         return render_template(
             "statistics.html",
-            username=session.get("admin_username", CREATOR_USERNAME),
+            username=session.get("admin_username", ADMIN_USERNAME),
             data=data,
             error=None,
         )
@@ -1058,7 +1091,7 @@ def admin_statistics():
         print(f"STATISTICS PAGE ERROR: {type(e).__name__}: {e}")
         return render_template(
             "statistics.html",
-            username=session.get("admin_username", CREATOR_USERNAME),
+            username=session.get("admin_username", ADMIN_USERNAME),
             data=None,
             error=f"{type(e).__name__}: {e}",
         )
@@ -1070,20 +1103,13 @@ def admin_statistics():
 @role_required("admin")
 def admin_settings():
     if not SessionLocal:
-        return render_template("settings.html",username=session.get("admin_username",CREATOR_USERNAME),settings=None,error="DATABASE_URL не настроен.",saved=False,read_only=current_role() != "creator")
+        return render_template("settings.html",username=session.get("admin_username",ADMIN_USERNAME),settings=None,error="DATABASE_URL не настроен.",saved=False)
     db=SessionLocal()
     try:
         s=get_bot_settings(db); saved=False; error=None
-        if request.method=="POST" and current_role() != "creator":
-            return render_template(
-                "settings.html",
-                username=session.get("admin_username", CREATOR_USERNAME),
-                settings=s,
-                error="Доступ запрещен. Только Создатель может изменять настройки.",
-                saved=False,
-                read_only=True,
-            ), 403
         if request.method=="POST":
+            if not has_role("creator"):
+                return redirect(url_for("access_denied", required="creator"))
             flag=lambda k: request.form.get(k)=="on"
             s.moderation_enabled=flag("moderation_enabled"); s.auto_delete_spam=flag("auto_delete_spam")
             s.warn_enabled=flag("warn_enabled"); s.mute_enabled=flag("mute_enabled")
@@ -1099,11 +1125,102 @@ def admin_settings():
                 s.mute_duration=max(1,min(1440,int(request.form.get("mute_duration","60"))))
             except ValueError: error="Лимит Warn и длительность Mute должны быть числами."
             if not error: s.updated_at=datetime.utcnow(); db.commit(); saved=True
-        return render_template("settings.html",username=session.get("admin_username",CREATOR_USERNAME),settings=s,error=error,saved=saved,read_only=current_role() != "creator")
+        return render_template("settings.html",username=session.get("admin_username",ADMIN_USERNAME),settings=s,error=error,saved=saved)
     except Exception as e:
         db.rollback(); print(f"SETTINGS PAGE ERROR: {type(e).__name__}: {e}")
-        return render_template("settings.html",username=session.get("admin_username",CREATOR_USERNAME),settings=None,error=f"{type(e).__name__}: {e}",saved=False,read_only=current_role() != "creator")
+        return render_template("settings.html",username=session.get("admin_username",ADMIN_USERNAME),settings=None,error=f"{type(e).__name__}: {e}",saved=False)
     finally: db.close()
+
+@app.route("/api/admin/accounts", methods=["POST"])
+@creator_required
+def admin_account_create():
+    if not SessionLocal:
+        return jsonify({"ok": False, "error": "DATABASE_URL не настроен."}), 500
+    data = request.get_json(silent=True) or {}
+    username = (data.get("username") or "").strip()
+    password = data.get("password") or ""
+    role = (data.get("role") or "moderator").strip().lower()
+    if len(username) < 3 or len(username) > 80:
+        return jsonify({"ok": False, "error": "Логин должен быть от 3 до 80 символов."}), 400
+    if len(password) < 6:
+        return jsonify({"ok": False, "error": "Пароль должен быть минимум 6 символов."}), 400
+    if role not in ROLE_LEVELS:
+        return jsonify({"ok": False, "error": "Неизвестная роль."}), 400
+    db = SessionLocal()
+    try:
+        if db.query(WebAccount).filter(WebAccount.username == username).first():
+            return jsonify({"ok": False, "error": "Такой логин уже существует."}), 409
+        account = WebAccount(username=username, password_hash=generate_password_hash(password), role=role, active=True)
+        db.add(account)
+        db.commit()
+        return jsonify({"ok": True, "message": f"Аккаунт {username} создан.", "account": {"id": account.id, "username": account.username, "role": account.role}})
+    except Exception as e:
+        db.rollback()
+        return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        db.close()
+
+
+@app.route("/api/admin/accounts/<int:account_id>", methods=["DELETE"])
+@creator_required
+def admin_account_delete(account_id):
+    if not SessionLocal:
+        return jsonify({"ok": False, "error": "DATABASE_URL не настроен."}), 500
+    db = SessionLocal()
+    try:
+        account = db.get(WebAccount, account_id)
+        if not account:
+            return jsonify({"ok": False, "error": "Аккаунт не найден."}), 404
+        if account.username == session.get("admin_username"):
+            return jsonify({"ok": False, "error": "Нельзя удалить свой текущий аккаунт."}), 400
+        db.delete(account)
+        db.commit()
+        return jsonify({"ok": True})
+    finally:
+        db.close()
+
+
+@app.route("/api/admin/accounts/<int:account_id>/password", methods=["POST"])
+@creator_required
+def admin_account_password(account_id):
+    if not SessionLocal:
+        return jsonify({"ok": False, "error": "DATABASE_URL не настроен."}), 500
+    password = ((request.get_json(silent=True) or {}).get("password") or "")
+    if len(password) < 6:
+        return jsonify({"ok": False, "error": "Пароль должен быть минимум 6 символов."}), 400
+    db = SessionLocal()
+    try:
+        account = db.get(WebAccount, account_id)
+        if not account:
+            return jsonify({"ok": False, "error": "Аккаунт не найден."}), 404
+        account.password_hash = generate_password_hash(password)
+        db.commit()
+        return jsonify({"ok": True, "message": "Пароль обновлён."})
+    finally:
+        db.close()
+
+
+@app.route("/api/admin/accounts/<int:account_id>/role", methods=["POST"])
+@creator_required
+def admin_account_role(account_id):
+    if not SessionLocal:
+        return jsonify({"ok": False, "error": "DATABASE_URL не настроен."}), 500
+    role = ((request.get_json(silent=True) or {}).get("role") or "").strip().lower()
+    if role not in ROLE_LEVELS:
+        return jsonify({"ok": False, "error": "Неизвестная роль."}), 400
+    db = SessionLocal()
+    try:
+        account = db.get(WebAccount, account_id)
+        if not account:
+            return jsonify({"ok": False, "error": "Аккаунт не найден."}), 404
+        if account.username == session.get("admin_username") and role != "creator":
+            return jsonify({"ok": False, "error": "Нельзя понизить роль своего текущего аккаунта."}), 400
+        account.role = role
+        db.commit()
+        return jsonify({"ok": True})
+    finally:
+        db.close()
+
 
 @app.route("/admin/logout")
 def admin_logout():

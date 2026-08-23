@@ -1,41 +1,59 @@
-# Role access for ProtogenAdmin
+# Система доступа ProtogenAdmin
 
-The web panel now has three access levels:
-
-- **Модератор** — only `Главная` and `Пользователи`. The Command Center / quick-actions panel is locked.
-- **Администратор** — `Главная`, `Пользователи`, `Статистика`, `Настройки` in read-only mode. History and Command Center are locked. Any attempt to change a setting plays the supplied access-denied sound and the server rejects the POST request too.
-- **Создатель** — full access to everything, including History, Command Center, wallpaper/admin actions, and changing settings.
+Теперь логины и пароли пользователей панели хранятся в PostgreSQL, а не в Railway Variables.
 
 ## Railway Variables
 
-Keep the existing creator credentials if you already use them:
+Для первого создателя достаточно оставить:
 
-```text
-ADMIN_USERNAME=creator_login
-ADMIN_PASSWORD=creator_password
-```
+- `ADMIN_USERNAME` — логин создателя
+- `ADMIN_PASSWORD` — пароль создателя
+- `SECRET_KEY`
+- `DATABASE_URL`
+- остальные переменные бота/AI как раньше
 
-Or use the explicit creator names:
+При первом запуске приложение создаёт в таблице `web_accounts` аккаунт создателя из `ADMIN_USERNAME` / `ADMIN_PASSWORD`.
 
-```text
-CREATOR_USERNAME=creator_login
-CREATOR_PASSWORD=creator_password
-```
+## Создание пользователей
 
-For the Administrator account add:
+Войти под создателем → **Пользователи** → **Учетные записи панели** → **Создать доступ**.
 
-```text
-PANEL_ADMIN_USERNAME=admin_login
-PANEL_ADMIN_PASSWORD=admin_password
-```
+Можно создать любое количество аккаунтов:
 
-For the Moderator account add:
+- Модератор
+- Администратор
+- Создатель
 
-```text
-MODERATOR_USERNAME=moderator_login
-MODERATOR_PASSWORD=moderator_password
-```
+Пароли сохраняются в виде хеша.
 
-Do not reuse the same username/password for different roles.
+## Права
 
-The existing `ADMIN_USERNAME` + `ADMIN_PASSWORD` pair remains the creator account for backward compatibility, so the current panel login will not stop working.
+### Модератор
+- Главная
+- Пользователи
+- Нет статистики
+- Нет настроек
+- Нет истории
+- Нет Command Center / быстрых действий
+
+### Администратор
+- Главная
+- Пользователи
+- Статистика
+- Настройки доступны для просмотра
+- Любая попытка изменить настройки блокируется и переводит на «Доступ запрещён» со звуком
+- Нет истории
+- Нет Command Center / быстрых действий
+
+### Создатель
+- Полный доступ
+- Command Center
+- История
+- Статистика
+- Настройки
+- Обои
+- Управление учетными записями панели
+
+## Railway
+
+`MODERATOR_USERNAME`, `MODERATOR_PASSWORD`, `PANEL_ADMIN_USERNAME`, `PANEL_ADMIN_PASSWORD` больше не нужны для создания отдельных пользователей. Их можно удалить из Variables после проверки нового входа.

@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='settings.css') }}">
 </head>
-<body class="settings-page {% if read_only %}settings-read-only{% endif %}">
+<body class="settings-page">
 <div class="bg"></div><div class="grid"></div>
 
 
@@ -27,10 +27,6 @@
         </div>
       </section>
 
-      {% if read_only %}
-      <div class="toast toast-error access-lock-banner">🔒 РЕЖИМ ТОЛЬКО ДЛЯ ПРОСМОТРА <span>Настройки доступны Администратору для просмотра. Изменять их может только Создатель.</span></div>
-      {% endif %}
-
       {% if saved %}
       <div class="toast toast-success">✓ CONFIGURATION SAVED <span>Настройки успешно сохранены в PostgreSQL.</span></div>
       {% endif %}
@@ -39,7 +35,7 @@
       {% endif %}
 
       {% if settings %}
-      <form method="post" class="settings-form" id="settingsForm" {% if read_only %}data-read-only="1"{% endif %}>
+      <form method="post" class="settings-form" id="settingsForm">
         <div class="settings-columns">
           <div class="settings-left">
             <section class="neon-card" id="moderation">
@@ -262,4 +258,13 @@
   if (mute) document.getElementById('muteMeter')?.style.setProperty('width',(Number(mute.value)/1440*100)+'%');
 })();
 </script>
+{% if not is_creator %}
+<script>
+(function(){
+  const deny=()=>{ window.location.href='/admin/access-denied?required=creator'; };
+  document.querySelectorAll('#settingsForm input,#settingsForm select,#settingsForm button,#settingsForm a').forEach(el=>el.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();deny();},true));
+  document.getElementById('settingsForm')?.addEventListener('submit',e=>{e.preventDefault();deny();},true);
+})();
+</script>
+{% endif %}
 </body></html>

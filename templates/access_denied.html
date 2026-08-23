@@ -2,22 +2,13 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ProtogenAdmin — Доступ запрещен</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
+<title>Protogen — Доступ запрещён</title>
 <style>
-.access-denied{min-height:100vh;display:grid;place-items:center;padding:25px}.denied-card{width:min(520px,100%);padding:34px;border:1px solid rgba(255,70,130,.35);border-radius:22px;background:linear-gradient(145deg,rgba(12,7,25,.97),rgba(3,11,20,.97));box-shadow:0 25px 90px rgba(0,0,0,.6),0 0 45px rgba(255,60,120,.07);text-align:center}.denied-icon{width:78px;height:78px;margin:0 auto 18px;display:grid;place-items:center;border-radius:22px;border:1px solid rgba(255,70,130,.45);color:#ff6f9b;font-size:35px;box-shadow:0 0 30px rgba(255,70,130,.12)}.denied-kicker{font-size:9px;letter-spacing:2px;color:#ff6f9b;font-weight:900}.denied-card h1{margin:8px 0;font-size:30px}.denied-card p{color:#718994;font-size:11px;line-height:1.7}.denied-card b{color:#dbeaf0}.denied-actions{display:flex;justify-content:center;gap:9px;margin-top:22px;flex-wrap:wrap}.denied-actions a,.denied-actions button{border-radius:10px;padding:11px 15px;text-decoration:none;font:inherit;font-size:9px;font-weight:900;cursor:pointer}.denied-actions a{border:1px solid rgba(0,255,225,.25);background:rgba(0,255,225,.04);color:#00ffe1}.denied-actions button{border:1px solid rgba(255,70,130,.3);background:rgba(255,70,130,.06);color:#ff91ae}.denied-role{margin-top:16px;color:#526b75;font-size:8px;letter-spacing:1px}</style>
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Inter,Segoe UI,Arial,sans-serif;color:#efffff;background:#03050b}body{display:grid;place-items:center;overflow:hidden}.bg{position:fixed;inset:0;background:radial-gradient(circle at 50% 45%,rgba(142,56,255,.17),transparent 30%),radial-gradient(circle at 20% 20%,rgba(0,255,225,.08),transparent 25%),#03050b}.grid{position:fixed;inset:0;background-image:linear-gradient(rgba(0,255,225,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(0,255,225,.025) 1px,transparent 1px);background-size:38px 38px;mask-image:linear-gradient(to bottom,transparent,#000 20%,#000 80%,transparent)}.card{position:relative;width:min(560px,calc(100% - 32px));padding:42px 34px;text-align:center;border:1px solid rgba(255,65,140,.28);border-radius:24px;background:rgba(8,10,19,.88);box-shadow:0 0 80px rgba(130,45,255,.18),inset 0 0 45px rgba(255,65,140,.035);backdrop-filter:blur(14px)}.icon{width:82px;height:82px;margin:0 auto 20px;border:1px solid rgba(255,65,140,.45);border-radius:20px;display:grid;place-items:center;font-size:38px;color:#ff4d92;box-shadow:0 0 30px rgba(255,65,140,.16)}.kicker{font-size:11px;letter-spacing:3px;color:#8c9baa}.card h1{margin:10px 0;font-size:34px}.card p{color:#8394a3;line-height:1.6;margin:0 auto 25px;max-width:430px}.role{color:#ff75ad}.actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}.btn{border:1px solid rgba(0,255,225,.3);background:rgba(0,255,225,.07);color:#dffffa;padding:11px 17px;border-radius:11px;text-decoration:none;cursor:pointer;font-weight:700}.btn.secondary{border-color:#283547;background:transparent;color:#a8b8c4}.hint{margin-top:18px;color:#566a78;font-size:11px}
+</style>
 </head>
-<body><div class="bg"></div><div class="grid"></div><div class="scanlines"></div>
-<main class="access-denied">
-  <section class="denied-card">
-    <div class="denied-icon">⊘</div>
-    <div class="denied-kicker">SECURITY // ACCESS CONTROL</div>
-    <h1>Доступ запрещен</h1>
-    <p>У твоей роли <b>{{ panel_role_label }}</b> нет доступа к этому разделу системы.</p>
-    <div class="denied-role">ТРЕБУЕТСЯ: {{ ROLE_LABELS[required_role] if required_role in ROLE_LABELS else required_role|upper }}</div>
-    <div class="denied-actions"><a href="/admin">← На главную</a><button type="button" id="repeatDenied">▶ Повторить сигнал</button></div>
-  </section>
-</main>
-<audio id="accessDeniedSound" preload="auto" autoplay src="{{ url_for('static', filename='access-denied.mp3') }}"></audio>
-<script>const audio=document.getElementById('accessDeniedSound');document.getElementById('repeatDenied').addEventListener('click',()=>{audio.currentTime=0;audio.play().catch(()=>{});});window.addEventListener('load',()=>audio.play().catch(()=>{}));</script>
+<body><div class="bg"></div><div class="grid"></div>
+<div class="card"><div class="icon">◈</div><div class="kicker">SECURITY CORE // ACCESS CONTROL</div><h1>Доступ запрещён</h1><p>У вашей роли <span class="role">{{ {'moderator':'Модератор','admin':'Администратор','creator':'Создатель'}.get(role, role) }}</span> нет разрешения на этот раздел или действие.</p><div class="actions"><a class="btn" href="/admin">Вернуться на главную</a><button class="btn secondary" id="soundBtn" type="button">▶ Воспроизвести звук</button></div><div class="hint">Система безопасности Protogen зафиксировала попытку доступа.</div></div>
+<audio id="deniedSound" preload="auto" autoplay><source src="{{ url_for('static', filename='access-denied.mp3') }}" type="audio/mpeg"></audio>
+<script>const a=document.getElementById('deniedSound');const b=document.getElementById('soundBtn');b.addEventListener('click',()=>{a.currentTime=0;a.play().catch(()=>{});});window.addEventListener('load',()=>{a.play().catch(()=>{});});</script>
 </body></html>
