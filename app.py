@@ -1,9 +1,11 @@
 import os
+import io
+import time
 import requests
 from datetime import datetime, timedelta
 from functools import wraps
 
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, send_file
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, Text, func, desc, or_, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
@@ -493,6 +495,63 @@ def admin_user_profile(user_id):
 # ============================================================
 # USER QUICK ACTIONS
 # ============================================================
+
+_AVATAR_CACHE = {}
+_AVATAR_CACHE_TTL = 600
+
+
+@app.route("/api/admin/users/<int:user_id>/avatar")
+@admin_required
+def admin_user_avatar(user_id):
+    """Return a user's current Telegram profile photo for the web UI."""
+    token = _telegram_token()
+    if not token:
+        return ("", 404)
+
+    now = time.time()
+    cached = _AVATAR_CACHE.get(user_id)
+    if cached and now - cached[0] < _AVATAR_CACHE_TTL:
+        return send_file(io.BytesIO(cached[1]), mimetype=cached[2], max_age=300)
+
+    try:
+        r = requests.get(
+            f"https://api.telegram.org/bot{token}/getUserProfilePhotos",
+            params={"user_id": user_id, "limit": 1},
+            timeout=10,
+        )
+        data = r.json()
+        photos = (data.get("result") or {}).get("photos") or []
+        if not photos:
+            return ("", 404)
+        file_id = photos[0][-1].get("file_id")
+        if not file_id:
+            return ("", 404)
+
+        r2 = requests.get(
+            f"https://api.telegram.org/bot{token}/getFile",
+            params={"file_id": file_id},
+            timeout=10,
+        )
+        file_data = r2.json()
+        file_path = (file_data.get("result") or {}).get("file_path")
+        if not file_path:
+            return ("", 404)
+
+        r3 = requests.get(f"https://api.telegram.org/file/bot{token}/{file_path}", timeout=15)
+        r3.raise_for_status()
+        raw = r3.content
+        if not raw or len(raw) > 2 * 1024 * 1024:
+            return ("", 404)
+
+        content_type = r3.headers.get("Content-Type", "image/jpeg").split(";")[0]
+        if not content_type.startswith("image/"):
+            content_type = "image/jpeg"
+        _AVATAR_CACHE[user_id] = (now, raw, content_type)
+        return send_file(io.BytesIO(raw), mimetype=content_type, max_age=300)
+    except Exception as e:
+        print(f"USER AVATAR ERROR [{user_id}]: {type(e).__name__}: {e}")
+        return ("", 404)
+
 
 def _telegram_token():
     # Railway can expose variables per service. The worker uses BOT_TOKEN,

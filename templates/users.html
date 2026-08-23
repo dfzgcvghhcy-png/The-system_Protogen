@@ -33,7 +33,7 @@
         {% for user in users %}
         <div class="user-row" data-user-id="{{ user.id }}" data-user-name="{{ ((user.first_name or '') ~ ' ' ~ (user.last_name or ''))|trim or user.username or user.id }}">
           <a class="user-main-link" href="{{ url_for('admin_user_profile', user_id=user.id) }}">
-            <div class="user-cell"><div class="user-avatar">{{ (user.first_name or user.username or 'U')[:1]|upper }}</div><div><strong>{{ ((user.first_name or '') ~ ' ' ~ (user.last_name or ''))|trim or 'Без имени' }}</strong><small>{% if user.username %}@{{ user.username }} · {% endif %}ID {{ user.id }}</small></div></div>
+            <div class="user-cell"><div class="user-avatar"><img src="{{ url_for('admin_user_avatar', user_id=user.id) }}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='grid';"><span>{{ (user.first_name or user.username or 'U')[:1]|upper }}</span></div><div><strong>{{ ((user.first_name or '') ~ ' ' ~ (user.last_name or ''))|trim or 'Без имени' }}</strong><small>{% if user.username %}@{{ user.username }} · {% endif %}ID {{ user.id }}</small></div></div>
             <div><span class="status-badge">{{ user.status or 'member' }}</span></div>
             <div class="messages-count">{{ user.messages_count or 0 }}</div>
             <div class="moderation-mini"><b class="warn">⚠ {{ user.warns or 0 }}</b><b class="mute">🔇 {{ user.mutes or 0 }}</b><b class="ban">🚫 {{ user.bans or 0 }}</b><b class="kick">👢 {{ user.kicks or 0 }}</b></div>
