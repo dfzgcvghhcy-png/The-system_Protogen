@@ -11,14 +11,11 @@
   --text:#eefcff;
 }
 html,body{margin:0;min-height:100%;font-family:Inter,Segoe UI,Arial,sans-serif;color:var(--text);background:#02040a}
-html.chat-open{height:100%;overflow:hidden}
 body{
   min-height:100vh;overflow-x:hidden;
   background-image:linear-gradient(180deg,rgba(1,4,9,.58),rgba(1,3,7,.80)),url("/static/bg.png");
   background-size:cover;background-position:center;background-attachment:fixed;
 }
-/* When the chat is open, the page itself stays still. Only the conversation scrolls. */
-body.chat-open{overflow:hidden;height:100vh;}
 body:before{
   content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
   background:
@@ -159,7 +156,7 @@ body:before{
 
 /* INLINE CHAT — reference layout */
 .chat-panel{
-  height:calc(100vh - 110px);max-height:calc(100vh - 110px);min-height:0;align-self:start;display:flex;flex-direction:column;
+  height:100%;min-height:0;display:flex;flex-direction:column;
   border:1px solid rgba(155,69,255,.42);border-radius:18px;overflow:hidden;
   background:linear-gradient(145deg,rgba(3,14,18,.96),rgba(5,3,16,.97));
   box-shadow:inset 0 1px rgba(255,255,255,.035),0 18px 55px rgba(0,0,0,.34),0 0 35px rgba(155,69,255,.08);
@@ -167,21 +164,12 @@ body:before{
   width:0;opacity:0;visibility:hidden;pointer-events:none;transform:translateX(28px);
   transition:width .42s cubic-bezier(.2,.75,.2,1),opacity .28s ease,transform .42s cubic-bezier(.2,.75,.2,1);
 }
-body.chat-open .hero-area{grid-template-columns:minmax(0,1fr) 390px 300px;min-height:calc(100vh - 72px);height:calc(100vh - 72px);overflow:hidden;}
+body.chat-open .hero-area{grid-template-columns:minmax(0,1fr) 390px 300px;}
 body.chat-open .chat-panel{width:100%;opacity:1;visibility:visible;pointer-events:auto;transform:translateX(0);}
 .chat-panel:before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(135deg,rgba(155,69,255,.045),transparent 45%,rgba(0,255,225,.025))}
 .chat-panel .chat-modal-header{height:72px;flex:0 0 72px}
 .chat-dots{color:#718486;letter-spacing:3px;font-size:13px;padding-right:4px}
-.chat-panel .chat-area{
-  flex:1 1 auto;min-height:0;height:0;padding:18px 16px;
-  overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;
-  -webkit-overflow-scrolling:touch;position:relative;z-index:1;
-  scrollbar-width:thin;scrollbar-color:rgba(155,69,255,.65) rgba(2,8,14,.55);
-}
-.chat-panel .chat-area::-webkit-scrollbar{width:7px}
-.chat-panel .chat-area::-webkit-scrollbar-track{background:rgba(2,8,14,.55)}
-.chat-panel .chat-area::-webkit-scrollbar-thumb{background:linear-gradient(180deg,#9b45ff,#00ffe1);border-radius:8px}
-.chat-panel .chat-area::-webkit-scrollbar-thumb:hover{filter:brightness(1.2)}
+.chat-panel .chat-area{flex:1;padding:18px 16px;overflow:auto;position:relative;z-index:1}
 .chat-panel .message{position:relative;max-width:84%;padding:12px 13px 22px;border-radius:13px;margin-bottom:12px;font-size:11px;line-height:1.5}
 .chat-panel .bot-message{background:rgba(10,27,32,.92);border:1px solid rgba(0,255,225,.09)}
 .chat-panel .user-message{margin-left:auto;background:rgba(17,15,35,.94);border:1px solid rgba(155,69,255,.20)}
@@ -356,7 +344,7 @@ footer{position:fixed;left:0;bottom:5px;width:100%;text-align:center;color:#4059
 
 @media(max-width:1200px){
   .hero-area{grid-template-columns:minmax(0,1fr) 0 300px;gap:18px}
-  body.chat-open .hero-area{grid-template-columns:minmax(0,1fr) 360px 300px;min-height:calc(100vh - 72px);height:calc(100vh - 72px);overflow:hidden;}
+  body.chat-open .hero-area{grid-template-columns:minmax(0,1fr) 360px 300px;}
   .system-sidebar{grid-column:1 / -1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}
   .system-sidebar .quick-card{grid-column:1 / -1}
   .left-column{padding-left:8px}
@@ -364,8 +352,7 @@ footer{position:fixed;left:0;bottom:5px;width:100%;text-align:center;color:#4059
 }
 @media(max-width:920px){
   .hero-area{grid-template-columns:1fr;padding-top:35px}
-  body.chat-open .hero-area{grid-template-columns:1fr;height:auto;min-height:0;overflow:visible;}
-  body.chat-open{overflow:hidden;}
+  body.chat-open .hero-area{grid-template-columns:1fr;}
   .system-sidebar{grid-column:auto;display:flex}
   .chat-panel{height:620px;width:min(680px,100%);margin:10px auto 0}
   .left-column{padding-left:0}
@@ -505,42 +492,5 @@ body.admin-transitioning .admin-cta b{
     overscroll-behavior:contain;
     -webkit-overflow-scrolling:touch;
     scrollbar-width:thin;
-  }
-}
-
-/* FINAL CHAT SCROLL LOCK — desktop
-   The document never scrolls while chat is open. Only #messages scrolls. */
-@media (min-width:921px){
-  html.chat-open, html.chat-open body{
-    height:100vh !important;
-    min-height:100vh !important;
-    max-height:100vh !important;
-    overflow:hidden !important;
-  }
-  html.chat-open body{
-    position:fixed;
-    inset:0;
-    width:100%;
-    overflow:hidden !important;
-  }
-  html.chat-open .hero-area{
-    height:calc(100vh - 72px) !important;
-    min-height:calc(100vh - 72px) !important;
-    max-height:calc(100vh - 72px) !important;
-    overflow:hidden !important;
-  }
-  html.chat-open .chat-panel{
-    height:calc(100vh - 110px) !important;
-    max-height:calc(100vh - 110px) !important;
-    min-height:0 !important;
-    align-self:start;
-  }
-  html.chat-open .chat-panel .chat-area{
-    height:0 !important;
-    min-height:0 !important;
-    flex:1 1 auto !important;
-    overflow-y:scroll !important;
-    overflow-x:hidden !important;
-    overscroll-behavior:contain !important;
   }
 }

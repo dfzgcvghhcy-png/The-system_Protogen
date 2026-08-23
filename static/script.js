@@ -14,7 +14,6 @@
   function setChat(open, focusInput = false) {
     if (!chatPanel) return;
     document.body.classList.toggle('chat-open', open);
-    document.documentElement.classList.toggle('chat-open', open);
     chatPanel.classList.toggle('is-open', open);
     chatPanel.setAttribute('aria-hidden', open ? 'false' : 'true');
     if (heroChatBtn) heroChatBtn.setAttribute('aria-expanded', String(open));
@@ -76,17 +75,9 @@
     }
   }
 
-  // The page is locked while chat is open; the conversation itself owns the scroll.
-  // overscroll-behavior in CSS prevents scroll chaining at the top/bottom.
+  // Keep wheel/touch scrolling inside the chat. This prevents the page from
+  // taking over when the cursor is over the conversation.
   messages?.addEventListener('wheel', (e) => {
-    if (messages.scrollHeight > messages.clientHeight) {
-      e.stopPropagation();
-      // Prevent the browser from passing wheel momentum to the document.
-      e.preventDefault();
-    }
-  }, {passive:false});
-
-  messages?.addEventListener('touchmove', (e) => {
     if (messages.scrollHeight > messages.clientHeight) e.stopPropagation();
   }, {passive:true});
 

@@ -495,13 +495,20 @@ def admin_user_profile(user_id):
 # ============================================================
 
 def _telegram_token():
-    return os.getenv("BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("TOKEN")
+    # Railway can expose variables per service. The worker uses BOT_TOKEN,
+    # while the web service must have the same variable to call Telegram API.
+    return (
+        os.getenv("BOT_TOKEN")
+        or os.getenv("TELEGRAM_BOT_TOKEN")
+        or os.getenv("TOKEN")
+        or os.getenv("TELEGRAM_TOKEN")
+    )
 
 
 def _telegram_api(method, payload):
     token = _telegram_token()
     if not token:
-        raise RuntimeError("BOT_TOKEN не настроен в Railway Variables.")
+        raise RuntimeError("BOT_TOKEN не настроен в Railway Variables веб-сервиса. Добавь BOT_TOKEN в Variables именно для сервиса web.")
     response = requests.post(
         f"https://api.telegram.org/bot{token}/{method}",
         json=payload,
