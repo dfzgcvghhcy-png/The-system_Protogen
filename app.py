@@ -489,6 +489,155 @@ def admin_user_profile(user_id):
         db.close()
 
 
+
+# ============================================================
+# USER QUICK ACTIONS
+# ============================================================
+
+def _telegram_token():
+    return os.getenv("BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("TOKEN")
+
+
+def _telegram_api(method, payload):
+    token = _telegram_token()
+    if not token:
+        raise RuntimeError("BOT_TOKEN не настроен в Railway Variables.")
+    response = requests.post(
+        f"https://api.telegram.org/bot{token}/{method}",
+        json=payload,
+        timeout=20,
+    )
+    data = response.json()
+    if not response.ok or not data.get("ok"):
+        description = data.get("description") or f"Telegram API HTTP {response.status_code}"
+        raise RuntimeError(description)
+    return data.get("result")
+
+
+def _quick_action_chat_id(db):
+    # Можно явно указать чат через Railway Variables. Иначе берём
+    # последний активный чат, который уже известен боту.
+    for key in ("BOT_CHAT_ID", "CHAT_ID", "TELEGRAM_CHAT_ID"):
+        value = os.getenv(key)
+        if value:
+            try:
+                return int(value)
+            except ValueError:
+                raise RuntimeError(f"{key} должен быть числом.")
+    row = db.execute(text("SELECT chat_id FROM chats WHERE is_active = TRUE ORDER BY last_seen DESC LIMIT 1")).first()
+    if row:
+        return int(row[0])
+    raise RuntimeError("Не найден активный Telegram-чат. Укажи BOT_CHAT_ID в Railway Variables.")
+
+
+@app.route("/api/admin/users/<int:user_id>/quick-action", methods=["POST"])
+@admin_required
+def admin_user_quick_action(user_id):
+    if not SessionLocal:
+        return jsonify({"ok": False, "error": "DATABASE_URL не настроен."}), 500
+
+    data = request.get_json(silent=True) or {}
+    action = (data.get("action") or "").strip().lower()
+    db = SessionLocal()
+    try:
+        user = db.get(User, user_id)
+        if not user:
+            return jsonify({"ok": False, "error": "Пользователь не найден."}), 404
+
+        chat_id = _quick_action_chat_id(db)
+        moderator_id = session.get("admin_username") or "web-admin"
+        display_name = f"{user.first_name or ''} {user.last_name or ''}".strip() or user.username or str(user.id)
+
+        if action == "role":
+            role = (data.get("role") or "moderator").strip().lower()
+            if role not in {"moderator", "admin"}:
+                return jsonify({"ok": False, "error": "Неизвестная роль."}), 400
+            if role == "admin":
+                payload = {
+                    "chat_id": chat_id,
+                    "user_id": user.id,
+                    "can_manage_chat": True,
+                    "can_delete_messages": True,
+                    "can_manage_video_chats": True,
+                    "can_restrict_members": True,
+                    "can_promote_members": False,
+                    "can_change_info": True,
+                    "can_invite_users": True,
+                    "can_pin_messages": True,
+                    "can_manage_topics": True,
+                }
+            else:
+                payload = {
+                    "chat_id": chat_id,
+                    "user_id": user.id,
+                    "can_manage_chat": False,
+                    "can_delete_messages": True,
+                    "can_manage_video_chats": False,
+                    "can_restrict_members": True,
+                    "can_promote_members": False,
+                    "can_change_info": False,
+                    "can_invite_users": True,
+                    "can_pin_messages": True,
+                    "can_manage_topics": True,
+                }
+            _telegram_api("promoteChatMember", payload)
+            user.status = "admin"
+            db.commit()
+            return jsonify({"ok": True, "message": f"{display_name} получил роль: {'Администратор' if role == 'admin' else 'Модератор'}."})
+
+        if action == "block":
+            _telegram_api("banChatMember", {"chat_id": chat_id, "user_id": user.id})
+            user.bans = (user.bans or 0) + 1
+            user.status = "banned"
+            db.add(Punishment(user_id=user.id, type="ban", reason="Заблокирован через Web-панель", moderator_id=None))
+            db.commit()
+            return jsonify({"ok": True, "message": f"{display_name} заблокирован в Telegram."})
+
+        if action == "message":
+            message = (data.get("message") or "").strip()
+            if not message:
+                return jsonify({"ok": False, "error": "Введите текст сообщения."}), 400
+            if len(message) > 4096:
+                return jsonify({"ok": False, "error": "Сообщение не должно быть длиннее 4096 символов."}), 400
+            _telegram_api("sendMessage", {"chat_id": user.id, "text": message})
+            return jsonify({"ok": True, "message": f"Сообщение отправлено пользователю {display_name}."})
+
+        return jsonify({"ok": False, "error": "Неизвестное действие."}), 400
+    except Exception as e:
+        db.rollback()
+        print(f"QUICK ACTION ERROR: {type(e).__name__}: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 400
+    finally:
+        db.close()
+
+
+@app.route("/admin/users/export")
+@admin_required
+def admin_users_export():
+    if not SessionLocal:
+        return jsonify({"error": "DATABASE_URL не настроен."}), 500
+    import csv
+    import io
+    from flask import Response
+
+    db = SessionLocal()
+    try:
+        users = db.query(User).order_by(desc(User.last_seen)).all()
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["ID", "Username", "Имя", "Фамилия", "Статус", "Сообщения", "Warn", "Mute", "Ban", "Kick", "Последний визит"])
+        for u in users:
+            writer.writerow([
+                u.id, u.username or "", u.first_name or "", u.last_name or "", u.status or "member",
+                u.messages_count or 0, u.warns or 0, u.mutes or 0, u.bans or 0, u.kicks or 0,
+                u.last_seen.strftime("%d.%m.%Y %H:%M") if u.last_seen else "",
+            ])
+        body = "\ufeff" + output.getvalue()
+        return Response(body, mimetype="text/csv; charset=utf-8", headers={"Content-Disposition": "attachment; filename=protogen_users.csv"})
+    finally:
+        db.close()
+
+
 @app.route("/api/admin/users")
 @admin_required
 def admin_users_api():

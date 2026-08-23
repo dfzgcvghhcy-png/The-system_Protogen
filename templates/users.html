@@ -1,4 +1,126 @@
-<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ProtogenAdmin — Пользователи</title><link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}"><link rel="stylesheet" href="{{ url_for('static', filename='users.css') }}"></head><body><div class="bg"></div><div class="grid"></div>{% include '_admin_sidebar.html' %}
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ProtogenAdmin — Пользователи</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='users.css') }}">
+</head>
+<body>
+<div class="bg"></div><div class="grid"></div>
+{% include '_admin_sidebar.html' %}
 <div class="admin-main-wrap">
 {% include '_admin_topbar.html' %}
-<main class="users-main"><section class="users-hero"><div><div class="eyebrow">USER MANAGEMENT</div><h1>Пользователи</h1><p>Участники Protogen Bot из PostgreSQL.</p></div><div class="online-pill"><i></i> DATABASE ONLINE</div></section><section class="users-toolbar"><form method="get" action="/admin/users" class="search"><span>⌕</span><input name="q" value="{{ query }}" placeholder="Поиск по имени, @username или ID..."><button>Найти</button></form><div class="result-count">{{ users|length }} найдено</div></section>{% if error %}<div class="error-box">⚠️ {{ error }}</div>{% endif %}<section class="users-table panel"><div class="table-head"><span>ПОЛЬЗОВАТЕЛЬ</span><span>СТАТУС</span><span>СООБЩЕНИЯ</span><span>МОДЕРАЦИЯ</span><span>ПОСЛЕДНИЙ ВИЗИТ</span><span></span></div>{% for user in users %}<a class="user-row" href="{{ url_for('admin_user_profile', user_id=user.id) }}"><div class="user-cell"><div class="user-avatar">{{ (user.first_name or user.username or 'U')[:1]|upper }}</div><div><strong>{{ ((user.first_name or '') ~ ' ' ~ (user.last_name or ''))|trim or 'Без имени' }}</strong><small>{% if user.username %}@{{ user.username }} · {% endif %}ID {{ user.id }}</small></div></div><div><span class="status-badge">{{ user.status or 'member' }}</span></div><div class="messages-count">{{ user.messages_count or 0 }}</div><div class="moderation-mini"><b class="warn">⚠ {{ user.warns or 0 }}</b><b class="mute">🔇 {{ user.mutes or 0 }}</b><b class="ban">🚫 {{ user.bans or 0 }}</b><b class="kick">👢 {{ user.kicks or 0 }}</b></div><div class="last-seen">{{ user.last_seen.strftime("%d.%m.%Y %H:%M") if user.last_seen else "—" }}</div><div class="arrow">→</div></a>{% else %}<div class="empty-users">👥 Пользователи не найдены.</div>{% endfor %}</section><footer>THE SYSTEM_PROTOGEN · USER DATABASE · <span>SECURE SESSION</span></footer></main></div></body></html>
+<main class="users-main">
+  <section class="users-hero">
+    <div><div class="eyebrow">USER MANAGEMENT</div><h1>Пользователи</h1><p>Участники Protogen Bot из PostgreSQL.</p></div>
+    <div class="online-pill"><i></i> DATABASE ONLINE</div>
+  </section>
+
+  <div class="users-workspace">
+    <section class="users-content">
+      <section class="users-toolbar">
+        <form method="get" action="/admin/users" class="search">
+          <span>⌕</span><input name="q" value="{{ query }}" placeholder="Поиск по имени, @username или ID..."><button>Найти</button>
+        </form>
+        <div class="result-count">{{ users|length }} найдено</div>
+      </section>
+
+      {% if error %}<div class="error-box">⚠️ {{ error }}</div>{% endif %}
+
+      <section class="users-table panel">
+        <div class="table-head"><span>ПОЛЬЗОВАТЕЛЬ</span><span>СТАТУС</span><span>СООБЩЕНИЯ</span><span>МОДЕРАЦИЯ</span><span>ПОСЛЕДНИЙ ВИЗИТ</span><span></span></div>
+        {% for user in users %}
+        <div class="user-row" data-user-id="{{ user.id }}" data-user-name="{{ ((user.first_name or '') ~ ' ' ~ (user.last_name or ''))|trim or user.username or user.id }}">
+          <a class="user-main-link" href="{{ url_for('admin_user_profile', user_id=user.id) }}">
+            <div class="user-cell"><div class="user-avatar">{{ (user.first_name or user.username or 'U')[:1]|upper }}</div><div><strong>{{ ((user.first_name or '') ~ ' ' ~ (user.last_name or ''))|trim or 'Без имени' }}</strong><small>{% if user.username %}@{{ user.username }} · {% endif %}ID {{ user.id }}</small></div></div>
+            <div><span class="status-badge">{{ user.status or 'member' }}</span></div>
+            <div class="messages-count">{{ user.messages_count or 0 }}</div>
+            <div class="moderation-mini"><b class="warn">⚠ {{ user.warns or 0 }}</b><b class="mute">🔇 {{ user.mutes or 0 }}</b><b class="ban">🚫 {{ user.bans or 0 }}</b><b class="kick">👢 {{ user.kicks or 0 }}</b></div>
+            <div class="last-seen">{{ user.last_seen.strftime("%d.%m.%Y %H:%M") if user.last_seen else "—" }}</div><div class="arrow">→</div>
+          </a>
+          <button type="button" class="select-user" data-select-user="{{ user.id }}">Выбрать</button>
+        </div>
+        {% else %}<div class="empty-users">👥 Пользователи не найдены.</div>{% endfor %}
+      </section>
+      <footer>THE SYSTEM_PROTOGEN · USER DATABASE · <span>SECURE SESSION</span></footer>
+    </section>
+
+    <aside class="quick-actions panel">
+      <div class="quick-actions-head"><div><div class="panel-kicker">COMMAND CENTER</div><h2>Быстрые действия</h2></div><span class="quick-live"><i></i> LIVE</span></div>
+      <div class="selected-user-box" id="selectedUserBox"><span class="selected-dot">●</span><div><small>ВЫБРАННЫЙ ПОЛЬЗОВАТЕЛЬ</small><b id="selectedUserName">Не выбран</b><em id="selectedUserId">Выберите пользователя в таблице</em></div></div>
+      <button class="quick-action" data-action="role" type="button"><span>♙</span><div><b>Добавить роль</b><small>Назначить модератора или администратора</small></div></button>
+      <button class="quick-action danger" data-action="block" type="button"><span>◈</span><div><b>Заблокировать</b><small>Перманентный бан в Telegram</small></div></button>
+      <button class="quick-action" data-action="message" type="button"><span>▣</span><div><b>Отправить сообщение</b><small>Личное сообщение пользователю</small></div></button>
+      <a class="quick-action" href="{{ url_for('admin_users_export') }}"><span>⇩</span><div><b>Экспорт данных</b><small>Скачать всех пользователей в CSV</small></div></a>
+      <div class="quick-hint">Действия выполняются через Telegram Bot API и PostgreSQL.</div>
+    </aside>
+  </div>
+</main>
+</div>
+
+<div class="quick-modal" id="quickModal" aria-hidden="true">
+  <div class="quick-modal-backdrop" data-close-modal></div>
+  <div class="quick-modal-card">
+    <button class="quick-modal-close" type="button" data-close-modal>×</button>
+    <div class="panel-kicker" id="modalKicker">QUICK ACTION</div>
+    <h2 id="modalTitle">Действие</h2>
+    <p id="modalDescription"></p>
+    <div id="modalFields"></div>
+    <div class="quick-modal-actions"><button type="button" class="modal-cancel" data-close-modal>Отмена</button><button type="button" class="modal-submit" id="modalSubmit">Выполнить</button></div>
+    <div class="quick-result" id="quickResult"></div>
+  </div>
+</div>
+
+<script>
+const selected={id:null,name:null};
+const modal=document.getElementById('quickModal');
+const fields=document.getElementById('modalFields');
+const result=document.getElementById('quickResult');
+const title=document.getElementById('modalTitle');
+const description=document.getElementById('modalDescription');
+let currentAction=null;
+
+function openModal(action){
+  if(!selected.id){ alert('Сначала выбери пользователя в таблице.'); return; }
+  currentAction=action; result.textContent=''; result.className='quick-result';
+  if(action==='role'){
+    title.textContent='Добавить роль'; description.textContent=`Пользователь: ${selected.name}`;
+    fields.innerHTML='<label>Роль<select id="roleField"><option value="moderator">Модератор</option><option value="admin">Администратор</option></select></label>';
+  }else if(action==='block'){
+    title.textContent='Заблокировать'; description.textContent=`Пользователь ${selected.name} будет заблокирован в Telegram.`;
+    fields.innerHTML='<div class="modal-warning">⚠️ Действие перманентное. Для разблокировки используй кнопку /unban в боте.</div>';
+  }else{
+    title.textContent='Отправить сообщение'; description.textContent=`Сообщение будет отправлено в личные сообщения ${selected.name}.`;
+    fields.innerHTML='<label>Текст сообщения<textarea id="messageField" maxlength="4096" rows="5" placeholder="Напиши сообщение..."></textarea></label>';
+  }
+  modal.classList.add('open'); modal.setAttribute('aria-hidden','false');
+}
+function closeModal(){modal.classList.remove('open');modal.setAttribute('aria-hidden','true');}
+
+document.querySelectorAll('[data-select-user]').forEach(btn=>btn.addEventListener('click',()=>{
+  const row=btn.closest('.user-row');
+  selected.id=Number(btn.dataset.selectUser); selected.name=row.dataset.userName;
+  document.querySelectorAll('.user-row.selected').forEach(x=>x.classList.remove('selected')); row.classList.add('selected');
+  document.getElementById('selectedUserName').textContent=selected.name;
+  document.getElementById('selectedUserId').textContent=`Telegram ID ${selected.id}`;
+}));
+document.querySelectorAll('.quick-action[data-action]').forEach(btn=>btn.addEventListener('click',()=>openModal(btn.dataset.action)));
+document.querySelectorAll('[data-close-modal]').forEach(x=>x.addEventListener('click',closeModal));
+document.getElementById('modalSubmit').addEventListener('click',async()=>{
+  if(!selected.id||!currentAction)return;
+  const payload={action:currentAction};
+  if(currentAction==='role')payload.role=document.getElementById('roleField').value;
+  if(currentAction==='message')payload.message=document.getElementById('messageField').value.trim();
+  const button=document.getElementById('modalSubmit'); button.disabled=true; button.textContent='Выполняю…';
+  try{
+    const r=await fetch(`/api/admin/users/${selected.id}/quick-action`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const d=await r.json();
+    if(!r.ok||!d.ok)throw new Error(d.error||'Не удалось выполнить действие');
+    result.textContent='✓ '+d.message; result.className='quick-result success';
+    if(currentAction==='block') setTimeout(()=>location.reload(),900);
+  }catch(e){result.textContent='✕ '+e.message;result.className='quick-result error';}
+  finally{button.disabled=false;button.textContent='Выполнить';}
+});
+</script>
+</body></html>
