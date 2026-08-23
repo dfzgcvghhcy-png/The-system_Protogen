@@ -843,6 +843,44 @@ async def panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await show_main_panel(update)
 
 
+async def _replace_callback_with_text(query, text, reply_markup=None):
+    """Показывает текстовую панель независимо от типа текущего сообщения.
+
+    Профиль пользователя отправляется как фото, поэтому edit_message_text()
+    для возврата из него не работает. В таком случае старое фото удаляется
+    и отправляется обычное текстовое сообщение.
+    """
+    message = query.message
+
+    if message is not None and message.photo:
+        try:
+            await message.delete()
+        except Exception as e:
+            print(f"PANEL MESSAGE DELETE ERROR: {type(e).__name__}: {e}")
+        return await context_bot_send_text(query, text, reply_markup)
+
+    try:
+        return await query.edit_message_text(
+            text,
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML,
+        )
+    except Exception as e:
+        print(f"PANEL EDIT TEXT ERROR: {type(e).__name__}: {e}")
+        try:
+            return await context_bot_send_text(query, text, reply_markup)
+        except Exception:
+            raise
+
+
+async def context_bot_send_text(query, text, reply_markup=None):
+    return await query.message.chat.send_message(
+        text=text,
+        reply_markup=reply_markup,
+        parse_mode=ParseMode.HTML,
+    )
+
+
 async def show_main_panel(obj):
     keyboard = [
         [InlineKeyboardButton("👥 Пользователи", callback_data="panel_users")],
@@ -859,9 +897,17 @@ async def show_main_panel(obj):
         "Выбери раздел:"
     )
     if getattr(obj, "callback_query", None) is not None:
-        await obj.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        await _replace_callback_with_text(
+            obj.callback_query,
+            text,
+            InlineKeyboardMarkup(keyboard),
+        )
     else:
-        await obj.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        await obj.message.reply_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode=ParseMode.HTML,
+        )
 
 
 async def show_moderation_panel(query):
@@ -900,67 +946,18 @@ async def show_users_panel(query):
         if not users:
             text += "\n\n💡 Пользователи будут добавляться автоматически при сообщениях и изменениях статуса участника."
 
-        markup = InlineKeyboardMarkup(keyboard)
-
-        # Профиль пользователя отправляется отдельным PHOTO-сообщением.
-        # Такое сообщение нельзя превратить через edit_message_text() в текст.
-        # Поэтому при возврате из профиля удаляем фото и создаём обычное
-        # текстовое сообщение со списком пользователей.
-        if query.message and query.message.photo:
-            try:
-                await query.message.delete()
-            except Exception as delete_error:
-                print(f"PANEL USERS PHOTO DELETE ERROR: {type(delete_error).__name__}: {delete_error}")
-
-            await query.message.reply_text(
-                text,
-                reply_markup=markup,
-                parse_mode=ParseMode.HTML,
-            )
-            return
-
-        await query.edit_message_text(
+        await _replace_callback_with_text(
+            query,
             text,
-            reply_markup=markup,
-            parse_mode=ParseMode.HTML,
+            InlineKeyboardMarkup(keyboard),
         )
-
     except Exception as e:
-        print(f"PANEL USERS ERROR: {type(e).__name__}: {e}")
-
-        error_text = (
-            f"❌ <b>Ошибка панели пользователей</b>\n\n"
-            f"<code>{type(e).__name__}: {e}</code>"
+        print(f"PANEL USERS ERROR: {e}")
+        await _replace_callback_with_text(
+            query,
+            f"❌ <b>Ошибка базы данных</b>\n\n<code>{type(e).__name__}: {e}</code>",
+            InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data="panel_main")]]),
         )
-        error_markup = InlineKeyboardMarkup([
-            [InlineKeyboardButton("◀️ Назад", callback_data="panel_main")]
-        ])
-
-        # Если callback пришёл от фото-профиля, edit_message_text() здесь
-        # тоже невозможен. Сначала удаляем фото, затем отправляем текст.
-        try:
-            if query.message and query.message.photo:
-                try:
-                    await query.message.delete()
-                except Exception:
-                    pass
-
-                await query.message.reply_text(
-                    error_text,
-                    reply_markup=error_markup,
-                    parse_mode=ParseMode.HTML,
-                )
-            else:
-                await query.edit_message_text(
-                    error_text,
-                    reply_markup=error_markup,
-                    parse_mode=ParseMode.HTML,
-                )
-        except Exception as error_message:
-            print(
-                f"PANEL USERS ERROR MESSAGE: "
-                f"{type(error_message).__name__}: {error_message}"
-            )
     finally:
         session.close()
 
@@ -1142,11 +1139,7 @@ async def show_activity(query, user_id):
             ]
         ])
 
-        await query.edit_message_text(
-            text,
-            reply_markup=keyboard,
-            parse_mode=ParseMode.HTML,
-        )
+        await _replace_callback_with_text(query, text, keyboard)
 
     finally:
         session.close()
@@ -1164,7 +1157,11 @@ async def show_history_panel(query):
                 icon = {"warn":"⚠️","unwarn":"🧹","mute":"🔇","ban":"🚫","kick":"👢"}.get(p.type, "📌")
                 reason = _safe_text(p.reason, "Не указана")
                 text += f"{icon} <b>{p.type}</b> — <code>{p.user_id}</code>\n📝 {reason}\n\n"
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data="panel_main")]]), parse_mode=ParseMode.HTML)
+        await _replace_callback_with_text(
+            query,
+            text,
+            InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data="panel_main")]]),
+        )
     finally:
         session.close()
 
@@ -1189,7 +1186,11 @@ async def show_stats_panel(query):
             f"👢 Киков: <b>{counts['kick']}</b>\n"
             f"📜 Всего действий: <b>{len(punishments)}</b>"
         )
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data="panel_main")]]), parse_mode=ParseMode.HTML)
+        await _replace_callback_with_text(
+            query,
+            text,
+            InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data="panel_main")]]),
+        )
     finally:
         session.close()
 
@@ -1829,3 +1830,4 @@ async def custom_reason_message(update: Update, context: ContextTypes.DEFAULT_TY
         "Выбери действие/срок через панель модерации.",
         parse_mode=ParseMode.HTML,
     )
+
