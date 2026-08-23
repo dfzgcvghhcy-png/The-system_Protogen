@@ -900,14 +900,67 @@ async def show_users_panel(query):
         if not users:
             text += "\n\n💡 Пользователи будут добавляться автоматически при сообщениях и изменениях статуса участника."
 
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
-    except Exception as e:
-        print(f"PANEL USERS ERROR: {e}")
+        markup = InlineKeyboardMarkup(keyboard)
+
+        # Профиль пользователя отправляется отдельным PHOTO-сообщением.
+        # Такое сообщение нельзя превратить через edit_message_text() в текст.
+        # Поэтому при возврате из профиля удаляем фото и создаём обычное
+        # текстовое сообщение со списком пользователей.
+        if query.message and query.message.photo:
+            try:
+                await query.message.delete()
+            except Exception as delete_error:
+                print(f"PANEL USERS PHOTO DELETE ERROR: {type(delete_error).__name__}: {delete_error}")
+
+            await query.message.reply_text(
+                text,
+                reply_markup=markup,
+                parse_mode=ParseMode.HTML,
+            )
+            return
+
         await query.edit_message_text(
-            f"❌ <b>Ошибка базы данных</b>\n\n<code>{type(e).__name__}: {e}</code>",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data="panel_main")]]),
+            text,
+            reply_markup=markup,
             parse_mode=ParseMode.HTML,
         )
+
+    except Exception as e:
+        print(f"PANEL USERS ERROR: {type(e).__name__}: {e}")
+
+        error_text = (
+            f"❌ <b>Ошибка панели пользователей</b>\n\n"
+            f"<code>{type(e).__name__}: {e}</code>"
+        )
+        error_markup = InlineKeyboardMarkup([
+            [InlineKeyboardButton("◀️ Назад", callback_data="panel_main")]
+        ])
+
+        # Если callback пришёл от фото-профиля, edit_message_text() здесь
+        # тоже невозможен. Сначала удаляем фото, затем отправляем текст.
+        try:
+            if query.message and query.message.photo:
+                try:
+                    await query.message.delete()
+                except Exception:
+                    pass
+
+                await query.message.reply_text(
+                    error_text,
+                    reply_markup=error_markup,
+                    parse_mode=ParseMode.HTML,
+                )
+            else:
+                await query.edit_message_text(
+                    error_text,
+                    reply_markup=error_markup,
+                    parse_mode=ParseMode.HTML,
+                )
+        except Exception as error_message:
+            print(
+                f"PANEL USERS ERROR MESSAGE: "
+                f"{type(error_message).__name__}: {error_message}"
+            )
     finally:
         session.close()
 
@@ -1776,4 +1829,3 @@ async def custom_reason_message(update: Update, context: ContextTypes.DEFAULT_TY
         "Выбери действие/срок через панель модерации.",
         parse_mode=ParseMode.HTML,
     )
-
