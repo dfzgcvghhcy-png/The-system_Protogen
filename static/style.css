@@ -455,3 +455,42 @@ body.admin-transitioning .admin-cta b{
   .admin-transition,.admin-transition:before,.admin-transition:after{animation:none!important;transition:none!important}
 }
 \n\n/* LIVE STATS SERVER SELECTOR */\n.stats-controls{display:flex;align-items:center;gap:8px}.stats-controls select{appearance:none;color:#9ffef2;background:rgba(0,255,225,.035);border:1px solid rgba(0,255,225,.18);border-radius:7px;padding:6px 22px 6px 8px;font-size:7px;font-weight:900;letter-spacing:.5px;outline:none;cursor:pointer}.stats-controls select:focus{border-color:rgba(0,255,225,.55);box-shadow:0 0 14px rgba(0,255,225,.08)}.stats-controls option{background:#071015;color:#dffffb}.stats-controls small{white-space:nowrap}.stat-item strong{transition:opacity .18s ease,transform .18s ease}.stat-item.updating strong{opacity:.35;transform:translateY(2px)}\n@media(max-width:620px){.stats-heading{align-items:flex-start;gap:7px}.stats-controls{flex-direction:column;align-items:flex-end;gap:4px}.stats-controls select{max-width:145px}}\n
+/* =========================================================
+   CHAT SCROLL FIX
+   Чат прокручивается внутри своей панели, а главная страница
+   при открытом чате не уезжает по вертикали.
+   ========================================================= */
+@media (min-width: 921px){
+  body.chat-open{
+    overflow:hidden;
+    height:100vh;
+  }
+
+  body.chat-open .hero-area{
+    height:calc(100vh - 72px);
+    min-height:0;
+    max-height:calc(100vh - 72px);
+    overflow:hidden;
+  }
+
+  body.chat-open .left-column,
+  body.chat-open .system-sidebar{
+    min-height:0;
+  }
+
+  body.chat-open .chat-panel{
+    height:100%;
+    min-height:0;
+    max-height:100%;
+    overflow:hidden;
+  }
+
+  body.chat-open .chat-panel .chat-area{
+    min-height:0;
+    overflow-y:auto;
+    overflow-x:hidden;
+    overscroll-behavior:contain;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:thin;
+  }
+}

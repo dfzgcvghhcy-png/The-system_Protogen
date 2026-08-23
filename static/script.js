@@ -75,6 +75,12 @@
     }
   }
 
+  // Keep wheel/touch scrolling inside the chat. This prevents the page from
+  // taking over when the cursor is over the conversation.
+  messages?.addEventListener('wheel', (e) => {
+    if (messages.scrollHeight > messages.clientHeight) e.stopPropagation();
+  }, {passive:true});
+
   $('#sendBtn')?.addEventListener('click', sendMessage);
   input?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
