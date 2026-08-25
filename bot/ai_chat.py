@@ -1,3 +1,5 @@
+import re
+
 from telegram import Update
 from telegram.ext import ContextTypes
 
@@ -5,16 +7,19 @@ from ai_core import ask_protogen
 
 
 def mentioned(text: str):
-    text = text.lower()
-
+    # AI responds only to explicit triggers written with ///.
+    # Examples: ///Протя, ///Протоген, ///Protogen
+    # Ordinary mentions such as "Протоген" are ignored.
     triggers = (
+        "протя",
         "протоген",
         "протогенчик",
         "protogen",
         "прот",
     )
 
-    return any(x in text for x in triggers)
+    pattern = r"///(?:" + "|".join(re.escape(x) for x in triggers) + r")\b"
+    return re.search(pattern, text, flags=re.IGNORECASE) is not None
 
 
 async def protogen_ai_message(
