@@ -21,8 +21,10 @@
   {% if error %}<div class="error-box">⚠️ {{ error }}</div>{% endif %}
 
   <section class="moderation-grid">
-    <article class="mod-card automation-card">
-      <div class="mod-head"><div><span class="panel-kicker">01 // AUTOMOD</span><h2>Автомодерация</h2><p>Базовые защитные механизмы чата</p></div><span class="status-pill"><i></i> {{ 'ACTIVE' if settings and settings.moderation_enabled else 'OFFLINE' }}</span></div>
+    <article class="mod-card accordion-card automation-card">
+      <button class="accordion-toggle" type="button" aria-expanded="false"><span><b>01 // AUTOMOD</b><strong>Автомодерация</strong><small>Базовые защитные механизмы чата</small></span><i>⌄</i></button>
+      <div class="accordion-content">
+      <div class="mod-head"><div></div><span class="status-pill"><i></i> {{ 'ACTIVE' if settings and settings.moderation_enabled else 'OFFLINE' }}</span></div>
       <div class="toggle-list">
         {% for key,label,desc in [
           ('moderation_enabled','Система модерации','Главный переключатель модерации'),
@@ -36,17 +38,23 @@
         <label class="toggle-row {% if not is_creator %}locked{% endif %}"><span><b>{{ label }}</b><small>{{ desc }}</small></span><input type="checkbox" data-setting="{{ key }}" {% if settings and settings|attr(key) %}checked{% endif %} {% if not is_creator %}disabled{% endif %}><i></i></label>
         {% endfor %}
       </div>
+      </div>
     </article>
 
-    <article class="mod-card punish-card">
-      <div class="mod-head"><div><span class="panel-kicker">02 // LIMITS</span><h2>Наказания</h2><p>Общие параметры системы</p></div></div>
+    <article class="mod-card accordion-card punish-card">
+      <button class="accordion-toggle" type="button" aria-expanded="false"><span><b>02 // LIMITS</b><strong>Наказания</strong><small>Общие параметры системы</small></span><i>⌄</i></button>
+      <div class="accordion-content">
+      <div class="mod-head"><div></div></div>
       <div class="limit-row"><div><b>WARN LIMIT</b><small>До автоматического действия</small></div><strong>{{ settings.warn_limit if settings else '—' }}</strong></div>
       <div class="limit-row"><div><b>MUTE DURATION</b><small>Стандартная длительность</small></div><strong>{{ settings.mute_duration if settings else '—' }}<em> мин</em></strong></div>
       <div class="action-preview"><span>⚠️</span><div><b>Цепочка наказаний</b><small>Warn → Mute → Ban можно настроить через параметры бота.</small></div></div>
+      </div>
     </article>
   </section>
 
-  <section class="mod-card command-card">
+  <section class="mod-card accordion-card command-card">
+    <button class="accordion-toggle" type="button" aria-expanded="false"><span><b>03 // COMMAND ACCESS</b><strong>Доступ к командам</strong><small>Кто может использовать команды Protogen</small></span><i>⌄</i></button>
+    <div class="accordion-content">
     <div class="mod-head command-head"><div><span class="panel-kicker">03 // COMMAND ACCESS</span><h2>Доступ к командам</h2><p>Кто может использовать команды Protogen. Изменять матрицу может только Создатель.</p></div><button id="saveModeration" class="save-command" {% if not is_creator %}disabled{% endif %}>✓ СОХРАНИТЬ</button></div>
     <div class="legend"><span><i class="dot green"></i> разрешено</span><span><i class="dot red"></i> заблокировано</span><span>Уровень: 1 Модератор · 2 Администратор · 3 Создатель</span></div>
     <div class="command-table">
@@ -67,6 +75,7 @@
       </div>
       {% endfor %}
     </div>
+    </div>
   </section>
 
   <section class="mod-card flow-card">
@@ -81,6 +90,7 @@
 <audio id="accessDeniedSound" preload="auto" src="{{ url_for('static', filename='access-denied.mp3') }}"></audio>
 <script src="{{ url_for('static', filename='access-control.js') }}"></script>
 <script>
+document.querySelectorAll('.accordion-toggle').forEach(btn=>{btn.addEventListener('click',()=>{const card=btn.closest('.accordion-card');const open=card.classList.toggle('open');btn.setAttribute('aria-expanded',open?'true':'false');});});
 const isCreator={{ 'true' if is_creator else 'false' }};
 const levelNames=['Все участники','Модератор','Администратор','Создатель'];
 const rows=[...document.querySelectorAll('.command-row')];
