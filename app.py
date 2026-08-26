@@ -144,6 +144,9 @@ DEFAULT_COMMAND_PERMISSIONS = [
     ("/note", "Заметка", "Инструменты", 1, True, "Шаблоны ответов"),
     ("/notes", "Заметки", "Инструменты", 1, True, "Список шаблонов"),
     ("/timer", "Таймер", "Инструменты", 1, True, "Отложенная команда"),
+    ("/setmod", "Назначить модератора", "Роли", 3, True, "Назначить модератора Protogen"),
+    ("/delmod", "Снять модератора", "Роли", 3, True, "Снять модератора Protogen"),
+    ("/mods", "Список модераторов", "Роли", 1, True, "Показать модераторов Protogen"),
 ]
 
 # Create missing tables only after ALL SQLAlchemy models are registered.

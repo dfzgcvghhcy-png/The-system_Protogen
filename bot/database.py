@@ -173,6 +173,29 @@ class Activity(Base):
 # PUNISHMENTS
 # ============================================================
 
+
+
+class CommandPermission(Base):
+    __tablename__ = "command_permissions"
+    id = Column(Integer, primary_key=True)
+    command = Column(String(80), unique=True, nullable=False, index=True)
+    label = Column(String(120), nullable=False)
+    category = Column(String(40), nullable=False, default="moderation")
+    min_role_level = Column(Integer, nullable=False, default=1)
+    enabled = Column(Boolean, default=True)
+    description = Column(String(255), nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ChatRole(Base):
+    __tablename__ = "chat_roles"
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    user_id = Column(BigInteger, nullable=False, index=True)
+    role_level = Column(Integer, nullable=False, default=1)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 class Punishment(Base):
     __tablename__ = "punishments"
 

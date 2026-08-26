@@ -1,8 +1,8 @@
 from telegram import Update, ChatPermissions, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
-from database import Session, User, Punishment, Activity, BotSetting, Chat, ChatUser, ChatActivity, ChatPunishment
-from filters import is_admin, bot_can_restrict
+from database import Session, User, Punishment, Activity, BotSetting, Chat, ChatUser, ChatActivity, ChatPunishment, ChatRole
+from filters import is_admin, bot_can_restrict, check_command_access, telegram_role_level
 from datetime import datetime, timezone, timedelta
 import pytz
 import io
@@ -184,8 +184,8 @@ async def check_bot_restriction_rights(update: Update, context: ContextTypes.DEF
 
 
 async def warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await is_admin(update, context):
-        return await update.message.reply_text("❌ У тебя нет прав администратора.")
+    if not await check_command_access(update, context, "/warn"):
+        return
     if not await check_moderation_setting(update, "warn_enabled"):
         return
 
@@ -224,8 +224,8 @@ async def warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await is_admin(update, context):
-        return await update.message.reply_text("❌ У тебя нет прав администратора.")
+    if not await check_command_access(update, context, "/ban"):
+        return
     if not await check_moderation_setting(update, "ban_enabled"):
         return
 
@@ -266,8 +266,8 @@ async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await is_admin(update, context):
-        return await update.message.reply_text("❌ У тебя нет прав администратора.")
+    if not await check_command_access(update, context, "/unban"):
+        return
 
     target = await get_target(update, "/unban")
     if not target:
@@ -289,8 +289,8 @@ async def unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def mute(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await is_admin(update, context):
-        return await update.message.reply_text("❌ У тебя нет прав администратора.")
+    if not await check_command_access(update, context, "/mute"):
+        return
     if not await check_moderation_setting(update, "mute_enabled"):
         return
 
@@ -350,8 +350,8 @@ async def mute(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def unmute(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await is_admin(update, context):
-        return await update.message.reply_text("❌ У тебя нет прав администратора.")
+    if not await check_command_access(update, context, "/unmute"):
+        return
 
     target = await get_target(update, "/unmute")
     if not target:
@@ -388,9 +388,66 @@ async def unmute(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def setmod(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Only the Telegram chat creator may manage Protogen custom moderators.
+    member = await update.effective_chat.get_member(update.effective_user.id)
+    if member.status != "creator":
+        return await update.message.reply_text("⛔ Только создатель чата может назначать модераторов.")
+    target = await get_target(update, "/setmod")
+    if not target:
+        return
+    session = Session()
+    try:
+        row = session.query(ChatRole).filter(ChatRole.chat_id == update.effective_chat.id, ChatRole.user_id == target.id).first()
+        if not row:
+            row = ChatRole(chat_id=update.effective_chat.id, user_id=target.id, role_level=1)
+            session.add(row)
+        else:
+            row.role_level = 1
+        session.commit()
+    finally:
+        session.close()
+    await update.message.reply_text(f"🛡️ <b>{target.full_name}</b> назначен модератором Protogen.", parse_mode=ParseMode.HTML)
+
+
+async def delmod(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    member = await update.effective_chat.get_member(update.effective_user.id)
+    if member.status != "creator":
+        return await update.message.reply_text("⛔ Только создатель чата может снимать модераторов.")
+    target = await get_target(update, "/delmod")
+    if not target:
+        return
+    session = Session()
+    try:
+        session.query(ChatRole).filter(ChatRole.chat_id == update.effective_chat.id, ChatRole.user_id == target.id).delete()
+        session.commit()
+    finally:
+        session.close()
+    await update.message.reply_text(f"🧹 <b>{target.full_name}</b> больше не модератор Protogen.", parse_mode=ParseMode.HTML)
+
+
+async def mods(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    session = Session()
+    try:
+        rows = session.query(ChatRole).filter(ChatRole.chat_id == update.effective_chat.id, ChatRole.role_level == 1).all()
+        ids = [r.user_id for r in rows]
+    finally:
+        session.close()
+    if not ids:
+        return await update.message.reply_text("🛡️ В этом чате пока нет назначенных модераторов Protogen.")
+    lines = ["🛡️ <b>Модераторы Protogen</b>\n"]
+    for uid in ids:
+        try:
+            m = await update.effective_chat.get_member(uid)
+            lines.append(f"• {m.user.full_name} — <code>{uid}</code>")
+        except Exception:
+            lines.append(f"• <code>{uid}</code>")
+    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
+
+
 async def kick(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await is_admin(update, context):
-        return await update.message.reply_text("❌ У тебя нет прав администратора.")
+    if not await check_command_access(update, context, "/kick"):
+        return
     if not await check_moderation_setting(update, "kick_enabled"):
         return
 
@@ -1292,16 +1349,11 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ВЫДАЧА МУТА НА ВЫБРАННЫЙ СРОК
     # -------------------------------------------------
     if data.startswith("mute_for_"):
+        if not await check_command_access(query, context, "/mute"):
+            return
         _, _, user_id_raw, seconds_raw = data.split("_", 3)
         user_id = int(user_id_raw)
         seconds = int(seconds_raw)
-
-        member = await query.message.chat.get_member(query.from_user.id)
-        if member.status not in ("administrator", "creator"):
-            return await query.answer(
-                "❌ Только администраторы могут использовать модерацию.",
-                show_alert=True,
-            )
 
         chat_id = query.message.chat_id
 
@@ -1430,13 +1482,12 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if action_setting and not await check_callback_setting(query, action_setting):
             return
 
-        # Проверяем права того, кто нажал кнопку.
-        member = await query.message.chat.get_member(query.from_user.id)
-        if member.status not in ("administrator", "creator"):
-            return await query.answer(
-                "❌ Только администраторы могут использовать модерацию.",
-                show_alert=True,
-            )
+        # Матрица доступа из Web-панели действует и для кнопок.
+        command_name = "/" + action
+        if action == "unwarn":
+            command_name = "/unwarn"
+        if not await check_command_access(query, context, command_name):
+            return
 
         chat_id = query.message.chat_id
 

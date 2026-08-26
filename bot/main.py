@@ -9,7 +9,7 @@ from telegram.ext import (
 )
 
 from handlers import (
-    start, warn, ban, unban, mute, unmute, kick,
+    start, warn, ban, unban, mute, unmute, kick, setmod, delmod, mods,
     panel, buttons,
     track_message,
     track_chat_member,
@@ -43,6 +43,9 @@ def main():
     app.add_handler(CommandHandler("mute", mute))
     app.add_handler(CommandHandler("unmute", unmute))
     app.add_handler(CommandHandler("kick", kick))
+    app.add_handler(CommandHandler("setmod", setmod))
+    app.add_handler(CommandHandler("delmod", delmod))
+    app.add_handler(CommandHandler("mods", mods))
     app.add_handler(CommandHandler("panel", panel))
 
     # Protogen AI
