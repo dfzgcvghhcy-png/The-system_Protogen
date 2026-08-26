@@ -23,6 +23,31 @@
           <div class="hero-signal"><i></i><span>SYSTEM CORE</span><b>ONLINE</b></div>
         </section>
 
+        <section class="feature-links" aria-label="Быстрый доступ">
+          <a class="feature-link" href="/admin/moderation">
+            <span class="feature-link-icon">🛡️</span>
+            <span><b>Модерация</b><small>Warn · Mute · Ban</small></span>
+            <i>→</i>
+          </a>
+          <a class="feature-link feature-link-command" href="/admin/commands">
+            <span class="feature-link-icon">📚</span>
+            <span><b>Все команды</b><small>Справочник Protogen</small></span>
+            <i>→</i>
+          </a>
+          <a class="feature-link" href="/admin/users">
+            <span class="feature-link-icon">👥</span>
+            <span><b>Участники</b><small>Профили и активность</small></span>
+            <i>→</i>
+          </a>
+          {% if is_creator %}
+          <a class="feature-link" href="/admin/history">
+            <span class="feature-link-icon">📜</span>
+            <span><b>История</b><small>Все действия в базе</small></span>
+            <i>→</i>
+          </a>
+          {% endif %}
+        </section>
+
         <section class="cards" id="statistics">
           <article class="stat-card"><div class="stat-icon">👥</div><div><span>Участники</span><strong id="users">—</strong><small>в базе</small></div></article>
           <article class="stat-card"><div class="stat-icon pulse">⌁</div><div><span>Активные</span><strong id="active">—</strong><small>за 24 часа</small></div></article>

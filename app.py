@@ -182,8 +182,6 @@ DEFAULT_COMMAND_PERMISSIONS = [
     ("/gbstop", "Остановить голосование", "Наказания", 2, True, "Остановить голосование за бан"),
     ("/gblist", "Список голосований", "Наказания", 1, True, "Активные голосования"),
     ("/rp", "РП-команды", "РП", 0, True, "Безопасные РП-действия"),
-    ("/commands", "Все команды", "Чат", 0, True, "Открыть список доступных команд"),
-    ("/help", "Помощь", "Чат", 0, True, "Открыть список доступных команд"),
 ]
 
 # Create missing tables only after ALL SQLAlchemy models are registered.
@@ -615,6 +613,59 @@ def admin_wallpaper_delete():
         db.rollback()
         print(f"WALLPAPER DELETE ERROR: {type(e).__name__}: {e}")
         return jsonify({"error": f"{type(e).__name__}: {e}"}), 500
+    finally:
+        db.close()
+
+
+# ============================================================
+# WEB COMMAND DIRECTORY
+# ============================================================
+
+@app.route("/admin/commands")
+@role_required("moderator")
+def admin_commands():
+    """Web-only command directory; never exposed as a Telegram command."""
+    if not SessionLocal:
+        return render_template(
+            "commands.html",
+            username=session.get("admin_username", ADMIN_USERNAME),
+            commands=[],
+            categories={},
+            error="DATABASE_URL не настроен в Railway Variables."
+        )
+
+    db = SessionLocal()
+    try:
+        current_level = ROLE_LEVELS.get(current_role(), 0)
+        rows = (
+            db.query(CommandPermission)
+            .filter(
+                CommandPermission.enabled.is_(True),
+                CommandPermission.min_role_level <= current_level
+            )
+            .order_by(CommandPermission.category, CommandPermission.id)
+            .all()
+        )
+        categories = {}
+        for row in rows:
+            categories.setdefault(row.category, []).append(row)
+        return render_template(
+            "commands.html",
+            username=session.get("admin_username", ADMIN_USERNAME),
+            commands=rows,
+            categories=categories,
+            error=None
+        )
+    except Exception as e:
+        db.rollback()
+        print(f"COMMAND DIRECTORY ERROR: {type(e).__name__}: {e}")
+        return render_template(
+            "commands.html",
+            username=session.get("admin_username", ADMIN_USERNAME),
+            commands=[],
+            categories={},
+            error=f"{type(e).__name__}: {e}"
+        )
     finally:
         db.close()
 
