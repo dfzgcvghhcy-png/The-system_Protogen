@@ -39,6 +39,57 @@
 
   topChatBtn?.addEventListener('click', () => toggleChat(true));
 
+  // Chat settings -> public command directory. This lives inside the chat UI,
+  // not in the protected system settings/admin navigation.
+  const chatSettingsBtn = $('#chatSettingsBtn');
+  const chatSettingsMenu = $('#chatSettingsMenu');
+  const chatCommandsBtn = $('#chatCommandsBtn');
+  const commandsOverlay = $('#commandsOverlay');
+  const commandsClose = $('#commandsClose');
+
+  chatSettingsBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isOpen = !chatSettingsMenu?.hasAttribute('hidden');
+    if (!chatSettingsMenu) return;
+    chatSettingsMenu.toggleAttribute('hidden', isOpen);
+    chatSettingsBtn.setAttribute('aria-expanded', String(!isOpen));
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!chatSettingsMenu || chatSettingsMenu.hasAttribute('hidden')) return;
+    if (!chatSettingsMenu.contains(e.target) && e.target !== chatSettingsBtn) {
+      chatSettingsMenu.setAttribute('hidden', '');
+      chatSettingsBtn?.setAttribute('aria-expanded', 'false');
+    }
+  });
+
+  function closeCommandDirectory() {
+    commandsOverlay?.setAttribute('hidden', '');
+    chatSettingsMenu?.setAttribute('hidden', '');
+    chatSettingsBtn?.setAttribute('aria-expanded', 'false');
+  }
+
+  chatCommandsBtn?.addEventListener('click', () => {
+    commandsOverlay?.removeAttribute('hidden');
+    chatSettingsMenu?.setAttribute('hidden', '');
+    chatSettingsBtn?.setAttribute('aria-expanded', 'false');
+  });
+  commandsClose?.addEventListener('click', closeCommandDirectory);
+  commandsOverlay?.addEventListener('click', (e) => {
+    if (e.target === commandsOverlay) closeCommandDirectory();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeCommandDirectory();
+  });
+
+  $$('.public-command-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const section = btn.closest('.public-command-section');
+      const open = section.classList.toggle('open');
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+  });
+
   function addMessage(text, type = 'bot') {
     if (!messages) return null;
     const div = document.createElement('div');

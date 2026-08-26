@@ -337,7 +337,29 @@ def dashboard_data():
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    # The public Web chat has its own command directory. It is intentionally
+    # not exposed through the admin/settings navigation.
+    catalog = []
+    if SessionLocal:
+        db = SessionLocal()
+        try:
+            rows = db.query(CommandPermission).filter(CommandPermission.enabled.is_(True)).order_by(CommandPermission.category, CommandPermission.id).all()
+            catalog = [
+                {"command": r.command, "label": r.label, "category": r.category, "description": r.description or ""}
+                for r in rows
+            ]
+        except Exception as e:
+            db.rollback()
+            print(f"PUBLIC COMMAND CATALOG ERROR: {type(e).__name__}: {e}")
+        finally:
+            db.close()
+    if not catalog:
+        catalog = [
+            {"command": command, "label": label, "category": category, "description": description}
+            for command, label, category, level, enabled, description in DEFAULT_COMMAND_PERMISSIONS
+            if enabled and command not in ("/commands", "/help")
+        ]
+    return render_template("index.html", command_catalog=catalog)
 
 
 @app.route("/chat", methods=["POST"])
@@ -613,59 +635,6 @@ def admin_wallpaper_delete():
         db.rollback()
         print(f"WALLPAPER DELETE ERROR: {type(e).__name__}: {e}")
         return jsonify({"error": f"{type(e).__name__}: {e}"}), 500
-    finally:
-        db.close()
-
-
-# ============================================================
-# WEB COMMAND DIRECTORY
-# ============================================================
-
-@app.route("/admin/commands")
-@role_required("moderator")
-def admin_commands():
-    """Web-only command directory; never exposed as a Telegram command."""
-    if not SessionLocal:
-        return render_template(
-            "commands.html",
-            username=session.get("admin_username", ADMIN_USERNAME),
-            commands=[],
-            categories={},
-            error="DATABASE_URL не настроен в Railway Variables."
-        )
-
-    db = SessionLocal()
-    try:
-        current_level = ROLE_LEVELS.get(current_role(), 0)
-        rows = (
-            db.query(CommandPermission)
-            .filter(
-                CommandPermission.enabled.is_(True),
-                CommandPermission.min_role_level <= current_level
-            )
-            .order_by(CommandPermission.category, CommandPermission.id)
-            .all()
-        )
-        categories = {}
-        for row in rows:
-            categories.setdefault(row.category, []).append(row)
-        return render_template(
-            "commands.html",
-            username=session.get("admin_username", ADMIN_USERNAME),
-            commands=rows,
-            categories=categories,
-            error=None
-        )
-    except Exception as e:
-        db.rollback()
-        print(f"COMMAND DIRECTORY ERROR: {type(e).__name__}: {e}")
-        return render_template(
-            "commands.html",
-            username=session.get("admin_username", ADMIN_USERNAME),
-            commands=[],
-            categories={},
-            error=f"{type(e).__name__}: {e}"
-        )
     finally:
         db.close()
 

@@ -98,10 +98,51 @@
               <span><i></i> онлайн</span>
             </div>
           </div>
-          <div class="chat-dots">•••</div>
+          <div class="chat-header-actions">
+            <button class="chat-dots chat-settings-btn" id="chatSettingsBtn" type="button" aria-label="Настройки чата" aria-expanded="false">•••</button>
+            <div class="chat-settings-menu" id="chatSettingsMenu" hidden>
+              <button type="button" id="chatCommandsBtn">📚 Все команды</button>
+            </div>
+          </div>
         </div>
 
         <div class="chat-area" id="messages" aria-live="polite"></div>
+
+        <div class="commands-overlay" id="commandsOverlay" hidden>
+          <div class="commands-modal" role="dialog" aria-modal="true" aria-labelledby="commandsTitle">
+            <div class="commands-modal-head">
+              <div>
+                <span class="eyebrow">PROTOGEN // CHAT</span>
+                <h2 id="commandsTitle">📚 Все команды</h2>
+                <p>Команды Protogen в одном месте.</p>
+              </div>
+              <button type="button" class="commands-close" id="commandsClose" aria-label="Закрыть">×</button>
+            </div>
+            <div class="commands-modal-body" id="publicCommandCatalog">
+              {% set icons = {
+                'Наказания':'🛡️','Очистка':'🧹','Пользователи':'👤','Аналитика':'📊',
+                'Инструменты':'🧰','Чат':'💬','Социальные':'⭐','Развлечения':'🎮',
+                'Роли':'👑','РП':'🎭'
+              } %}
+              {% for category, items in command_catalog|groupby('category') %}
+              <section class="public-command-section">
+                <button type="button" class="public-command-toggle" aria-expanded="false">
+                  <span><b>{{ icons.get(category, '📁') }} {{ category }}</b><small>{{ items|list|length }} команд</small></span>
+                  <i>⌄</i>
+                </button>
+                <div class="public-command-content">
+                  {% for item in items %}
+                  <div class="public-command-row">
+                    <code>{{ item.command }}</code>
+                    <div><b>{{ item.label }}</b><small>{{ item.description }}</small></div>
+                  </div>
+                  {% endfor %}
+                </div>
+              </section>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
 
         <div class="chat-input">
           <input id="input" type="text" placeholder="Напиши что-нибудь..." autocomplete="off">

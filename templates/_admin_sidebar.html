@@ -10,7 +10,6 @@
     <a class="{% if request.path == '/admin' %}active{% endif %}" href="/admin"><span>⌂</span><b>ГЛАВНАЯ</b><small>Панель управления</small></a>
     <a class="{% if request.path.startswith('/admin/users') %}active{% endif %}" href="/admin/users"><span>♙</span><b>ПОЛЬЗОВАТЕЛИ</b><small>Управление участниками</small></a>
     <a class="{% if request.path.startswith('/admin/moderation') %}active{% endif %}" href="/admin/moderation"><span>♜</span><b>МОДЕРАЦИЯ</b><small>Действия и наказания</small></a>
-    <a class="{% if request.path.startswith('/admin/commands') %}active{% endif %}" href="/admin/commands"><span>▤</span><b>ВСЕ КОМАНДЫ</b><small>Справочник Protogen</small></a>
     {% if is_creator %}
     <a class="{% if request.path.startswith('/admin/history') %}active{% endif %}" href="/admin/history"><span>▣</span><b>ИСТОРИЯ</b><small>Логи и события</small></a>
     {% endif %}
