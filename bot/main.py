@@ -14,6 +14,8 @@ from handlers import (
     warns, unwarn, clearwarns, tempmute, tempban, del_message, clear_messages, purge,
     user_info, user_id, history, stats, top, banlist, mutelist, bookmark, bookmarks, note, notes, timer,
     welcome, rules, reputation, plus, reward, rewards, dice, eightball, random_cmd, choose, ship, weather,
+    rating, reputation_vote, star_rating, my_stars, remove_reward, set_moderator_icon, chat_feature_command, rp_action,
+    ban_vote_command, ban_vote_info, ban_vote_stop, ban_vote_list, ban_vote_callback, rp_help, rules_text_command, moderator_icon_text,
     automod_message, restore_scheduled_actions,
     track_message,
     track_chat_member,
@@ -32,6 +34,8 @@ async def error_handler(update: Update, context):
 
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
+
+    app.add_handler(CallbackQueryHandler(ban_vote_callback, pattern=r"^banvote_(yes|no)_\d+$"))
 
     app.add_handler(
         CallbackQueryHandler(
@@ -83,6 +87,30 @@ def main():
     app.add_handler(CommandHandler("choose", choose))
     app.add_handler(CommandHandler("ship", ship))
     app.add_handler(CommandHandler("weather", weather))
+    app.add_handler(CommandHandler("rating", rating))
+    app.add_handler(CommandHandler("stars", star_rating))
+    app.add_handler(CommandHandler("mystars", my_stars))
+    app.add_handler(CommandHandler("removereward", remove_reward))
+    app.add_handler(CommandHandler("modicon", set_moderator_icon))
+    app.add_handler(CommandHandler("gbinfo", ban_vote_info))
+    app.add_handler(CommandHandler("gbstop", ban_vote_stop))
+    app.add_handler(CommandHandler("gblist", ban_vote_list))
+    app.add_handler(CommandHandler("gb", ban_vote_command))
+    app.add_handler(CommandHandler("rp", rp_help))
+
+    # Команды без slash: Iris-style reputation, RP and chat switches.
+    app.add_handler(MessageHandler(tg_filters.Regex(r"^[+\-\*]\d+$"), reputation_vote), group=-4)
+    app.add_handler(MessageHandler(tg_filters.Regex(r"(?i)^рейтинг$"), rating), group=-4)
+    app.add_handler(MessageHandler(tg_filters.Regex(r"(?i)^звёзды чата$"), star_rating), group=-4)
+    app.add_handler(MessageHandler(tg_filters.Regex(r"(?i)^моя звёздность$"), my_stars), group=-4)
+    app.add_handler(MessageHandler(tg_filters.Regex(r"(?i)^(пожать руку|обнять|дать пять|помахать|похлопать|подмигнуть|поклониться)(?: .*)?$"), rp_action), group=-4)
+    app.add_handler(MessageHandler(tg_filters.Regex(r"(?i)^(гб(?:\s+.*)?|\+входы|-входы|\+выходы|-выходы|\+рп|-рп|рп доступ к 18\+)$"), ban_vote_command), group=-4)
+    app.add_handler(MessageHandler(tg_filters.Regex(r"(?i)^(\+входы|-входы|\+выходы|-выходы|\+рп|-рп|рп доступ к 18\+)$"), chat_feature_command), group=-3)
+    app.add_handler(MessageHandler(tg_filters.Regex(r"(?i)^\+правила(?:[\s\S]*)$"), rules_text_command), group=-3)
+    app.add_handler(MessageHandler(tg_filters.Regex(r"(?i)^(\+иконка модераторов.*|-иконка модераторов)$"), moderator_icon_text), group=-3)
+    app.add_handler(MessageHandler(tg_filters.Regex(r"(?i)^гб\s+инфо(?:.*)?$"), ban_vote_info), group=-3)
+    app.add_handler(MessageHandler(tg_filters.Regex(r"(?i)^гб\s+стоп(?:.*)?$"), ban_vote_stop), group=-3)
+    app.add_handler(MessageHandler(tg_filters.Regex(r"(?i)^гб\s+список$"), ban_vote_list), group=-3)
 
     # Автомодерация — раньше AI, чтобы спам не уходил в модель.
     app.add_handler(

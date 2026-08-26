@@ -43,3 +43,13 @@ The Moderation Control Center remains the place to enable/disable automation and
 
 ### Important
 `APScheduler==3.10.4` was added for persistent temporary mute/ban timers.
+
+
+## 2026-08-26 — Iris social/RP block
+- Added reputation ranking and Iris-style `+N`, `-N`, `*N` reply reactions with daily per-target protection.
+- Added star reputation and star leaderboard.
+- Added reward removal and moderator icon customization.
+- Added join/leave notification switches and `+Правила` rule installation.
+- Added safe 0+ RP actions: `Пожать руку`, `Обнять`, `Дать пять`, `Помахать`, `Похлопать`, `Подмигнуть`, `Поклониться`.
+- Added ban voting with inline buttons: `Гб`, `Гб инфо`, `Гб стоп`, `Гб список`, plus `/gb*` aliases.
+- New PostgreSQL tables are created automatically on startup.

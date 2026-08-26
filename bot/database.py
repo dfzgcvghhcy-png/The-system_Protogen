@@ -227,6 +227,64 @@ class Reward(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+
+
+class StarReputation(Base):
+    __tablename__ = "star_reputation"
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    user_id = Column(BigInteger, nullable=False, index=True)
+    stars = Column(Integer, default=0)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ReputationVote(Base):
+    __tablename__ = "reputation_votes"
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    voter_id = Column(BigInteger, nullable=False, index=True)
+    target_id = Column(BigInteger, nullable=False, index=True)
+    kind = Column(String(10), nullable=False)  # plus / minus / star
+    day = Column(String(10), nullable=False, index=True)
+    amount = Column(Integer, default=1)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class BanVote(Base):
+    __tablename__ = "ban_votes"
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    target_id = Column(BigInteger, nullable=False, index=True)
+    creator_id = Column(BigInteger, nullable=False)
+    required_votes = Column(Integer, default=5)
+    min_rank = Column(Integer, default=0)
+    yes_votes = Column(Integer, default=0)
+    no_votes = Column(Integer, default=0)
+    active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class BanVoteEntry(Base):
+    __tablename__ = "ban_vote_entries"
+    id = Column(Integer, primary_key=True)
+    vote_id = Column(Integer, nullable=False, index=True)
+    voter_id = Column(BigInteger, nullable=False, index=True)
+    choice = Column(String(3), nullable=False)  # yes / no
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ChatFeatureSetting(Base):
+    __tablename__ = "chat_feature_settings"
+    chat_id = Column(BigInteger, primary_key=True)
+    joins_enabled = Column(Boolean, default=True)
+    leaves_enabled = Column(Boolean, default=True)
+    moderator_icon = Column(String(20), default="⭐️")
+    rp_enabled = Column(Boolean, default=True)
+    rp_13_enabled = Column(Boolean, default=True)
+    rp_18_enabled = Column(Boolean, default=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class ScheduledAction(Base):
     __tablename__ = "scheduled_actions"
     id = Column(Integer, primary_key=True)

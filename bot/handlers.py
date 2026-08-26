@@ -1,7 +1,7 @@
 from telegram import Update, ChatPermissions, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
-from database import Session, User, Punishment, Activity, BotSetting, Chat, ChatUser, ChatActivity, ChatPunishment, ChatRole, ScheduledAction, Bookmark, Note, ChatConfig, Reputation, Reward
+from database import Session, User, Punishment, Activity, BotSetting, Chat, ChatUser, ChatActivity, ChatPunishment, ChatRole, ScheduledAction, Bookmark, Note, ChatConfig, Reputation, Reward, StarReputation, ReputationVote, BanVote, BanVoteEntry, ChatFeatureSetting
 from filters import is_admin, bot_can_restrict, check_command_access, telegram_role_level
 from datetime import datetime, timezone, timedelta
 import pytz
@@ -10,6 +10,7 @@ import re
 import time
 from collections import defaultdict, deque
 from pathlib import Path
+from html import escape
 from sqlalchemy import func
 
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
@@ -548,11 +549,13 @@ async def mods(update: Update, context: ContextTypes.DEFAULT_TYPE):
         session.close()
     if not ids:
         return await update.message.reply_text("🛡️ В этом чате пока нет назначенных модераторов Protogen.")
-    lines = ["🛡️ <b>Модераторы Protogen</b>\n"]
+    fs=_feature_settings(update.effective_chat.id)
+    icon=fs.get("moderator_icon","⭐️")
+    lines = [f"{icon} <b>Модераторы Protogen</b>\n"]
     for uid in ids:
         try:
             m = await update.effective_chat.get_member(uid)
-            lines.append(f"• {m.user.full_name} — <code>{uid}</code>")
+            lines.append(f"{icon} {escape(m.user.full_name)} — <code>{uid}</code>")
         except Exception:
             lines.append(f"• <code>{uid}</code>")
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
@@ -908,6 +911,317 @@ async def weather(update, context):
     try:
         r=http_requests.get(f"https://wttr.in/{city}",params={"format":"%l: %c %t, ощущается %f, влажность %h"},timeout=8); r.raise_for_status(); await update.message.reply_text("🌦️ "+r.text.strip())
     except Exception: await update.message.reply_text("❌ Не удалось получить погоду.")
+
+# =========================================================
+# SOCIAL / RP / CHAT FEATURES
+# =========================================================
+def _feature_settings(chat_id):
+    session = Session()
+    try:
+        row = session.get(ChatFeatureSetting, chat_id)
+        if not row:
+            row = ChatFeatureSetting(chat_id=chat_id)
+            session.add(row); session.commit(); session.refresh(row)
+        return {k: getattr(row, k) for k in ("joins_enabled","leaves_enabled","moderator_icon","rp_enabled","rp_13_enabled","rp_18_enabled")}
+    finally:
+        session.close()
+
+
+def _target_from_reply(update):
+    return update.message.reply_to_message.from_user if update.message and update.message.reply_to_message else None
+
+
+async def rating(update, context):
+    if not await check_command_access(update, context, "/rating"): return
+    session=Session()
+    try:
+        rows=session.query(Reputation).filter(Reputation.chat_id==update.effective_chat.id).order_by(Reputation.points.desc()).limit(10).all()
+    finally: session.close()
+    if not rows: return await update.message.reply_text("🏆 Рейтинг пока пуст.")
+    lines=["🏆 <b>Рейтинг Protogen</b>"]
+    for i,r in enumerate(rows,1):
+        try: m=await update.effective_chat.get_member(r.user_id); name=escape(m.user.full_name)
+        except Exception: name=f"<code>{r.user_id}</code>"
+        medal={1:"🥇",2:"🥈",3:"🥉"}.get(i,f"{i}.")
+        lines.append(f"{medal} {name} — <b>{r.points or 0}</b>")
+    await update.message.reply_text("\n".join(lines),parse_mode=ParseMode.HTML)
+
+
+async def reputation_vote(update, context):
+    if not update.message or not update.effective_chat or not update.effective_user: return
+    target=_target_from_reply(update)
+    if not target or target.is_bot or target.id==update.effective_user.id: return await update.message.reply_text("⚠️ Ответь на сообщение участника. Себе голосовать нельзя.")
+    text=(update.message.text or "").strip()
+    m=re.fullmatch(r"([+\-*])(\d+)",text)
+    if not m: return
+    symbol, raw=m.groups(); amount=max(1,min(5,int(raw)))
+    kind={"+":"plus","-":"minus","*":"star"}[symbol]
+    command={"plus":"/plus","minus":"/minus","star":"/star"}[kind]
+    if not await check_command_access(update,context,command): return
+    day=datetime.utcnow().strftime("%Y-%m-%d")
+    session=Session()
+    try:
+        existing=session.query(ReputationVote).filter(ReputationVote.chat_id==update.effective_chat.id,ReputationVote.voter_id==update.effective_user.id,ReputationVote.target_id==target.id,ReputationVote.kind==kind,ReputationVote.day==day).first()
+        if existing: return await update.message.reply_text("⏳ Ты уже голосовал за этого пользователя сегодня этим типом реакции.")
+        if kind=="star":
+            row=session.query(StarReputation).filter(StarReputation.chat_id==update.effective_chat.id,StarReputation.user_id==target.id).first()
+            if not row: row=StarReputation(chat_id=update.effective_chat.id,user_id=target.id,stars=0); session.add(row)
+            row.stars=(row.stars or 0)+amount; value=row.stars; label="✨ звёзд"
+        else:
+            row=session.query(Reputation).filter(Reputation.chat_id==update.effective_chat.id,Reputation.user_id==target.id).first()
+            if not row: row=Reputation(chat_id=update.effective_chat.id,user_id=target.id,points=0); session.add(row)
+            row.points=(row.points or 0)+(amount if kind=="plus" else -amount); value=row.points; label="репутации"
+        session.add(ReputationVote(chat_id=update.effective_chat.id,voter_id=update.effective_user.id,target_id=target.id,kind=kind,day=day,amount=amount)); session.commit()
+    finally: session.close()
+    prefix="⭐ +" if kind=="plus" else ("⚠️ -" if kind=="minus" else "✨ +")
+    await update.message.reply_text(f"{prefix}{amount} {label} для <b>{escape(target.full_name)}</b>.\nТекущее значение: <b>{value}</b>",parse_mode=ParseMode.HTML)
+
+
+async def star_rating(update, context):
+    if not await check_command_access(update,context,"/stars"): return
+    session=Session()
+    try: rows=session.query(StarReputation).filter(StarReputation.chat_id==update.effective_chat.id).order_by(StarReputation.stars.desc()).limit(10).all()
+    finally: session.close()
+    if not rows: return await update.message.reply_text("✨ Звёздный рейтинг пока пуст.")
+    lines=["✨ <b>Звёзды чата</b>"]
+    for i,r in enumerate(rows,1):
+        try: m=await update.effective_chat.get_member(r.user_id); name=escape(m.user.full_name)
+        except Exception: name=f"<code>{r.user_id}</code>"
+        lines.append(f"{i}. {name} — <b>{r.stars or 0} ✨</b>")
+    await update.message.reply_text("\n".join(lines),parse_mode=ParseMode.HTML)
+
+
+async def my_stars(update, context):
+    if not await check_command_access(update,context,"/mystars"): return
+    target=_target_from_reply(update) or update.effective_user
+    session=Session()
+    try: row=session.query(StarReputation).filter(StarReputation.chat_id==update.effective_chat.id,StarReputation.user_id==target.id).first(); value=row.stars if row else 0
+    finally: session.close()
+    await update.message.reply_text(f"✨ Звёздность <b>{escape(target.full_name)}</b>: <b>{value}</b>",parse_mode=ParseMode.HTML)
+
+
+async def remove_reward(update, context):
+    if not await check_command_access(update,context,"/removereward"): return
+    if await telegram_role_level(update)<2: return await update.message.reply_text("⛔ Награды может снимать только Администратор или Создатель.")
+    target=_target_from_reply(update)
+    if not target: return await update.message.reply_text("⚠️ Ответь на сообщение пользователя: /removereward [номер]")
+    idx=int(context.args[0]) if context.args and context.args[0].isdigit() else 1
+    session=Session()
+    try:
+        rows=session.query(Reward).filter(Reward.chat_id==update.effective_chat.id,Reward.user_id==target.id).order_by(Reward.created_at.desc()).all()
+        if idx<1 or idx>len(rows): return await update.message.reply_text("❌ Награда с таким номером не найдена.")
+        session.delete(rows[idx-1]); session.commit()
+    finally: session.close()
+    await update.message.reply_text("🧹 Награда снята.")
+
+
+async def set_moderator_icon(update, context):
+    if not await check_command_access(update,context,"/modicon"): return
+    if await telegram_role_level(update)<3: return await update.message.reply_text("⛔ Только Создатель может менять иконку модераторов.")
+    icon="".join(context.args).strip() if context.args else "⭐️"
+    if len(icon)>8: return await update.message.reply_text("⚠️ Укажи один короткий эмодзи.")
+    session=Session()
+    try:
+        row=session.get(ChatFeatureSetting,update.effective_chat.id)
+        if not row: row=ChatFeatureSetting(chat_id=update.effective_chat.id); session.add(row)
+        row.moderator_icon=icon or "⭐️"; session.commit()
+    finally: session.close()
+    await update.message.reply_text(f"✅ Иконка модераторов установлена: {icon or '⭐️'}")
+
+
+async def chat_feature_command(update, context):
+    if not update.message or not update.effective_chat: return
+    text=(update.message.text or "").strip().lower()
+    if text not in ("+входы","-входы","+выходы","-выходы","+рп","-рп","рп доступ к 18+"): return
+    if await telegram_role_level(update)<3: return await update.message.reply_text("⛔ Настройку этой функции может менять только Создатель.")
+    session=Session()
+    try:
+        row=session.get(ChatFeatureSetting,update.effective_chat.id)
+        if not row: row=ChatFeatureSetting(chat_id=update.effective_chat.id); session.add(row)
+        if text=="+входы": row.joins_enabled=True; msg="🟢 Уведомления о входах включены."
+        elif text=="-входы": row.joins_enabled=False; msg="🔴 Уведомления о входах выключены."
+        elif text=="+выходы": row.leaves_enabled=True; msg="🟢 Уведомления о выходах включены."
+        elif text=="-выходы": row.leaves_enabled=False; msg="🔴 Уведомления о выходах выключены."
+        elif text=="+рп": row.rp_enabled=True; msg="🎭 РП-команды включены."
+        elif text=="-рп": row.rp_enabled=False; msg="🎭 РП-команды выключены."
+        else: row.rp_18_enabled=True; msg="🔓 Доступ к РП 18+ включён."
+        session.commit()
+    finally: session.close()
+    await update.message.reply_text(msg)
+
+
+async def rp_help(update, context):
+    if not await check_command_access(update,context,"/rp"): return
+    fs=_feature_settings(update.effective_chat.id)
+    lines=["🎭 <b>РП-команды Protogen</b>","","🟢 0+ — доступно всем"]
+    if not fs["rp_enabled"]: lines.append("🔒 РП-модуль сейчас выключен.")
+    else:
+        lines += ["🤝 Пожать руку — ответь на сообщение", "🫂 Обнять — ответь на сообщение", "🖐️ Дать пять — ответь на сообщение", "👋 Помахать — ответь на сообщение", "🐾 Похлопать — ответь на сообщение", "😉 Подмигнуть — ответь на сообщение", "🙇 Поклониться — ответь на сообщение"]
+    await update.message.reply_text("\n".join(lines),parse_mode=ParseMode.HTML)
+
+
+async def rules_text_command(update, context):
+    text=(update.message.text or "") if update.message else ""
+    if not text.lower().startswith("+правила"): return
+    if await telegram_role_level(update)<3: return await update.message.reply_text("⛔ Правила может менять только Создатель.")
+    content=text[len("+правила"):].strip()
+    if not content: return await update.message.reply_text("⚠️ После +Правила укажи текст правил с новой строки.")
+    session=Session()
+    try:
+        cfg=session.get(ChatConfig,update.effective_chat.id)
+        if not cfg: cfg=ChatConfig(chat_id=update.effective_chat.id); session.add(cfg)
+        cfg.rules_text=content; cfg.updated_at=datetime.utcnow(); session.commit()
+    finally: session.close()
+    await update.message.reply_text("✅ Правила сохранены. Посмотреть: /rules")
+
+
+async def moderator_icon_text(update, context):
+    text=(update.message.text or "") if update.message else ""
+    low=text.lower().strip()
+    if low.startswith("+иконка модераторов"):
+        if await telegram_role_level(update)<3: return await update.message.reply_text("⛔ Только Создатель может менять иконку модераторов.")
+        icon=text[len("+иконка модераторов"):].strip() or "⭐️"
+        session=Session()
+        try:
+            row=session.get(ChatFeatureSetting,update.effective_chat.id)
+            if not row: row=ChatFeatureSetting(chat_id=update.effective_chat.id); session.add(row)
+            row.moderator_icon=icon[:8]; session.commit()
+        finally: session.close()
+        return await update.message.reply_text(f"✅ Иконка модераторов: {icon[:8]}")
+    if low=="-иконка модераторов":
+        if await telegram_role_level(update)<3: return await update.message.reply_text("⛔ Только Создатель может менять иконку модераторов.")
+        session=Session()
+        try:
+            row=session.get(ChatFeatureSetting,update.effective_chat.id)
+            if not row: row=ChatFeatureSetting(chat_id=update.effective_chat.id); session.add(row)
+            row.moderator_icon="⭐️"; session.commit()
+        finally: session.close()
+        return await update.message.reply_text("✅ Иконка модераторов возвращена к ⭐️")
+
+
+RP_ACTIONS={
+    "пожать руку":"🤝 {actor} пожал руку {target}",
+    "обнять":"🫂 {actor} обнял {target}",
+    "дать пять":"🖐️ {actor} дал пять {target}",
+    "помахать":"👋 {actor} помахал {target}",
+    "похлопать":"🐾 {actor} похлопал {target}",
+    "подмигнуть":"😉 {actor} подмигнул {target}",
+    "поклониться":"🙇 {actor} поклонился {target}",
+}
+
+async def rp_action(update, context):
+    if not update.message or not update.effective_chat: return
+    text=(update.message.text or "").strip()
+    action=next((k for k in RP_ACTIONS if text.lower().startswith(k)),None)
+    if not action: return
+    if not await check_command_access(update,context,"/rp"): return
+    fs=_feature_settings(update.effective_chat.id)
+    if not fs["rp_enabled"]: return await update.message.reply_text("🎭 РП-команды отключены в этом чате.")
+    # The current safe RP set is 0+; the 18+ switch is kept for future categories.
+    target=_target_from_reply(update)
+    if not target: return await update.message.reply_text(f"⚠️ Ответь на сообщение пользователя командой «{action}».")
+    if target.id==update.effective_user.id: return await update.message.reply_text("🙂 На себя это действие не сработает.")
+    actor=escape(update.effective_user.full_name); target_name=escape(target.full_name)
+    await update.message.reply_text(RP_ACTIONS[action].format(actor=actor,target=target_name),parse_mode=ParseMode.HTML)
+
+
+async def ban_vote_command(update, context):
+    if not update.message or not update.effective_chat: return
+    text=(update.message.text or "").strip()
+    if not (text.lower().startswith("гб") or text.lower().startswith("/gb")): return
+    normalized=text[3:].strip() if text.lower().startswith("/gb") else text[2:].strip()
+    parts=["гб"] + normalized.split()
+    if len(parts)>=2 and parts[1].lower() in ("стоп","инфо","список"): return
+    if not await check_command_access(update,context,"/gb"): return
+    target=_target_from_reply(update)
+    if not target: return await update.message.reply_text("⚠️ Ответь на сообщение пользователя: Гб")
+    actor_level=await telegram_role_level(update); target_level=await telegram_target_role_level(update,target.id)
+    if target_level>=actor_level: return await update.message.reply_text("⛔ Нельзя запускать голосование против пользователя равного или более высокого ранга.")
+    required=5; min_rank=0
+    if len(parts)>=2 and parts[1].isdigit(): required=max(2,min(50,int(parts[1])))
+    if len(parts)>=3 and parts[2].isdigit(): min_rank=max(0,min(3,int(parts[2])))
+    session=Session()
+    try:
+        active=session.query(BanVote).filter(BanVote.chat_id==update.effective_chat.id,BanVote.target_id==target.id,BanVote.active==True).first()
+        if active: return await update.message.reply_text("🗳️ Голосование за этого пользователя уже идёт.")
+        vote=BanVote(chat_id=update.effective_chat.id,target_id=target.id,creator_id=update.effective_user.id,required_votes=required,min_rank=min_rank)
+        session.add(vote); session.commit(); vid=vote.id
+    finally: session.close()
+    kb=InlineKeyboardMarkup([[InlineKeyboardButton("🔨 За бан (0)",callback_data=f"banvote_yes_{vid}"),InlineKeyboardButton("🛡️ Против (0)",callback_data=f"banvote_no_{vid}")]])
+    await update.message.reply_text(f"🗳️ <b>Голосование за бан</b>\n\n👤 {escape(target.full_name)}\n\nНужно голосов: <b>{required}</b>\nЗа: <b>0</b>\nПротив: <b>0</b>",reply_markup=kb,parse_mode=ParseMode.HTML)
+
+
+async def ban_vote_info(update, context):
+    if not await check_command_access(update,context,"/gb"): return
+    target=_target_from_reply(update)
+    session=Session()
+    try:
+        q=session.query(BanVote).filter(BanVote.chat_id==update.effective_chat.id,BanVote.active==True)
+        if target: q=q.filter(BanVote.target_id==target.id)
+        vote=q.order_by(BanVote.created_at.desc()).first()
+    finally: session.close()
+    if not vote: return await update.message.reply_text("🗳️ Активных голосований нет.")
+    await update.message.reply_text(f"🗳️ Голосование #{vote.id}\nЗа: {vote.yes_votes}/{vote.required_votes}\nПротив: {vote.no_votes}")
+
+
+async def ban_vote_stop(update, context):
+    if await telegram_role_level(update)<2: return await update.message.reply_text("⛔ Остановить голосование может Администратор или Создатель.")
+    target=_target_from_reply(update)
+    session=Session()
+    try:
+        q=session.query(BanVote).filter(BanVote.chat_id==update.effective_chat.id,BanVote.active==True)
+        if target: q=q.filter(BanVote.target_id==target.id)
+        vote=q.order_by(BanVote.created_at.desc()).first()
+        if not vote: return await update.message.reply_text("🗳️ Активных голосований нет.")
+        vote.active=False; session.commit()
+    finally: session.close()
+    await update.message.reply_text("🛑 Голосование остановлено.")
+
+
+async def ban_vote_list(update, context):
+    if not await check_command_access(update,context,"/gb"): return
+    session=Session()
+    try: rows=session.query(BanVote).filter(BanVote.chat_id==update.effective_chat.id,BanVote.active==True).order_by(BanVote.created_at.desc()).all()
+    finally: session.close()
+    if not rows: return await update.message.reply_text("🗳️ Активных голосований нет.")
+    await update.message.reply_text("🗳️ <b>Активные голосования</b>\n"+"\n".join(f"#{r.id} • <code>{r.target_id}</code> — {r.yes_votes}/{r.required_votes} за, {r.no_votes} против" for r in rows),parse_mode=ParseMode.HTML)
+
+
+async def ban_vote_callback(update, context):
+    query=update.callback_query
+    if not query or not query.data.startswith("banvote_"): return
+    await query.answer()
+    _,choice,raw_id=query.data.split("_",2); vote_id=int(raw_id)
+    session=Session()
+    try:
+        vote=session.get(BanVote,vote_id)
+        if not vote or not vote.active: return await query.answer("Голосование завершено.",show_alert=True)
+        level=await telegram_role_level(update)
+        if level < vote.min_rank: return await query.answer("Недостаточно прав для участия.",show_alert=True)
+        if session.query(BanVoteEntry).filter(BanVoteEntry.vote_id==vote.id,BanVoteEntry.voter_id==update.effective_user.id).first(): return await query.answer("Ты уже голосовал.",show_alert=True)
+        session.add(BanVoteEntry(vote_id=vote.id,voter_id=update.effective_user.id,choice=choice))
+        if choice=="yes": vote.yes_votes=(vote.yes_votes or 0)+1
+        else: vote.no_votes=(vote.no_votes or 0)+1
+        should_ban=vote.yes_votes>=vote.required_votes
+        if should_ban:
+            target_id=vote.target_id
+            chat_id=vote.chat_id
+            try:
+                await context.bot.ban_chat_member(chat_id,target_id)
+            except Exception as ban_error:
+                session.rollback()
+                return await query.answer(f"Не удалось выполнить бан: {ban_error}",show_alert=True)
+            vote.active=False
+            session.commit()
+            session.add(ChatPunishment(chat_id=chat_id,user_id=target_id,type="ban",reason="Голосование за бан",moderator_id=vote.creator_id)); session.commit()
+            await query.edit_message_text(f"🔨 <b>Голосование завершено</b>\nПользователь <code>{target_id}</code> заблокирован.\nЗа: {vote.yes_votes}\nПротив: {vote.no_votes}",parse_mode=ParseMode.HTML)
+        else:
+            kb=InlineKeyboardMarkup([[InlineKeyboardButton(f"🔨 За бан ({vote.yes_votes})",callback_data=f"banvote_yes_{vote.id}"),InlineKeyboardButton(f"🛡️ Против ({vote.no_votes})",callback_data=f"banvote_no_{vote.id}")]])
+            await query.edit_message_reply_markup(reply_markup=kb)
+    except Exception as e:
+        session.rollback(); await query.answer(f"Ошибка: {e}",show_alert=True)
+    finally: session.close()
+
 
 # =========================================================
 # АВТОМОДЕРАЦИЯ
@@ -1288,12 +1602,14 @@ async def track_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_status = change.new_chat_member.status
     old_status = change.old_chat_member.status if change.old_chat_member else None
 
+    # Join/leave notifications are controlled independently from the welcome message.
     if new_status in ("member", "administrator") and old_status not in ("member", "administrator", "creator"):
         try:
+            fs=_feature_settings(update.effective_chat.id)
             session_w=Session(); cfg=session_w.get(ChatConfig,update.effective_chat.id)
             if cfg is None:
                 cfg=ChatConfig(chat_id=update.effective_chat.id); session_w.add(cfg); session_w.commit()
-            if cfg.welcome_enabled:
+            if cfg.welcome_enabled and fs.get("joins_enabled",True):
                 welcome_text=(cfg.welcome_text or "👋 Добро пожаловать, {name}!").replace("{name}",tg_user.full_name).replace("{username}",f"@{tg_user.username}" if tg_user.username else "")
                 await context.bot.send_message(update.effective_chat.id,welcome_text)
             session_w.close()
@@ -1308,6 +1624,13 @@ async def track_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await context.bot.send_message(key, "🚨 <b>Обнаружен возможный рейд</b>\nСистема Protogen зафиксировала резкий всплеск новых участников.", parse_mode=ParseMode.HTML)
                 except Exception: pass
                 q.clear()
+
+    if new_status in ("left", "kicked") and old_status in ("member", "administrator", "creator"):
+        try:
+            fs=_feature_settings(update.effective_chat.id)
+            if fs.get("leaves_enabled",True):
+                await context.bot.send_message(update.effective_chat.id, f"👋 <b>{escape(tg_user.full_name)}</b> покинул чат.", parse_mode=ParseMode.HTML)
+        except Exception as e: print(f"LEAVE NOTICE ERROR: {e}")
 
     session = Session()
     try:
