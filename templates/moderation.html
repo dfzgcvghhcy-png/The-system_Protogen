@@ -33,7 +33,13 @@
           ('mute_enabled','Mute','Разрешить ограничения'),
           ('ban_enabled','Ban','Разрешить блокировки'),
           ('kick_enabled','Kick','Разрешить исключение'),
-          ('ai_moderation_enabled','AI-модерация','Передавать подозрительные сообщения AI')
+          ('ai_moderation_enabled','AI-модерация','Передавать подозрительные сообщения AI'),
+          ('anti_flood_enabled','Anti-Flood','Защита от частых сообщений'),
+          ('anti_links_enabled','Anti-Links','Блокировать обычные ссылки'),
+          ('anti_invites_enabled','Anti-Invites','Блокировать Telegram-приглашения'),
+          ('anti_caps_enabled','Anti-CAPS','Контроль чрезмерного CAPS'),
+          ('anti_repeat_enabled','Anti-Repeat','Удалять повторяющиеся сообщения'),
+          ('anti_raid_enabled','Anti-Raid','Обнаруживать резкий всплеск входов')
         ] %}
         <label class="toggle-row {% if not is_creator %}locked{% endif %}"><span><b>{{ label }}</b><small>{{ desc }}</small></span><input type="checkbox" data-setting="{{ key }}" {% if settings and settings|attr(key) %}checked{% endif %} {% if not is_creator %}disabled{% endif %}><i></i></label>
         {% endfor %}
@@ -47,7 +53,7 @@
       <div class="mod-head"><div></div></div>
       <div class="limit-row"><div><b>WARN LIMIT</b><small>До автоматического действия</small></div><strong>{{ settings.warn_limit if settings else '—' }}</strong></div>
       <div class="limit-row"><div><b>MUTE DURATION</b><small>Стандартная длительность</small></div><strong>{{ settings.mute_duration if settings else '—' }}<em> мин</em></strong></div>
-      <div class="action-preview"><span>⚠️</span><div><b>Цепочка наказаний</b><small>Warn → Mute → Ban можно настроить через параметры бота.</small></div></div>
+      <div class="action-preview"><span>⚠️</span><div><b>Действие после лимита Warn</b><small>Что делать, когда пользователь достиг лимита предупреждений.</small><select id="autoWarnAction" {% if not is_creator %}disabled{% endif %}><option value="mute" {% if settings and settings.auto_warn_action == 'mute' %}selected{% endif %}>🔇 Mute</option><option value="ban" {% if settings and settings.auto_warn_action == 'ban' %}selected{% endif %}>🚫 Ban</option><option value="none" {% if settings and settings.auto_warn_action == 'none' %}selected{% endif %}>⏸ Ничего</option></select></div></div>
       </div>
     </article>
   </section>
@@ -99,7 +105,7 @@ document.querySelectorAll('.locked').forEach(el=>el.addEventListener('click',e=>
 const save=document.getElementById('saveModeration');
 save?.addEventListener('click',async()=>{
  if(!isCreator){denied();return}
- const settings={}; document.querySelectorAll('[data-setting]').forEach(x=>settings[x.dataset.setting]=x.checked);
+ const settings={}; document.querySelectorAll('[data-setting]').forEach(x=>settings[x.dataset.setting]=x.checked); const autoWarn=document.getElementById('autoWarnAction'); if(autoWarn) settings.auto_warn_action=autoWarn.value;
  const commands=rows.map(row=>({command:row.dataset.command,min_role_level:Number(row.querySelector('[data-role-level]').value),enabled:row.querySelector('[data-command-enabled]').checked}));
  save.disabled=true; save.textContent='⟳ СОХРАНЕНИЕ...';
  try{const r=await fetch('/api/admin/moderation',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({settings,commands})});const d=await r.json();if(!r.ok)throw Error(d.error||'Ошибка');save.textContent='✓ СОХРАНЕНО';setTimeout(()=>{save.textContent='✓ СОХРАНИТЬ';save.disabled=false},1200)}catch(e){save.disabled=false;save.textContent='✓ СОХРАНИТЬ';alert(e.message)}});

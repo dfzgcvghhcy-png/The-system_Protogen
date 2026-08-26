@@ -81,6 +81,13 @@ class BotSetting(Base):
     ai_moderation_enabled = Column(Boolean, default=False)
     warn_limit = Column(Integer, default=3)
     mute_duration = Column(Integer, default=60)
+    anti_flood_enabled = Column(Boolean, default=True)
+    anti_links_enabled = Column(Boolean, default=False)
+    anti_invites_enabled = Column(Boolean, default=True)
+    anti_caps_enabled = Column(Boolean, default=False)
+    anti_repeat_enabled = Column(Boolean, default=True)
+    anti_raid_enabled = Column(Boolean, default=True)
+    auto_warn_action = Column(String(20), default="mute")
     personality_daring = Column(Integer, default=75)
     personality_sarcasm = Column(Integer, default=70)
     personality_aggression = Column(Integer, default=45)
@@ -143,7 +150,23 @@ DEFAULT_COMMAND_PERMISSIONS = [
     ("/bookmarks", "Закладки", "Инструменты", 1, True, "Список закладок"),
     ("/note", "Заметка", "Инструменты", 1, True, "Шаблоны ответов"),
     ("/notes", "Заметки", "Инструменты", 1, True, "Список шаблонов"),
-    ("/timer", "Таймер", "Инструменты", 1, True, "Отложенная команда"),
+    ("/timer", "Таймер", "Инструменты", 1, True, "Отложенное напоминание"),
+    ("/welcome", "Приветствие", "Чат", 3, True, "Настроить приветствие"),
+    ("/rules", "Правила", "Чат", 0, True, "Показать или изменить правила"),
+    ("/reputation", "Репутация", "Социальные", 0, True, "Показать репутацию"),
+    ("/plus", "+ Репутация", "Социальные", 0, True, "Добавить репутацию"),
+    ("/reward", "Награда", "Социальные", 2, True, "Выдать награду"),
+    ("/rewards", "Награды", "Социальные", 0, True, "Показать награды"),
+    ("/dice", "Кубик", "Развлечения", 0, True, "Бросить кубик"),
+    ("/8ball", "8 Ball", "Развлечения", 0, True, "Задать вопрос"),
+    ("/random", "Random", "Развлечения", 0, True, "Случайное число"),
+    ("/choose", "Choose", "Развлечения", 0, True, "Выбрать вариант"),
+    ("/ship", "Ship", "Развлечения", 0, True, "Совместимость"),
+    ("/weather", "Погода", "Инструменты", 0, True, "Погода по городу"),
+    ("/clearwarns", "Очистить Warn", "Наказания", 2, True, "Снять все предупреждения"),
+    ("/id", "ID пользователя", "Пользователи", 0, True, "Показать Telegram ID"),
+    ("/banlist", "Бан-лист", "Наказания", 2, True, "Последние блокировки"),
+    ("/mutelist", "Мут-лист", "Наказания", 1, True, "Последние ограничения"),
     ("/setmod", "Назначить модератора", "Роли", 3, True, "Назначить модератора Protogen"),
     ("/delmod", "Снять модератора", "Роли", 3, True, "Снять модератора Protogen"),
     ("/mods", "Список модераторов", "Роли", 1, True, "Показать модераторов Protogen"),
@@ -157,6 +180,8 @@ if engine:
         for column, default in (("personality_daring",75),("personality_sarcasm",70),("personality_aggression",45),("personality_humor",85),("personality_friendliness",60)):
             connection.execute(text(f"ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS {column} INTEGER DEFAULT {default}"))
         connection.execute(text("""UPDATE bot_settings SET personality_daring=COALESCE(personality_daring,75), personality_sarcasm=COALESCE(personality_sarcasm,70), personality_aggression=COALESCE(personality_aggression,45), personality_humor=COALESCE(personality_humor,85), personality_friendliness=COALESCE(personality_friendliness,60) WHERE id=1"""))
+        for column, definition in (("anti_flood_enabled","BOOLEAN DEFAULT TRUE"),("anti_links_enabled","BOOLEAN DEFAULT FALSE"),("anti_invites_enabled","BOOLEAN DEFAULT TRUE"),("anti_caps_enabled","BOOLEAN DEFAULT FALSE"),("anti_repeat_enabled","BOOLEAN DEFAULT TRUE"),("anti_raid_enabled","BOOLEAN DEFAULT TRUE"),("auto_warn_action","VARCHAR(20) DEFAULT 'mute'")):
+            connection.execute(text(f"ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS {column} {definition}"))
     # Seed the first creator account from Railway Variables only once.
     # After that, all additional panel users live in PostgreSQL.
     if ADMIN_PASSWORD:
@@ -621,6 +646,13 @@ def admin_moderation_api():
                     "ban_enabled": bool(s.ban_enabled),
                     "kick_enabled": bool(s.kick_enabled),
                     "ai_moderation_enabled": bool(s.ai_moderation_enabled),
+                    "anti_flood_enabled": bool(s.anti_flood_enabled),
+                    "anti_links_enabled": bool(s.anti_links_enabled),
+                    "anti_invites_enabled": bool(s.anti_invites_enabled),
+                    "anti_caps_enabled": bool(s.anti_caps_enabled),
+                    "anti_repeat_enabled": bool(s.anti_repeat_enabled),
+                    "anti_raid_enabled": bool(s.anti_raid_enabled),
+                    "auto_warn_action": s.auto_warn_action or "mute",
                 },
                 "commands": [{"id": c.id, "command": c.command, "label": c.label, "category": c.category, "min_role_level": c.min_role_level, "enabled": bool(c.enabled), "description": c.description or ""} for c in commands]
             })
@@ -630,10 +662,14 @@ def admin_moderation_api():
 
         data = request.get_json(silent=True) or {}
         s = get_bot_settings(db)
-        allowed_flags = {"moderation_enabled", "auto_delete_spam", "warn_enabled", "mute_enabled", "ban_enabled", "kick_enabled", "ai_moderation_enabled"}
+        allowed_flags = {"moderation_enabled", "auto_delete_spam", "warn_enabled", "mute_enabled", "ban_enabled", "kick_enabled", "ai_moderation_enabled", "anti_flood_enabled", "anti_links_enabled", "anti_invites_enabled", "anti_caps_enabled", "anti_repeat_enabled", "anti_raid_enabled"}
         for key in allowed_flags:
             if key in data.get("settings", {}):
                 setattr(s, key, bool(data["settings"][key]))
+
+        if "auto_warn_action" in data.get("settings", {}):
+            action=str(data["settings"]["auto_warn_action"]).lower()
+            if action in {"none","mute","ban"}: s.auto_warn_action=action
 
         for item in data.get("commands", []):
             command = str(item.get("command", "")).strip()

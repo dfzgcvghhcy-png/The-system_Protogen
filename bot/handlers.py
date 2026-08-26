@@ -1,13 +1,16 @@
 from telegram import Update, ChatPermissions, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
-from database import Session, User, Punishment, Activity, BotSetting, Chat, ChatUser, ChatActivity, ChatPunishment, ChatRole
+from database import Session, User, Punishment, Activity, BotSetting, Chat, ChatUser, ChatActivity, ChatPunishment, ChatRole, ScheduledAction, Bookmark, Note, ChatConfig, Reputation, Reward
 from filters import is_admin, bot_can_restrict, check_command_access, telegram_role_level
 from datetime import datetime, timezone, timedelta
 import pytz
 import io
 import re
+import time
+from collections import defaultdict, deque
 from pathlib import Path
+from sqlalchemy import func
 
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
@@ -16,7 +19,10 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter
 # =========================================================
 DEFAULT_BOT_SETTINGS = dict(moderation_enabled=True, auto_delete_spam=True,
     warn_enabled=True, mute_enabled=True, ban_enabled=True, kick_enabled=True,
-    ai_moderation_enabled=False, warn_limit=3, mute_duration=60)
+    ai_moderation_enabled=False, warn_limit=3, mute_duration=60,
+    anti_flood_enabled=True, anti_links_enabled=False, anti_invites_enabled=True,
+    anti_caps_enabled=False, anti_repeat_enabled=True, anti_raid_enabled=True,
+    auto_warn_action="mute")
 
 def get_bot_settings():
     session=Session()
@@ -170,6 +176,78 @@ async def target_is_admin(update: Update, target_id: int) -> bool:
     return member.status in ("administrator", "creator")
 
 
+async def telegram_target_role_level(update: Update, user_id: int) -> int:
+    try:
+        member = await update.effective_chat.get_member(user_id)
+        if member.status == "creator":
+            return 3
+        if member.status == "administrator":
+            return 2
+    except Exception:
+        pass
+    session = Session()
+    try:
+        row = session.query(ChatRole).filter(ChatRole.chat_id == update.effective_chat.id, ChatRole.user_id == user_id).first()
+        return int(row.role_level) if row else 0
+    finally:
+        session.close()
+
+async def can_moderate_target(update: Update, target_id: int) -> bool:
+    actor = await telegram_role_level(update)
+    target = await telegram_target_role_level(update, target_id)
+    if target >= actor:
+        await update.effective_message.reply_text("⛔ Нельзя применять это действие к пользователю равного или более высокого ранга.")
+        return False
+    return True
+
+def parse_duration(value: str):
+    m = re.fullmatch(r"(\d+)(s|m|h|d|w)", value.lower())
+    if not m:
+        return None
+    n = int(m.group(1)); unit = m.group(2)
+    seconds = n * {"s":1,"m":60,"h":3600,"d":86400,"w":604800}[unit]
+    return max(1, seconds)
+
+async def _schedule_action(context, chat_id, user_id, action, seconds, reason, moderator_id):
+    expires = datetime.utcnow() + timedelta(seconds=seconds)
+    session = Session()
+    try:
+        row = ScheduledAction(chat_id=chat_id,user_id=user_id,action=action,reason=reason,moderator_id=moderator_id,expires_at=expires,active=True)
+        session.add(row); session.commit(); action_id=row.id
+    finally: session.close()
+    if context.job_queue:
+        context.job_queue.run_once(expire_scheduled_action, seconds, data={"id":action_id,"chat_id":chat_id,"user_id":user_id,"action":action})
+
+async def expire_scheduled_action(context):
+    data=context.job.data
+    session=Session()
+    try:
+        row=session.get(ScheduledAction,data["id"])
+        if not row or not row.active: return
+        chat_id=data["chat_id"]; user_id=data["user_id"]; action=data["action"]
+        if action == "unmute":
+            perms=ChatPermissions(can_send_messages=True,can_send_audios=True,can_send_documents=True,can_send_photos=True,can_send_videos=True,can_send_video_notes=True,can_send_voice_notes=True,can_send_polls=True,can_send_other_messages=True,can_add_web_page_previews=True)
+            await context.bot.restrict_chat_member(chat_id,user_id,permissions=perms)
+        elif action == "unban":
+            await context.bot.unban_chat_member(chat_id,user_id)
+        row.active=False; session.commit()
+        try: await context.bot.send_message(chat_id,f"⏱️ Срок наказания для пользователя <code>{user_id}</code> истёк.",parse_mode=ParseMode.HTML)
+        except Exception: pass
+    except Exception as e:
+        session.rollback(); print(f"SCHEDULED ACTION ERROR: {e}")
+    finally: session.close()
+
+async def restore_scheduled_actions(app):
+    session=Session()
+    try:
+        rows=session.query(ScheduledAction).filter(ScheduledAction.active==True).all()
+        now=datetime.utcnow()
+        for row in rows:
+            seconds=max(1,(row.expires_at-now).total_seconds())
+            if app.job_queue:
+                app.job_queue.run_once(expire_scheduled_action,seconds,data={"id":row.id,"chat_id":row.chat_id,"user_id":row.user_id,"action":row.action})
+    finally: session.close()
+
 async def check_bot_restriction_rights(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     if await bot_can_restrict(update, context):
         return True
@@ -194,6 +272,9 @@ async def warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not target:
         return
 
+    if not await can_moderate_target(update, target.id):
+        return
+
     if await target_is_admin(update, target.id):
         return await update.message.reply_text("⚠️ Нельзя выдать предупреждение администратору.")
 
@@ -215,6 +296,21 @@ async def warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         session.close()
 
+    settings = get_bot_settings()
+    if warns_count >= int(settings.get("warn_limit",3)):
+        action = settings.get("auto_warn_action","mute")
+        if action == "mute" and settings.get("mute_enabled",True) and await check_bot_restriction_rights(update, context):
+            try:
+                perms=ChatPermissions(can_send_messages=False,can_send_audios=False,can_send_documents=False,can_send_photos=False,can_send_videos=False,can_send_video_notes=False,can_send_voice_notes=False,can_send_polls=False,can_send_other_messages=False,can_add_web_page_previews=False)
+                await context.bot.restrict_chat_member(update.effective_chat.id,target.id,permissions=perms,until_date=datetime.utcnow()+timedelta(minutes=int(settings.get("mute_duration",60))))
+                session=Session(); _record_chat_punishment(session,update.effective_chat.id,target.id,"mute","Автоматически после лимита Warn",update.effective_user.id); session.commit(); session.close()
+            except Exception as e: print(f"AUTO WARN MUTE ERROR: {e}")
+        elif action == "ban" and settings.get("ban_enabled",True) and await check_bot_restriction_rights(update, context):
+            try:
+                await context.bot.ban_chat_member(update.effective_chat.id,target.id)
+                session=Session(); _record_chat_punishment(session,update.effective_chat.id,target.id,"ban","Автоматически после лимита Warn",update.effective_user.id); session.commit(); session.close()
+            except Exception as e: print(f"AUTO WARN BAN ERROR: {e}")
+
     await update.message.reply_text(
         f"⚠️ <b>Предупреждение выдано</b>\n\n"
         f"👤 Пользователь: <b>{target.full_name}</b>\n"
@@ -232,6 +328,9 @@ async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     target = await get_target(update, "/ban")
     if not target:
+        return
+
+    if not await can_moderate_target(update, target.id):
         return
 
     if await target_is_admin(update, target.id):
@@ -282,6 +381,10 @@ async def unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"UNBAN ERROR: {e}")
         return await update.message.reply_text("❌ Не удалось снять бан.")
 
+    session=Session()
+    try:
+        _record_chat_punishment(session,update.effective_chat.id,target.id,"unban","Снятие бана",update.effective_user.id); session.commit()
+    finally: session.close()
     await update.message.reply_text(
         f"✅ <b>Пользователь разблокирован</b>\n\n👤 {target.full_name}",
         parse_mode=ParseMode.HTML,
@@ -297,6 +400,9 @@ async def mute(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     target = await get_target(update, "/mute")
     if not target:
+        return
+
+    if not await can_moderate_target(update, target.id):
         return
 
     if await target_is_admin(update, target.id):
@@ -382,6 +488,10 @@ async def unmute(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"UNMUTE ERROR: {e}")
         return await update.message.reply_text("❌ Не удалось снять мут.")
 
+    session=Session()
+    try:
+        _record_chat_punishment(session,update.effective_chat.id,target.id,"unmute","Снятие мута",update.effective_user.id); session.commit()
+    finally: session.close()
     await update.message.reply_text(
         f"🔊 <b>Мут снят</b>\n\n👤 {target.full_name}",
         parse_mode=ParseMode.HTML,
@@ -389,6 +499,7 @@ async def unmute(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def setmod(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_command_access(update, context, "/setmod"): return
     # Only the Telegram chat creator may manage Protogen custom moderators.
     member = await update.effective_chat.get_member(update.effective_user.id)
     if member.status != "creator":
@@ -411,6 +522,7 @@ async def setmod(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def delmod(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_command_access(update, context, "/delmod"): return
     member = await update.effective_chat.get_member(update.effective_user.id)
     if member.status != "creator":
         return await update.message.reply_text("⛔ Только создатель чата может снимать модераторов.")
@@ -427,6 +539,7 @@ async def delmod(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def mods(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_command_access(update, context, "/mods"): return
     session = Session()
     try:
         rows = session.query(ChatRole).filter(ChatRole.chat_id == update.effective_chat.id, ChatRole.role_level == 1).all()
@@ -456,6 +569,9 @@ async def kick(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not target:
         return
 
+    if not await can_moderate_target(update, target.id):
+        return
+
     if await target_is_admin(update, target.id):
         return await update.message.reply_text("⚠️ Нельзя исключить администратора.")
 
@@ -469,6 +585,10 @@ async def kick(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"KICK ERROR: {e}")
         return await update.message.reply_text(f"❌ Не удалось кикнуть пользователя.\n\nTelegram: {e}")
 
+    session=Session()
+    try:
+        _record_chat_punishment(session,update.effective_chat.id,target.id,"kick","Исключение",update.effective_user.id); session.commit()
+    finally: session.close()
     await update.message.reply_text(
         f"👢 <b>Пользователь исключён</b>\n\n👤 {target.full_name}",
         parse_mode=ParseMode.HTML,
@@ -476,6 +596,376 @@ async def kick(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 
+
+# =========================================================
+# РАСШИРЕННАЯ МОДЕРАЦИЯ И ИНСТРУМЕНТЫ
+# =========================================================
+async def warns(update, context):
+    if not await check_command_access(update, context, "/warns"): return
+    target=await get_target(update,"/warns")
+    if not target: return
+    session=Session()
+    try:
+        rows=session.query(Punishment).filter(Punishment.user_id==target.id,Punishment.type=="warn").order_by(Punishment.created_at.desc()).limit(20).all()
+        user=session.get(User,target.id); count=user.warns if user else len(rows)
+    finally: session.close()
+    text=f"⚠️ <b>Warns: {target.full_name}</b>\nВсего: <b>{count}</b>\n"
+    for i,r in enumerate(rows,1): text+=f"\n{i}. {r.reason} — {r.created_at.strftime('%d.%m.%Y %H:%M')}"
+    await update.message.reply_text(text,parse_mode=ParseMode.HTML)
+
+async def unwarn(update, context):
+    if not await check_command_access(update, context, "/unwarn"): return
+    target=await get_target(update,"/unwarn")
+    if not target or not await can_moderate_target(update,target.id): return
+    session=Session()
+    try:
+        user=session.get(User,target.id)
+        if not user or not user.warns: return await update.message.reply_text("ℹ️ У пользователя нет активных Warn.")
+        user.warns=max(0,user.warns-1)
+        row=session.query(Punishment).filter(Punishment.user_id==target.id,Punishment.type=="warn").order_by(Punishment.created_at.desc()).first()
+        if row: session.delete(row)
+        _record_chat_punishment(session,update.effective_chat.id,target.id,"unwarn","Снятие предупреждения",update.effective_user.id)
+        session.commit()
+    finally: session.close()
+    await update.message.reply_text(f"✅ Снято предупреждение с <b>{target.full_name}</b>.",parse_mode=ParseMode.HTML)
+
+async def clearwarns(update, context):
+    if not await check_command_access(update, context, "/clearwarns"): return
+    target=await get_target(update,"/clearwarns")
+    if not target or not await can_moderate_target(update,target.id): return
+    session=Session()
+    try:
+        user=session.get(User,target.id)
+        if user: user.warns=0
+        session.query(Punishment).filter(Punishment.user_id==target.id,Punishment.type=="warn").delete(synchronize_session=False)
+        session.add(ChatPunishment(chat_id=update.effective_chat.id,user_id=target.id,type="clearwarns",reason="Все предупреждения сняты",moderator_id=update.effective_user.id)); session.commit()
+    finally: session.close()
+    await update.message.reply_text(f"🧹 Все предупреждения <b>{target.full_name}</b> очищены.",parse_mode=ParseMode.HTML)
+
+async def tempmute(update, context):
+    if not await check_command_access(update,context,"/tempmute"): return
+    if not await check_moderation_setting(update,"mute_enabled"): return
+    target=await get_target(update,"/tempmute")
+    if not target or not await can_moderate_target(update,target.id): return
+    if not context.args: return await update.message.reply_text("Использование: /tempmute 30m причина")
+    seconds=parse_duration(context.args[0]);
+    if not seconds: return await update.message.reply_text("❌ Срок: 30s, 15m, 2h, 7d или 1w.")
+    if not await check_bot_restriction_rights(update,context): return
+    perms=ChatPermissions(can_send_messages=False,can_send_audios=False,can_send_documents=False,can_send_photos=False,can_send_videos=False,can_send_video_notes=False,can_send_voice_notes=False,can_send_polls=False,can_send_other_messages=False,can_add_web_page_previews=False)
+    await context.bot.restrict_chat_member(update.effective_chat.id,target.id,permissions=perms,until_date=datetime.utcnow()+timedelta(seconds=seconds))
+    reason=" ".join(context.args[1:]) or "Не указана"
+    session=Session(); session.add(Punishment(user_id=target.id,type="mute",reason=reason,moderator_id=update.effective_user.id)); _record_chat_punishment(session,update.effective_chat.id,target.id,"mute",reason,update.effective_user.id); session.commit(); session.close()
+    await _schedule_action(context,update.effective_chat.id,target.id,"unmute",seconds,reason,update.effective_user.id)
+    await update.message.reply_text(f"🔇 <b>{target.full_name}</b> получил мут на <b>{context.args[0]}</b>.",parse_mode=ParseMode.HTML)
+
+async def tempban(update, context):
+    if not await check_command_access(update,context,"/tempban"): return
+    if not await check_moderation_setting(update,"ban_enabled"): return
+    target=await get_target(update,"/tempban")
+    if not target or not await can_moderate_target(update,target.id): return
+    if not context.args: return await update.message.reply_text("Использование: /tempban 7d причина")
+    seconds=parse_duration(context.args[0]);
+    if not seconds: return await update.message.reply_text("❌ Срок: 30s, 15m, 2h, 7d или 1w.")
+    if not await check_bot_restriction_rights(update,context): return
+    await context.bot.ban_chat_member(update.effective_chat.id,target.id)
+    reason=" ".join(context.args[1:]) or "Не указана"
+    session=Session(); session.add(Punishment(user_id=target.id,type="ban",reason=reason,moderator_id=update.effective_user.id)); _record_chat_punishment(session,update.effective_chat.id,target.id,"ban",reason,update.effective_user.id); session.commit(); session.close()
+    await _schedule_action(context,update.effective_chat.id,target.id,"unban",seconds,reason,update.effective_user.id)
+    await update.message.reply_text(f"🚫 <b>{target.full_name}</b> заблокирован на <b>{context.args[0]}</b>.",parse_mode=ParseMode.HTML)
+
+async def del_message(update, context):
+    if not await check_command_access(update,context,"/del"): return
+    if not update.message.reply_to_message: return await update.message.reply_text("⚠️ Ответь на сообщение командой /del.")
+    try:
+        await update.message.reply_to_message.delete(); await update.message.delete()
+    except Exception as e: await update.message.reply_text(f"❌ Не удалось удалить сообщение: {e}")
+
+async def purge(update, context):
+    if not await check_command_access(update,context,"/purge"): return
+    if not update.message.reply_to_message: return await update.message.reply_text("⚠️ Ответь на самое старое сообщение диапазона командой /purge.")
+    start_id=update.message.reply_to_message.message_id; end_id=update.message.message_id; deleted=0
+    for mid in range(start_id,end_id+1):
+        try: await context.bot.delete_message(update.effective_chat.id,mid); deleted+=1
+        except Exception: pass
+    try: await context.bot.delete_message(update.effective_chat.id,update.message.message_id)
+    except Exception: pass
+    await context.bot.send_message(update.effective_chat.id,f"🧹 Удалено сообщений: <b>{deleted}</b>",parse_mode=ParseMode.HTML)
+
+async def clear_messages(update, context):
+    if not await check_command_access(update,context,"/clear"): return
+    if not update.message.reply_to_message: return await update.message.reply_text("⚠️ Ответь на самое старое сообщение диапазона командой /clear.")
+    start_id=update.message.reply_to_message.message_id; end_id=update.message.message_id; deleted=0
+    for mid in range(start_id,end_id+1):
+        try: await context.bot.delete_message(update.effective_chat.id,mid); deleted+=1
+        except Exception: pass
+    await context.bot.send_message(update.effective_chat.id,f"🧹 Очищено сообщений: <b>{deleted}</b>",parse_mode=ParseMode.HTML)
+
+
+async def user_info(update, context):
+    if not await check_command_access(update,context,"/whois"): return
+    target=await get_target(update,"/whois")
+    if not target: return
+    session=Session()
+    try:
+        u=session.get(User,target.id); warns=u.warns if u else 0; msgs=u.messages_count if u else 0; mutes=u.mutes if u else 0; bans=u.bans if u else 0; kicks=u.kicks if u else 0
+    finally: session.close()
+    level=await telegram_target_role_level(update,target.id)
+    role={0:"Участник",1:"Модератор",2:"Администратор",3:"Создатель"}[level]
+    await update.message.reply_text(f"👤 <b>{target.full_name}</b>\nID: <code>{target.id}</code>\nUsername: @{target.username or '—'}\nРоль: <b>{role}</b>\n\n💬 Сообщений: {msgs}\n⚠️ Warn: {warns}\n🔇 Mute: {mutes}\n🚫 Ban: {bans}\n👢 Kick: {kicks}",parse_mode=ParseMode.HTML)
+
+async def user_id(update, context):
+    if not await check_command_access(update,context,"/id"): return
+    target=await get_target(update,"/id")
+    if target: await update.message.reply_text(f"🆔 <code>{target.id}</code>",parse_mode=ParseMode.HTML)
+
+async def history(update, context):
+    if not await check_command_access(update,context,"/history"): return
+    target=await get_target(update,"/history")
+    if not target: return
+    session=Session()
+    try: rows=session.query(ChatPunishment).filter(ChatPunishment.chat_id==update.effective_chat.id,ChatPunishment.user_id==target.id).order_by(ChatPunishment.created_at.desc()).limit(30).all()
+    finally: session.close()
+    if not rows: return await update.message.reply_text("📜 История пуста.")
+    text=f"📜 <b>История {target.full_name}</b>\n"
+    for r in rows: text+=f"\n• {r.type.upper()} — {r.reason} — {r.created_at.strftime('%d.%m %H:%M')}"
+    await update.message.reply_text(text,parse_mode=ParseMode.HTML)
+
+async def stats(update, context):
+    if not await check_command_access(update,context,"/stats"): return
+    session=Session()
+    try:
+        users=session.query(ChatUser).filter(ChatUser.chat_id==update.effective_chat.id).count(); msgs=session.query(ChatUser).filter(ChatUser.chat_id==update.effective_chat.id).with_entities(func.sum(ChatUser.messages_count)).scalar() or 0
+    except Exception: users=0; msgs=0
+    finally: session.close()
+    await update.message.reply_text(f"📊 <b>Статистика чата</b>\n\n👥 Пользователей: <b>{users}</b>\n💬 Сообщений: <b>{msgs}</b>",parse_mode=ParseMode.HTML)
+
+async def top(update, context):
+    if not await check_command_access(update,context,"/top"): return
+    session=Session()
+    try: rows=session.query(ChatUser).filter(ChatUser.chat_id==update.effective_chat.id).order_by(ChatUser.messages_count.desc()).limit(10).all()
+    finally: session.close()
+    lines=["🏆 <b>Топ активности</b>"]
+    for i,r in enumerate(rows,1): lines.append(f"{i}. @{r.username or r.first_name or r.user_id} — {r.messages_count or 0}")
+    await update.message.reply_text("\n".join(lines),parse_mode=ParseMode.HTML)
+
+async def banlist(update, context):
+    if not await check_command_access(update,context,"/banlist"): return
+    session=Session()
+    try: rows=session.query(ChatPunishment).filter(ChatPunishment.chat_id==update.effective_chat.id,ChatPunishment.type.in_(["ban","tempban"])).order_by(ChatPunishment.created_at.desc()).limit(30).all()
+    finally: session.close()
+    if not rows: return await update.message.reply_text("🚫 Бан-лист пуст.")
+    await update.message.reply_text("🚫 <b>Последние баны</b>\n"+"\n".join(f"• <code>{r.user_id}</code> — {r.reason}" for r in rows),parse_mode=ParseMode.HTML)
+
+async def mutelist(update, context):
+    if not await check_command_access(update,context,"/mutelist"): return
+    session=Session()
+    try: rows=session.query(ChatPunishment).filter(ChatPunishment.chat_id==update.effective_chat.id,ChatPunishment.type.in_(["mute","tempmute"])).order_by(ChatPunishment.created_at.desc()).limit(30).all()
+    finally: session.close()
+    if not rows: return await update.message.reply_text("🔇 Мут-лист пуст.")
+    await update.message.reply_text("🔇 <b>Последние муты</b>\n"+"\n".join(f"• <code>{r.user_id}</code> — {r.reason}" for r in rows),parse_mode=ParseMode.HTML)
+
+async def bookmark(update, context):
+    if not await check_command_access(update,context,"/bookmark"): return
+    msg=update.message.reply_to_message
+    if not msg: return await update.message.reply_text("⚠️ Ответь на сообщение: /bookmark название")
+    title=" ".join(context.args)[:120] or "Без названия"
+    session=Session(); session.add(Bookmark(chat_id=update.effective_chat.id,user_id=update.effective_user.id,message_id=msg.message_id,title=title,text=msg.text or msg.caption or "")); session.commit(); session.close()
+    await update.message.reply_text(f"📌 Закладка <b>{title}</b> сохранена.",parse_mode=ParseMode.HTML)
+
+async def bookmarks(update, context):
+    if not await check_command_access(update,context,"/bookmarks"): return
+    session=Session()
+    try: rows=session.query(Bookmark).filter(Bookmark.chat_id==update.effective_chat.id).order_by(Bookmark.created_at.desc()).limit(20).all()
+    finally: session.close()
+    if not rows: return await update.message.reply_text("📌 Закладок пока нет.")
+    await update.message.reply_text("📌 <b>Закладки</b>\n"+"\n".join(f"{i}. {r.title} — сообщение #{r.message_id}" for i,r in enumerate(rows,1)),parse_mode=ParseMode.HTML)
+
+async def note(update, context):
+    if not await check_command_access(update,context,"/note"): return
+    if len(context.args)<2: return await update.message.reply_text("Использование: /note название текст")
+    name=context.args[0][:80]; content=" ".join(context.args[1:])
+    session=Session(); row=session.query(Note).filter(Note.chat_id==update.effective_chat.id,Note.name==name).first()
+    if row: row.content=content; row.updated_at=datetime.utcnow()
+    else: session.add(Note(chat_id=update.effective_chat.id,user_id=update.effective_user.id,name=name,content=content))
+    session.commit(); session.close(); await update.message.reply_text(f"📝 Заметка <b>{name}</b> сохранена.",parse_mode=ParseMode.HTML)
+
+async def notes(update, context):
+    if not await check_command_access(update,context,"/notes"): return
+    session=Session()
+    try: rows=session.query(Note).filter(Note.chat_id==update.effective_chat.id).order_by(Note.name).all()
+    finally: session.close()
+    if context.args:
+        row=next((r for r in rows if r.name.lower()==context.args[0].lower()),None)
+        if not row: return await update.message.reply_text("❌ Заметка не найдена.")
+        return await update.message.reply_text(f"📝 <b>{row.name}</b>\n{row.content}",parse_mode=ParseMode.HTML)
+    if not rows: return await update.message.reply_text("📝 Заметок нет.")
+    await update.message.reply_text("📝 <b>Заметки</b>\n"+"\n".join(f"• {r.name}" for r in rows),parse_mode=ParseMode.HTML)
+
+async def timer(update, context):
+    if not await check_command_access(update,context,"/timer"): return
+    if len(context.args)<2: return await update.message.reply_text("Использование: /timer 30m текст напоминания")
+    seconds=parse_duration(context.args[0]);
+    if not seconds: return await update.message.reply_text("❌ Срок: 30s, 15m, 2h, 7d или 1w.")
+    text=" ".join(context.args[1:])
+    async def remind(ctx): await ctx.bot.send_message(update.effective_chat.id,f"⏰ <b>Таймер</b>\n{text}",parse_mode=ParseMode.HTML)
+    if context.job_queue: context.job_queue.run_once(remind,seconds)
+    await update.message.reply_text(f"⏰ Таймер установлен на {context.args[0]}.")
+
+# =========================================================
+# СОЦИАЛЬНЫЕ И РАЗВЛЕКАТЕЛЬНЫЕ КОМАНДЫ
+# =========================================================
+async def welcome(update, context):
+    if not await check_command_access(update,context,"/welcome"): return
+    if not update.message: return
+    session=Session(); cfg=session.get(ChatConfig,update.effective_chat.id)
+    if not cfg: cfg=ChatConfig(chat_id=update.effective_chat.id); session.add(cfg); session.commit()
+    text=" ".join(context.args)
+    if text:
+        cfg.welcome_text=text; cfg.updated_at=datetime.utcnow(); session.commit(); await update.message.reply_text("👋 Приветствие сохранено.")
+    else: await update.message.reply_text(f"👋 <b>Приветствие</b>\n{cfg.welcome_text}",parse_mode=ParseMode.HTML)
+    session.close()
+
+async def rules(update, context):
+    if not await check_command_access(update,context,"/rules"): return
+    session=Session(); cfg=session.get(ChatConfig,update.effective_chat.id)
+    if not cfg: cfg=ChatConfig(chat_id=update.effective_chat.id); session.add(cfg); session.commit()
+    text=" ".join(context.args)
+    if text and await telegram_role_level(update)>=3:
+        cfg.rules_text=text; cfg.updated_at=datetime.utcnow(); session.commit()
+    await update.message.reply_text(f"📜 <b>Правила</b>\n{cfg.rules_text}",parse_mode=ParseMode.HTML); session.close()
+
+async def reputation(update, context):
+    if not await check_command_access(update,context,"/reputation"): return
+    target=await get_target(update,"/reputation")
+    if not target: return
+    session=Session(); row=session.query(Reputation).filter(Reputation.chat_id==update.effective_chat.id,Reputation.user_id==target.id).first(); points=row.points if row else 0
+    if row is None: session.add(Reputation(chat_id=update.effective_chat.id,user_id=target.id,points=0)); session.commit()
+    session.close(); await update.message.reply_text(f"⭐ Репутация <b>{target.full_name}</b>: <b>{points}</b>",parse_mode=ParseMode.HTML)
+
+async def plus(update, context):
+    if not await check_command_access(update,context,"/plus"): return
+    target=await get_target(update,"/plus")
+    if not target or target.id==update.effective_user.id: return
+    session=Session(); row=session.query(Reputation).filter(Reputation.chat_id==update.effective_chat.id,Reputation.user_id==target.id).first()
+    if not row: row=Reputation(chat_id=update.effective_chat.id,user_id=target.id,points=0); session.add(row)
+    row.points+=1; session.commit(); points=row.points; session.close(); await update.message.reply_text(f"⭐ +1 репутации для <b>{target.full_name}</b>. Теперь: {points}",parse_mode=ParseMode.HTML)
+
+async def reward(update, context):
+    if not await check_command_access(update,context,"/reward"): return
+    target=await get_target(update,"/reward")
+    if not target: return
+    if await telegram_role_level(update)<2: return await update.message.reply_text("⛔ Награды может выдавать только Администратор или Создатель.")
+    title=" ".join(context.args)[:120] or "Награда"
+    session=Session(); session.add(Reward(chat_id=update.effective_chat.id,user_id=target.id,moderator_id=update.effective_user.id,title=title,description=title)); session.commit(); session.close()
+    await update.message.reply_text(f"🏅 <b>{target.full_name}</b> получил награду: {title}",parse_mode=ParseMode.HTML)
+
+async def rewards(update, context):
+    if not await check_command_access(update,context,"/rewards"): return
+    target=await get_target(update,"/rewards")
+    if not target: return
+    session=Session(); rows=session.query(Reward).filter(Reward.chat_id==update.effective_chat.id,Reward.user_id==target.id).order_by(Reward.created_at.desc()).limit(20).all(); session.close()
+    if not rows: return await update.message.reply_text("🏅 Наград пока нет.")
+    await update.message.reply_text("🏅 <b>Награды</b>\n"+"\n".join(f"• {r.title} — {r.created_at.strftime('%d.%m.%Y')}" for r in rows),parse_mode=ParseMode.HTML)
+
+async def dice(update, context):
+    if not await check_command_access(update,context,"/dice"): return
+    import random
+    await update.message.reply_text(f"🎲 Выпало: <b>{random.randint(1,6)}</b>",parse_mode=ParseMode.HTML)
+
+async def eightball(update, context):
+    if not await check_command_access(update,context,"/8ball"): return
+    import random
+    answers=["Да.","Нет.","Скорее всего.","Вряд ли.","Звёзды говорят: да.","Лучше не рисковать."]
+    await update.message.reply_text("🔮 "+random.choice(answers))
+
+async def random_cmd(update, context):
+    if not await check_command_access(update,context,"/random"): return
+    import random
+    if len(context.args)>=2:
+        try: a,b=int(context.args[0]),int(context.args[1]); await update.message.reply_text(f"🎲 {random.randint(min(a,b),max(a,b))}"); return
+        except Exception: pass
+    await update.message.reply_text("Использование: /random 1 100")
+
+async def choose(update, context):
+    if not await check_command_access(update,context,"/choose"): return
+    import random
+    options=[x.strip() for x in " ".join(context.args).split("|") if x.strip()]
+    if len(options)<2: return await update.message.reply_text("Использование: /choose вариант 1 | вариант 2")
+    await update.message.reply_text("🎯 Выбираю: "+random.choice(options))
+
+async def ship(update, context):
+    if not await check_command_access(update,context,"/ship"): return
+    import random
+    if len(context.args)>=2: names=context.args[:2]
+    else: return await update.message.reply_text("Использование: /ship @user1 @user2")
+    await update.message.reply_text(f"💜 Совместимость {names[0]} × {names[1]}: <b>{random.randint(0,100)}%</b>",parse_mode=ParseMode.HTML)
+
+async def weather(update, context):
+    if not await check_command_access(update,context,"/weather"): return
+    import requests as http_requests
+    city=" ".join(context.args).strip()
+    if not city: return await update.message.reply_text("Использование: /weather Москва")
+    try:
+        r=http_requests.get(f"https://wttr.in/{city}",params={"format":"%l: %c %t, ощущается %f, влажность %h"},timeout=8); r.raise_for_status(); await update.message.reply_text("🌦️ "+r.text.strip())
+    except Exception: await update.message.reply_text("❌ Не удалось получить погоду.")
+
+# =========================================================
+# АВТОМОДЕРАЦИЯ
+# =========================================================
+_flood_cache = defaultdict(deque)
+_repeat_cache = {}
+_join_cache = defaultdict(deque)
+
+async def automod_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg=update.effective_message
+    chat=update.effective_chat; user=update.effective_user
+    if not msg or not chat or chat.type not in ("group","supergroup") or not user or user.is_bot or not msg.text:
+        return
+    settings=get_bot_settings()
+    if not settings.get("moderation_enabled",True): return
+    try:
+        level=await telegram_role_level(update)
+        if level>=2: return
+        text=msg.text.strip()
+        now=time.monotonic(); key=(chat.id,user.id)
+        q=_flood_cache[key]; q.append(now)
+        while q and now-q[0]>3: q.popleft()
+        if settings.get("anti_flood_enabled",True) and len(q)>=6:
+            try:
+                if settings.get("auto_delete_spam",True): await msg.delete()
+                if settings.get("mute_enabled",True) and await bot_can_restrict(update,context):
+                    perms=ChatPermissions(can_send_messages=False)
+                    await context.bot.restrict_chat_member(chat.id,user.id,permissions=perms,until_date=datetime.utcnow()+timedelta(minutes=int(settings.get("mute_duration",60))))
+                    session=Session(); _record_chat_punishment(session,chat.id,user.id,"mute","Антифлуд",context.bot.id); session.commit(); session.close()
+                return
+            except Exception as e: print(f"AUTOMOD FLOOD ERROR: {e}")
+        if settings.get("anti_invites_enabled",True) and re.search(r"(?:t\.me/|telegram\.me/|telegram\.dog/|joinchat/|t\.me/\+)",text,re.I):
+            if settings.get("auto_delete_spam",True):
+                try: await msg.delete()
+                except Exception: pass
+            return
+        if settings.get("anti_links_enabled",False) and re.search(r"https?://|www\\.",text,re.I):
+            if settings.get("auto_delete_spam",True):
+                try: await msg.delete()
+                except Exception: pass
+            return
+        if settings.get("anti_caps_enabled",False):
+            letters=[c for c in text if c.isalpha()]
+            if len(letters)>=12 and sum(c.isupper() for c in letters)/len(letters)>=0.75:
+                if settings.get("auto_delete_spam",True):
+                    try: await msg.delete()
+                    except Exception: pass
+                return
+        if settings.get("anti_repeat_enabled",True):
+            normalized=re.sub(r"\\s+"," ",text.lower())[:500]
+            previous=_repeat_cache.get(key)
+            if previous and previous==normalized:
+                try: await msg.delete()
+                except Exception: pass
+                return
+            _repeat_cache[key]=normalized
+    except Exception as e:
+        print(f"AUTOMOD ERROR: {type(e).__name__}: {e}")
 
 # =========================================================
 # ПРОФИЛЬ И АВТОМАТИЧЕСКИЙ УЧЁТ УЧАСТНИКОВ
@@ -797,6 +1287,27 @@ async def track_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_user = change.new_chat_member.user
     new_status = change.new_chat_member.status
     old_status = change.old_chat_member.status if change.old_chat_member else None
+
+    if new_status in ("member", "administrator") and old_status not in ("member", "administrator", "creator"):
+        try:
+            session_w=Session(); cfg=session_w.get(ChatConfig,update.effective_chat.id)
+            if cfg is None:
+                cfg=ChatConfig(chat_id=update.effective_chat.id); session_w.add(cfg); session_w.commit()
+            if cfg.welcome_enabled:
+                welcome_text=(cfg.welcome_text or "👋 Добро пожаловать, {name}!").replace("{name}",tg_user.full_name).replace("{username}",f"@{tg_user.username}" if tg_user.username else "")
+                await context.bot.send_message(update.effective_chat.id,welcome_text)
+            session_w.close()
+        except Exception as e: print(f"WELCOME ERROR: {e}")
+        settings=get_bot_settings()
+        if settings.get("anti_raid_enabled",True) and update.effective_chat:
+            key=update.effective_chat.id; now=time.monotonic(); q=_join_cache[key]; q.append(now)
+            while q and now-q[0]>10: q.popleft()
+            if len(q)>=8:
+                print(f"🚨 ANTI-RAID: chat={key}, joins={len(q)}")
+                try:
+                    await context.bot.send_message(key, "🚨 <b>Обнаружен возможный рейд</b>\nСистема Protogen зафиксировала резкий всплеск новых участников.", parse_mode=ParseMode.HTML)
+                except Exception: pass
+                q.clear()
 
     session = Session()
     try:

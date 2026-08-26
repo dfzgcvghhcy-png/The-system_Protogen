@@ -196,6 +196,71 @@ class ChatRole(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+
+
+class ChatConfig(Base):
+    __tablename__ = "chat_configs"
+    chat_id = Column(BigInteger, primary_key=True)
+    welcome_enabled = Column(Boolean, default=True)
+    welcome_text = Column(String, default="👋 Добро пожаловать, {name}!")
+    rules_text = Column(String, default="Правила чата пока не настроены.")
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class Reputation(Base):
+    __tablename__ = "reputation"
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    user_id = Column(BigInteger, nullable=False, index=True)
+    points = Column(Integer, default=0)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class Reward(Base):
+    __tablename__ = "rewards"
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    user_id = Column(BigInteger, nullable=False, index=True)
+    moderator_id = Column(BigInteger, nullable=False)
+    title = Column(String(120), nullable=False)
+    description = Column(String, default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ScheduledAction(Base):
+    __tablename__ = "scheduled_actions"
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    user_id = Column(BigInteger, nullable=True, index=True)
+    action = Column(String(30), nullable=False)
+    reason = Column(String, default="Не указана")
+    moderator_id = Column(BigInteger, nullable=True)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Bookmark(Base):
+    __tablename__ = "bookmarks"
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    user_id = Column(BigInteger, nullable=False, index=True)
+    message_id = Column(BigInteger, nullable=False)
+    title = Column(String(120), nullable=False)
+    text = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Note(Base):
+    __tablename__ = "notes"
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    user_id = Column(BigInteger, nullable=False, index=True)
+    name = Column(String(80), nullable=False)
+    content = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 class Punishment(Base):
     __tablename__ = "punishments"
 
@@ -372,6 +437,14 @@ class BotSetting(Base):
         Integer,
         default=60,
     )
+
+    anti_flood_enabled = Column(Boolean, default=True)
+    anti_links_enabled = Column(Boolean, default=False)
+    anti_invites_enabled = Column(Boolean, default=True)
+    anti_caps_enabled = Column(Boolean, default=False)
+    anti_repeat_enabled = Column(Boolean, default=True)
+    anti_raid_enabled = Column(Boolean, default=True)
+    auto_warn_action = Column(String(20), default="mute")
 
     # ========================================================
     # PROTOGEN PERSONALITY
@@ -634,3 +707,26 @@ def migrate_database():
 
 # Запускаем миграцию
 migrate_database()
+
+
+def migrate_protogen_extra_columns():
+    inspector = inspect(engine)
+    if "bot_settings" not in inspector.get_table_names():
+        return
+    existing = {c["name"] for c in inspector.get_columns("bot_settings")}
+    additions = {
+        "anti_flood_enabled": "BOOLEAN DEFAULT TRUE",
+        "anti_links_enabled": "BOOLEAN DEFAULT FALSE",
+        "anti_invites_enabled": "BOOLEAN DEFAULT TRUE",
+        "anti_caps_enabled": "BOOLEAN DEFAULT FALSE",
+        "anti_repeat_enabled": "BOOLEAN DEFAULT TRUE",
+        "anti_raid_enabled": "BOOLEAN DEFAULT TRUE",
+        "auto_warn_action": "VARCHAR(20) DEFAULT 'mute'",
+    }
+    with engine.begin() as connection:
+        for name, definition in additions.items():
+            if name not in existing:
+                connection.execute(text(f"ALTER TABLE bot_settings ADD COLUMN {name} {definition}"))
+
+migrate_protogen_extra_columns()
+
