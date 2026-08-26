@@ -109,6 +109,43 @@ class WebAccount(Base):
     last_login = Column(DateTime, nullable=True)
 
 
+class CommandPermission(Base):
+    __tablename__ = "command_permissions"
+    id = Column(Integer, primary_key=True)
+    command = Column(String(80), unique=True, nullable=False, index=True)
+    label = Column(String(120), nullable=False)
+    category = Column(String(40), nullable=False, default="moderation")
+    min_role_level = Column(Integer, nullable=False, default=1)
+    enabled = Column(Boolean, default=True)
+    description = Column(String(255), nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+DEFAULT_COMMAND_PERMISSIONS = [
+    ("/warn", "Выдать предупреждение", "Наказания", 1, True, "Предупредить пользователя"),
+    ("/warns", "Предупреждения", "Наказания", 1, True, "Просмотр варнов пользователя"),
+    ("/unwarn", "Снять предупреждение", "Наказания", 1, True, "Снять одно предупреждение"),
+    ("/mute", "Мут", "Наказания", 1, True, "Ограничить пользователя"),
+    ("/tempmute", "Временный мут", "Наказания", 1, True, "Мут на заданный срок"),
+    ("/unmute", "Снять мут", "Наказания", 1, True, "Снять ограничение"),
+    ("/ban", "Бан", "Наказания", 2, True, "Заблокировать пользователя"),
+    ("/tempban", "Временный бан", "Наказания", 2, True, "Бан на заданный срок"),
+    ("/unban", "Разбан", "Наказания", 2, True, "Снять бан"),
+    ("/kick", "Кик", "Наказания", 1, True, "Удалить пользователя из чата"),
+    ("/del", "Удалить сообщение", "Очистка", 1, True, "Удалить сообщение"),
+    ("/clear", "Очистить сообщения", "Очистка", 1, True, "Массовая очистка"),
+    ("/purge", "Purge", "Очистка", 1, True, "Очистить выбранный диапазон"),
+    ("/whois", "Информация о пользователе", "Пользователи", 1, True, "Карточка пользователя"),
+    ("/history", "История наказаний", "Пользователи", 3, True, "Журнал модерации"),
+    ("/stats", "Статистика", "Аналитика", 2, True, "Статистика чата"),
+    ("/top", "Топ пользователей", "Аналитика", 1, True, "Рейтинг активности"),
+    ("/bookmark", "Закладка", "Инструменты", 1, True, "Сохранить важное сообщение"),
+    ("/bookmarks", "Закладки", "Инструменты", 1, True, "Список закладок"),
+    ("/note", "Заметка", "Инструменты", 1, True, "Шаблоны ответов"),
+    ("/notes", "Заметки", "Инструменты", 1, True, "Список шаблонов"),
+    ("/timer", "Таймер", "Инструменты", 1, True, "Отложенная команда"),
+]
+
 # Create missing tables only after ALL SQLAlchemy models are registered.
 if engine:
     Base.metadata.create_all(engine)
@@ -131,6 +168,14 @@ if engine:
                 ))
                 seed_db.commit()
                 print(f"🔐 Creator account seeded: {ADMIN_USERNAME}")
+
+    # Seed the moderation command matrix without overwriting creator changes.
+    with SessionLocal() as seed_db:
+        for command, label, category, level, enabled, description in DEFAULT_COMMAND_PERMISSIONS:
+            row = seed_db.query(CommandPermission).filter(CommandPermission.command == command).first()
+            if not row:
+                seed_db.add(CommandPermission(command=command, label=label, category=category, min_role_level=level, enabled=enabled, description=description))
+        seed_db.commit()
 
     print("🗄️ Database tables checked/created; personality columns synced")
 
@@ -528,6 +573,113 @@ def admin_wallpaper_delete():
         db.rollback()
         print(f"WALLPAPER DELETE ERROR: {type(e).__name__}: {e}")
         return jsonify({"error": f"{type(e).__name__}: {e}"}), 500
+    finally:
+        db.close()
+
+
+# ============================================================
+# MODERATION CONTROL CENTER
+# ============================================================
+
+@app.route("/admin/moderation")
+@role_required("moderator")
+def admin_moderation():
+    if not SessionLocal:
+        return render_template("moderation.html", username=session.get("admin_username", ADMIN_USERNAME), settings=None, commands=[], error="DATABASE_URL не настроен.")
+    db = SessionLocal()
+    try:
+        settings = get_bot_settings(db)
+        commands = db.query(CommandPermission).order_by(CommandPermission.category, CommandPermission.id).all()
+        return render_template("moderation.html", username=session.get("admin_username", ADMIN_USERNAME), settings=settings, commands=commands, error=None)
+    except Exception as e:
+        db.rollback()
+        print(f"MODERATION PAGE ERROR: {type(e).__name__}: {e}")
+        return render_template("moderation.html", username=session.get("admin_username", ADMIN_USERNAME), settings=None, commands=[], error=f"{type(e).__name__}: {e}")
+    finally:
+        db.close()
+
+
+@app.route("/api/admin/moderation", methods=["GET", "POST"])
+@role_required("moderator")
+def admin_moderation_api():
+    if not SessionLocal:
+        return jsonify({"ok": False, "error": "DATABASE_URL не настроен."}), 500
+    db = SessionLocal()
+    try:
+        if request.method == "GET":
+            commands = db.query(CommandPermission).order_by(CommandPermission.category, CommandPermission.id).all()
+            s = get_bot_settings(db)
+            return jsonify({
+                "settings": {
+                    "moderation_enabled": bool(s.moderation_enabled),
+                    "auto_delete_spam": bool(s.auto_delete_spam),
+                    "warn_enabled": bool(s.warn_enabled),
+                    "mute_enabled": bool(s.mute_enabled),
+                    "ban_enabled": bool(s.ban_enabled),
+                    "kick_enabled": bool(s.kick_enabled),
+                    "ai_moderation_enabled": bool(s.ai_moderation_enabled),
+                },
+                "commands": [{"id": c.id, "command": c.command, "label": c.label, "category": c.category, "min_role_level": c.min_role_level, "enabled": bool(c.enabled), "description": c.description or ""} for c in commands]
+            })
+
+        if not has_role("creator"):
+            return jsonify({"ok": False, "error": "Изменять настройки модерации может только Создатель."}), 403
+
+        data = request.get_json(silent=True) or {}
+        s = get_bot_settings(db)
+        allowed_flags = {"moderation_enabled", "auto_delete_spam", "warn_enabled", "mute_enabled", "ban_enabled", "kick_enabled", "ai_moderation_enabled"}
+        for key in allowed_flags:
+            if key in data.get("settings", {}):
+                setattr(s, key, bool(data["settings"][key]))
+
+        for item in data.get("commands", []):
+            command = str(item.get("command", "")).strip()
+            row = db.query(CommandPermission).filter(CommandPermission.command == command).first()
+            if not row:
+                continue
+            level = max(0, min(3, int(item.get("min_role_level", row.min_role_level))))
+            row.min_role_level = level
+            if "enabled" in item:
+                row.enabled = bool(item["enabled"])
+            row.updated_at = datetime.utcnow()
+
+        s.updated_at = datetime.utcnow()
+        db.commit()
+        return jsonify({"ok": True, "message": "Настройки модерации сохранены."})
+    except (TypeError, ValueError) as e:
+        db.rollback()
+        return jsonify({"ok": False, "error": f"Некорректные данные: {e}"}), 400
+    except Exception as e:
+        db.rollback()
+        print(f"MODERATION API ERROR: {type(e).__name__}: {e}")
+        return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
+    finally:
+        db.close()
+
+
+@app.route("/api/admin/moderation/command/<int:command_id>", methods=["POST"])
+@role_required("moderator")
+def admin_moderation_command(command_id):
+    if not has_role("creator"):
+        return jsonify({"ok": False, "error": "Только Создатель может изменять доступ команд."}), 403
+    if not SessionLocal:
+        return jsonify({"ok": False, "error": "DATABASE_URL не настроен."}), 500
+    db = SessionLocal()
+    try:
+        row = db.get(CommandPermission, command_id)
+        if not row:
+            return jsonify({"ok": False, "error": "Команда не найдена."}), 404
+        data = request.get_json(silent=True) or {}
+        if "min_role_level" in data:
+            row.min_role_level = max(0, min(3, int(data["min_role_level"])))
+        if "enabled" in data:
+            row.enabled = bool(data["enabled"])
+        row.updated_at = datetime.utcnow()
+        db.commit()
+        return jsonify({"ok": True})
+    except Exception as e:
+        db.rollback()
+        return jsonify({"ok": False, "error": str(e)}), 400
     finally:
         db.close()
 

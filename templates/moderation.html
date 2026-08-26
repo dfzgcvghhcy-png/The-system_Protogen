@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ProtogenAdmin — Модерация</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='moderation.css') }}">
+</head>
+<body class="moderation-page">
+<div class="bg"></div><div class="grid"></div><div class="scanlines"></div>
+{% include '_admin_sidebar.html' %}
+<div class="admin-main-wrap">
+{% include '_admin_topbar.html' %}
+<main class="moderation-main">
+  <section class="moderation-hero">
+    <div><div class="eyebrow">03 // MODERATION CONTROL CENTER</div><h1>Центр модерации <span>🛡️</span></h1><p>Управление наказаниями, автомодерацией и доступом к командам Protogen.</p></div>
+    <div class="role-badge"><i></i>{{ panel_role_name }}<small>УРОВЕНЬ {{ {'moderator':1,'admin':2,'creator':3}.get(panel_role,0) }}</small></div>
+  </section>
+
+  {% if error %}<div class="error-box">⚠️ {{ error }}</div>{% endif %}
+
+  <section class="moderation-grid">
+    <article class="mod-card automation-card">
+      <div class="mod-head"><div><span class="panel-kicker">01 // AUTOMOD</span><h2>Автомодерация</h2><p>Базовые защитные механизмы чата</p></div><span class="status-pill"><i></i> {{ 'ACTIVE' if settings and settings.moderation_enabled else 'OFFLINE' }}</span></div>
+      <div class="toggle-list">
+        {% for key,label,desc in [
+          ('moderation_enabled','Система модерации','Главный переключатель модерации'),
+          ('auto_delete_spam','Автоудаление спама','Удалять обнаруженный спам'),
+          ('warn_enabled','Warn','Разрешить предупреждения'),
+          ('mute_enabled','Mute','Разрешить ограничения'),
+          ('ban_enabled','Ban','Разрешить блокировки'),
+          ('kick_enabled','Kick','Разрешить исключение'),
+          ('ai_moderation_enabled','AI-модерация','Передавать подозрительные сообщения AI')
+        ] %}
+        <label class="toggle-row {% if not is_creator %}locked{% endif %}"><span><b>{{ label }}</b><small>{{ desc }}</small></span><input type="checkbox" data-setting="{{ key }}" {% if settings and settings|attr(key) %}checked{% endif %} {% if not is_creator %}disabled{% endif %}><i></i></label>
+        {% endfor %}
+      </div>
+    </article>
+
+    <article class="mod-card punish-card">
+      <div class="mod-head"><div><span class="panel-kicker">02 // LIMITS</span><h2>Наказания</h2><p>Общие параметры системы</p></div></div>
+      <div class="limit-row"><div><b>WARN LIMIT</b><small>До автоматического действия</small></div><strong>{{ settings.warn_limit if settings else '—' }}</strong></div>
+      <div class="limit-row"><div><b>MUTE DURATION</b><small>Стандартная длительность</small></div><strong>{{ settings.mute_duration if settings else '—' }}<em> мин</em></strong></div>
+      <div class="action-preview"><span>⚠️</span><div><b>Цепочка наказаний</b><small>Warn → Mute → Ban можно настроить через параметры бота.</small></div></div>
+    </article>
+  </section>
+
+  <section class="mod-card command-card">
+    <div class="mod-head command-head"><div><span class="panel-kicker">03 // COMMAND ACCESS</span><h2>Доступ к командам</h2><p>Кто может использовать команды Protogen. Изменять матрицу может только Создатель.</p></div><button id="saveModeration" class="save-command" {% if not is_creator %}disabled{% endif %}>✓ СОХРАНИТЬ</button></div>
+    <div class="legend"><span><i class="dot green"></i> разрешено</span><span><i class="dot red"></i> заблокировано</span><span>Уровень: 1 Модератор · 2 Администратор · 3 Создатель</span></div>
+    <div class="command-table">
+      <div class="command-grid table-title"><span>КОМАНДА</span><span>ОПИСАНИЕ</span><span>МИНИМАЛЬНЫЙ РАНГ</span><span>СТАТУС</span></div>
+      {% for c in commands %}
+      <div class="command-grid command-row" data-command-id="{{ c.id }}" data-command="{{ c.command }}">
+        <div class="command-name"><b>{{ c.command }}</b><small>{{ c.label }}</small></div>
+        <div class="command-desc">{{ c.description or '—' }}</div>
+        <div class="rank-select">
+          <select data-role-level {% if not is_creator %}disabled{% endif %}>
+            <option value="0" {% if c.min_role_level == 0 %}selected{% endif %}>Все участники</option>
+            <option value="1" {% if c.min_role_level == 1 %}selected{% endif %}>Модератор</option>
+            <option value="2" {% if c.min_role_level == 2 %}selected{% endif %}>Администратор</option>
+            <option value="3" {% if c.min_role_level == 3 %}selected{% endif %}>Создатель</option>
+          </select>
+        </div>
+        <label class="command-switch {% if not is_creator %}locked{% endif %}"><input type="checkbox" data-command-enabled {% if c.enabled %}checked{% endif %} {% if not is_creator %}disabled{% endif %}><i></i><span>{{ 'ON' if c.enabled else 'OFF' }}</span></label>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="mod-card flow-card">
+    <div class="mod-head"><div><span class="panel-kicker">04 // PROTECTION FLOW</span><h2>Логика доступа</h2><p>Protogen проверяет права на сервере, а не только в интерфейсе.</p></div></div>
+    <div class="flow"><div><strong>👤 Пользователь</strong><small>команда</small></div><b>→</b><div><strong>🔐 Проверка ранга</strong><small>уровень доступа</small></div><b>→</b><div><strong>🛡️ Проверка функции</strong><small>включена / выключена</small></div><b>→</b><div><strong>⚡ Действие</strong><small>логирование</small></div></div>
+  </section>
+
+  <div class="moderation-savebar"><div><b>СИСТЕМА МОДЕРАЦИИ</b><small>Настройки доступа хранятся в PostgreSQL и не сбрасываются при перезапуске.</small></div><span>DATABASE <b>ONLINE</b></span></div>
+  <footer>PROTOGEN SYSTEM // MODERATION CONTROL CENTER · <span>SECURE SESSION</span></footer>
+</main>
+</div>
+<audio id="accessDeniedSound" preload="auto" src="{{ url_for('static', filename='access-denied.mp3') }}"></audio>
+<script src="{{ url_for('static', filename='access-control.js') }}"></script>
+<script>
+const isCreator={{ 'true' if is_creator else 'false' }};
+const levelNames=['Все участники','Модератор','Администратор','Создатель'];
+const rows=[...document.querySelectorAll('.command-row')];
+function denied(){ if(window.showAccessDenied) window.showAccessDenied(); }
+document.querySelectorAll('.locked').forEach(el=>el.addEventListener('click',e=>{if(!isCreator){e.preventDefault();denied()}}));
+const save=document.getElementById('saveModeration');
+save?.addEventListener('click',async()=>{
+ if(!isCreator){denied();return}
+ const settings={}; document.querySelectorAll('[data-setting]').forEach(x=>settings[x.dataset.setting]=x.checked);
+ const commands=rows.map(row=>({command:row.dataset.command,min_role_level:Number(row.querySelector('[data-role-level]').value),enabled:row.querySelector('[data-command-enabled]').checked}));
+ save.disabled=true; save.textContent='⟳ СОХРАНЕНИЕ...';
+ try{const r=await fetch('/api/admin/moderation',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({settings,commands})});const d=await r.json();if(!r.ok)throw Error(d.error||'Ошибка');save.textContent='✓ СОХРАНЕНО';setTimeout(()=>{save.textContent='✓ СОХРАНИТЬ';save.disabled=false},1200)}catch(e){save.disabled=false;save.textContent='✓ СОХРАНИТЬ';alert(e.message)}});
+document.querySelectorAll('[data-command-enabled]').forEach(x=>x.addEventListener('change',()=>x.closest('.command-switch').querySelector('span').textContent=x.checked?'ON':'OFF'));
+</script>
+</body>
+</html>
