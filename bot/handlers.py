@@ -147,6 +147,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📚 Все команды", callback_data="cmdopen")],
         [InlineKeyboardButton("🌐 Открыть Protogen Web", url=SITE_URL)]
     ])
 
@@ -155,6 +156,117 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=keyboard,
         parse_mode=ParseMode.HTML,
     )
+
+
+# =========================================================
+# COMMAND DIRECTORY / HELP
+# =========================================================
+COMMAND_CATEGORY_META = {
+    "Наказания": ("🛡️", "Модерация и наказания"),
+    "Очистка": ("🧹", "Удаление и очистка сообщений"),
+    "Пользователи": ("👤", "Информация об участниках"),
+    "Аналитика": ("📊", "Статистика и топы"),
+    "Инструменты": ("🧰", "Полезные инструменты"),
+    "Чат": ("💬", "Настройки и функции чата"),
+    "Социальные": ("⭐", "Репутация и награды"),
+    "Развлечения": ("🎮", "Игры и развлечения"),
+    "Роли": ("👑", "Роли и управление"),
+    "РП": ("🎭", "Ролевые действия"),
+}
+
+
+def _commands_for_role(chat_id, role_level):
+    session = Session()
+    try:
+        rows = (session.query(__import__('database').CommandPermission)
+                .filter(__import__('database').CommandPermission.enabled == True,
+                        __import__('database').CommandPermission.min_role_level <= role_level)
+                .order_by(__import__('database').CommandPermission.category,
+                          __import__('database').CommandPermission.id)
+                .all())
+        return [(r.command, r.label, r.category, r.description or "") for r in rows]
+    finally:
+        session.close()
+
+
+async def commands_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show only enabled commands available to the current user's Protogen role."""
+    if not update.effective_message:
+        return
+    level = await telegram_role_level(update)
+    rows = _commands_for_role(update.effective_chat.id if update.effective_chat else 0, level)
+    categories = {}
+    for command, label, category, description in rows:
+        categories.setdefault(category, []).append((command, label, description))
+
+    buttons = []
+    for category, items in categories.items():
+        icon = COMMAND_CATEGORY_META.get(category, ("📁", category))[0]
+        buttons.append([InlineKeyboardButton(f"{icon} {category} ({len(items)})", callback_data=f"cmdcat:{category}")])
+    buttons.append([InlineKeyboardButton("🏠 Главное меню", callback_data="cmdhome")])
+
+    text = (
+        "📚 <b>Все команды Protogen</b>\n\n"
+        "Здесь показаны только команды, которые доступны тебе сейчас.\n"
+        "Нажми на категорию, чтобы посмотреть подробности."
+    )
+    await update.effective_message.reply_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML)
+
+
+async def commands_category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data = query.data or ""
+    if data == "cmdopen":
+        level = await telegram_role_level(update)
+        rows = _commands_for_role(update.effective_chat.id if update.effective_chat else 0, level)
+        categories = {}
+        for command, label, category, description in rows:
+            categories.setdefault(category, []).append((command, label, description))
+        buttons = []
+        for category, items in categories.items():
+            icon = COMMAND_CATEGORY_META.get(category, ("📁", category))[0]
+            buttons.append([InlineKeyboardButton(f"{icon} {category} ({len(items)})", callback_data=f"cmdcat:{category}")])
+        buttons.append([InlineKeyboardButton("🏠 Главное меню", callback_data="cmdhome")])
+        await query.edit_message_text(
+            "📚 <b>Все команды Protogen</b>\n\nЗдесь показаны только команды, которые доступны тебе сейчас.\nНажми на категорию, чтобы посмотреть подробности.",
+            reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML
+        )
+        return
+    if data == "cmdhome":
+        # Rebuild the same dynamic menu without sending another message.
+        level = await telegram_role_level(update)
+        rows = _commands_for_role(update.effective_chat.id if update.effective_chat else 0, level)
+        categories = {}
+        for command, label, category, description in rows:
+            categories.setdefault(category, []).append((command, label, description))
+        buttons = []
+        for category, items in categories.items():
+            icon = COMMAND_CATEGORY_META.get(category, ("📁", category))[0]
+            buttons.append([InlineKeyboardButton(f"{icon} {category} ({len(items)})", callback_data=f"cmdcat:{category}")])
+        buttons.append([InlineKeyboardButton("🏠 Главное меню", callback_data="cmdhome")])
+        await query.edit_message_text(
+            "📚 <b>Все команды Protogen</b>\n\nЗдесь показаны только команды, которые доступны тебе сейчас.\nНажми на категорию, чтобы посмотреть подробности.",
+            reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML
+        )
+        return
+    if not data.startswith("cmdcat:"):
+        return
+    category = data.split(":", 1)[1]
+    level = await telegram_role_level(update)
+    rows = [r for r in _commands_for_role(update.effective_chat.id if update.effective_chat else 0, level) if r[2] == category]
+    if not rows:
+        await query.answer("В этой категории сейчас нет доступных команд.", show_alert=True)
+        return
+    icon, subtitle = COMMAND_CATEGORY_META.get(category, ("📁", "Команды"))
+    lines = [f"{icon} <b>{category}</b>", f"<i>{subtitle}</i>", ""]
+    for command, label, description in rows:
+        line = f"<code>{escape(command)}</code> — {escape(label)}"
+        if description:
+            line += f"\n   <i>{escape(description)}</i>"
+        lines.append(line)
+    buttons = [[InlineKeyboardButton("⬅️ К категориям", callback_data="cmdhome")]]
+    await query.edit_message_text("\n".join(lines), reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML)
 
 
 async def get_target(update: Update, command_name: str):

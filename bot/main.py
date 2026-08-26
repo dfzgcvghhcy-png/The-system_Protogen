@@ -16,6 +16,7 @@ from handlers import (
     welcome, rules, reputation, plus, reward, rewards, dice, eightball, random_cmd, choose, ship, weather,
     rating, reputation_vote, star_rating, my_stars, remove_reward, set_moderator_icon, chat_feature_command, rp_action,
     ban_vote_command, ban_vote_info, ban_vote_stop, ban_vote_list, ban_vote_callback, rp_help, rules_text_command, moderator_icon_text,
+    commands_menu, commands_category_callback,
     automod_message, restore_scheduled_actions,
     track_message,
     track_chat_member,
@@ -36,6 +37,7 @@ def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CallbackQueryHandler(ban_vote_callback, pattern=r"^banvote_(yes|no)_\d+$"))
+    app.add_handler(CallbackQueryHandler(commands_category_callback, pattern=r"^(cmdopen|cmdhome|cmdcat:.+)$"))
 
     app.add_handler(
         CallbackQueryHandler(
@@ -45,6 +47,8 @@ def main():
     )
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("commands", commands_menu))
+    app.add_handler(CommandHandler("help", commands_menu))
     app.add_handler(CommandHandler("warn", warn))
     app.add_handler(CommandHandler("ban", ban))
     app.add_handler(CommandHandler("unban", unban))
