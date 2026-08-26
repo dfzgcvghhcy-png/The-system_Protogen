@@ -1,0 +1,25 @@
+.commands-main{padding:26px 30px 50px;max-width:1250px;margin:0 auto}
+.commands-hero{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:24px}
+.commands-hero h1{margin:5px 0 8px;font-size:34px;letter-spacing:-.8px}
+.commands-hero p{margin:0;color:#8fa7b6}
+.command-count{min-width:145px;text-align:center;padding:14px 18px;border:1px solid rgba(0,255,225,.15);border-radius:16px;background:rgba(0,0,0,.18)}
+.command-count b{display:block;font-size:28px;color:#00ffe1}
+.command-count small{font-size:9px;letter-spacing:1.4px;color:#8fa7b6}
+.command-directory{display:grid;gap:12px}
+.command-section{border:1px solid rgba(0,255,225,.12);border-radius:17px;background:rgba(7,16,24,.72);overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.12)}
+.command-section-toggle{width:100%;border:0;background:transparent;color:inherit;padding:18px 20px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;text-align:left}
+.command-section-toggle:hover{background:rgba(0,255,225,.035)}
+.command-section-title strong{display:block;font-size:15px}
+.command-section-title small{display:block;margin-top:5px;color:#718898;font-size:11px}
+.command-section-toggle i{font-style:normal;font-size:20px;color:#00ffe1;transition:transform .22s ease}
+.command-section.open .command-section-toggle i{transform:rotate(180deg)}
+.command-section-content{display:grid;grid-template-rows:0fr;transition:grid-template-rows .25s ease}
+.command-section.open .command-section-content{grid-template-rows:1fr}
+.command-list{overflow:hidden;padding:0 20px}
+.command-section.open .command-list{padding-bottom:14px}
+.command-row{display:grid;grid-template-columns:170px 1fr;gap:18px;align-items:center;padding:13px 0;border-top:1px solid rgba(255,255,255,.055)}
+.command-name code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;color:#00ffe1;font-size:13px}
+.command-info b{display:block;font-size:12px;color:#dceaf1}
+.command-info small{display:block;margin-top:4px;color:#718898;font-size:11px}
+.empty-command-box{padding:28px;border:1px dashed rgba(0,255,225,.15);border-radius:16px;color:#8fa7b6;text-align:center}
+@media(max-width:700px){.commands-main{padding:20px 16px}.commands-hero{align-items:flex-start;flex-direction:column}.command-row{grid-template-columns:1fr;gap:6px}}

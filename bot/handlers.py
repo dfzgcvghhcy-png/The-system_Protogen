@@ -145,11 +145,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Управление, пользователи, статистика и инструменты "
         f"модерации находятся в одном месте."
     )
-
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📚 Все команды", callback_data="cmdopen")],
-        [InlineKeyboardButton("🌐 Открыть Protogen Web", url=SITE_URL)]
-    ])
+    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🌐 Открыть Protogen Web", url=SITE_URL)]])
 
     await update.message.reply_text(
         text,
@@ -157,36 +153,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode=ParseMode.HTML,
     )
 
-
-# =========================================================
-# COMMAND DIRECTORY / HELP
-# =========================================================
-COMMAND_CATEGORY_META = {
-    "Наказания": ("🛡️", "Модерация и наказания"),
-    "Очистка": ("🧹", "Удаление и очистка сообщений"),
-    "Пользователи": ("👤", "Информация об участниках"),
-    "Аналитика": ("📊", "Статистика и топы"),
-    "Инструменты": ("🧰", "Полезные инструменты"),
-    "Чат": ("💬", "Настройки и функции чата"),
-    "Социальные": ("⭐", "Репутация и награды"),
-    "Развлечения": ("🎮", "Игры и развлечения"),
-    "Роли": ("👑", "Роли и управление"),
-    "РП": ("🎭", "Ролевые действия"),
-}
-
-
-def _commands_for_role(chat_id, role_level):
-    session = Session()
-    try:
-        rows = (session.query(__import__('database').CommandPermission)
-                .filter(__import__('database').CommandPermission.enabled == True,
-                        __import__('database').CommandPermission.min_role_level <= role_level)
-                .order_by(__import__('database').CommandPermission.category,
-                          __import__('database').CommandPermission.id)
-                .all())
-        return [(r.command, r.label, r.category, r.description or "") for r in rows]
-    finally:
-        session.close()
 
 
 async def commands_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
