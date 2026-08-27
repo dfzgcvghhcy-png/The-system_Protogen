@@ -39,47 +39,33 @@
 
   topChatBtn?.addEventListener('click', () => toggleChat(true));
 
-  // Chat settings -> public command directory. This lives inside the chat UI,
-  // not in the protected system settings/admin navigation.
-  const chatSettingsBtn = $('#chatSettingsBtn');
-  const chatSettingsMenu = $('#chatSettingsMenu');
-  const chatCommandsBtn = $('#chatCommandsBtn');
-  const commandsOverlay = $('#commandsOverlay');
-  const commandsClose = $('#commandsClose');
+  // ---------------------------------------------------------
+  // PUBLIC COMMAND DIRECTORY — opens from the hero button next
+  // to "Настройки системы". It is a Web-only panel.
+  // ---------------------------------------------------------
+  const publicCommandsBtn = $('#publicCommandsBtn');
+  const globalCommandsOverlay = $('#globalCommandsOverlay');
+  const globalCommandsClose = $('#globalCommandsClose');
 
-  chatSettingsBtn?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const isOpen = !chatSettingsMenu?.hasAttribute('hidden');
-    if (!chatSettingsMenu) return;
-    chatSettingsMenu.toggleAttribute('hidden', isOpen);
-    chatSettingsBtn.setAttribute('aria-expanded', String(!isOpen));
-  });
-
-  document.addEventListener('click', (e) => {
-    if (!chatSettingsMenu || chatSettingsMenu.hasAttribute('hidden')) return;
-    if (!chatSettingsMenu.contains(e.target) && e.target !== chatSettingsBtn) {
-      chatSettingsMenu.setAttribute('hidden', '');
-      chatSettingsBtn?.setAttribute('aria-expanded', 'false');
-    }
-  });
-
-  function closeCommandDirectory() {
-    commandsOverlay?.setAttribute('hidden', '');
-    chatSettingsMenu?.setAttribute('hidden', '');
-    chatSettingsBtn?.setAttribute('aria-expanded', 'false');
+  function closeGlobalCommandDirectory() {
+    globalCommandsOverlay?.setAttribute('hidden', '');
+    document.body.classList.remove('commands-open');
   }
 
-  chatCommandsBtn?.addEventListener('click', () => {
-    commandsOverlay?.removeAttribute('hidden');
-    chatSettingsMenu?.setAttribute('hidden', '');
-    chatSettingsBtn?.setAttribute('aria-expanded', 'false');
+  publicCommandsBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    globalCommandsOverlay?.removeAttribute('hidden');
+    document.body.classList.add('commands-open');
   });
-  commandsClose?.addEventListener('click', closeCommandDirectory);
-  commandsOverlay?.addEventListener('click', (e) => {
-    if (e.target === commandsOverlay) closeCommandDirectory();
+
+  globalCommandsClose?.addEventListener('click', closeGlobalCommandDirectory);
+
+  globalCommandsOverlay?.addEventListener('click', (e) => {
+    if (e.target === globalCommandsOverlay) closeGlobalCommandDirectory();
   });
+
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeCommandDirectory();
+    if (e.key === 'Escape') closeGlobalCommandDirectory();
   });
 
   $$('.public-command-toggle').forEach(btn => {

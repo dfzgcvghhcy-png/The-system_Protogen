@@ -532,3 +532,38 @@ body.admin-transitioning .admin-cta b{
     scrollbar-width:thin;
   }
 }
+
+/* =========================================================
+   PUBLIC "ALL COMMANDS" BUTTON + GLOBAL COMMAND DIRECTORY
+   ========================================================= */
+.commands-cta{
+  min-height:42px;padding:0 16px;border-radius:11px;
+  display:inline-flex;align-items:center;justify-content:center;gap:4px;
+  border:1px solid rgba(0,255,225,.24);
+  background:rgba(4,15,22,.78);color:#c9ffff;
+  font-size:10px;font-weight:900;letter-spacing:.8px;cursor:pointer;
+  transition:.22s;
+}
+.commands-cta:hover{
+  border-color:rgba(0,255,225,.58);
+  color:#fff;
+  background:rgba(0,255,225,.07);
+  box-shadow:0 0 28px rgba(0,255,225,.12);
+  transform:translateY(-1px);
+}
+.commands-cta b{margin-left:8px}
+.global-commands-overlay{
+  position:fixed !important;
+  inset:0 !important;
+  z-index:1000 !important;
+  padding:28px !important;
+}
+.global-commands-overlay .commands-modal{
+  width:min(920px,100%);
+  height:min(820px,100%);
+  max-height:calc(100vh - 56px);
+}
+body.commands-open{overflow:hidden}
+@media(max-width:900px){
+  .hero-actions{flex-wrap:wrap}
+}
