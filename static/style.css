@@ -567,5 +567,3 @@ body.commands-open{overflow:hidden}
 @media(max-width:900px){
   .hero-actions{flex-wrap:wrap}
 }
-
-.commands-cta{text-decoration:none}

@@ -47,9 +47,9 @@
             <a class="admin-cta" href="/admin/login">
               ⚙ &nbsp; НАСТРОЙКИ СИСТЕМЫ <b>→</b>
             </a>
-            <a class="commands-cta" href="/commands">
+            <button class="commands-cta" id="publicCommandsBtn" type="button">
               📚 &nbsp; ВСЕ КОМАНДЫ <b>→</b>
-            </a>
+            </button>
           </div>
         </div>
 
@@ -107,6 +107,42 @@
         </div>
 
         <div class="chat-area" id="messages" aria-live="polite"></div>
+
+        <div class="commands-overlay" id="commandsOverlay" hidden>
+          <div class="commands-modal" role="dialog" aria-modal="true" aria-labelledby="commandsTitle">
+            <div class="commands-modal-head">
+              <div>
+                <span class="eyebrow">PROTOGEN // CHAT</span>
+                <h2 id="commandsTitle">📚 Все команды</h2>
+                <p>Команды Protogen в одном месте.</p>
+              </div>
+              <button type="button" class="commands-close" id="commandsClose" aria-label="Закрыть">×</button>
+            </div>
+            <div class="commands-modal-body" id="publicCommandCatalog">
+              {% set icons = {
+                'Наказания':'🛡️','Очистка':'🧹','Пользователи':'👤','Аналитика':'📊',
+                'Инструменты':'🧰','Чат':'💬','Социальные':'⭐','Развлечения':'🎮',
+                'Роли':'👑','РП':'🎭'
+              } %}
+              {% for category, items in command_catalog|groupby('category') %}
+              <section class="public-command-section">
+                <button type="button" class="public-command-toggle" aria-expanded="false">
+                  <span><b>{{ icons.get(category, '📁') }} {{ category }}</b><small>{{ items|list|length }} команд</small></span>
+                  <i>⌄</i>
+                </button>
+                <div class="public-command-content">
+                  {% for item in items %}
+                  <div class="public-command-row">
+                    <code>{{ item.command }}</code>
+                    <div><b>{{ item.label }}</b><small>{{ item.description }}</small></div>
+                  </div>
+                  {% endfor %}
+                </div>
+              </section>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
 
         <div class="chat-input">
           <input id="input" type="text" placeholder="Напиши что-нибудь..." autocomplete="off">
@@ -186,6 +222,43 @@
       </aside>
     </section>
   </main>
+
+  <!-- PUBLIC COMMAND DIRECTORY: opened by the button next to system settings. -->
+  <div class="commands-overlay global-commands-overlay" id="globalCommandsOverlay" hidden>
+    <div class="commands-modal" role="dialog" aria-modal="true" aria-labelledby="globalCommandsTitle">
+      <div class="commands-modal-head">
+        <div>
+          <span class="eyebrow">PROTOGEN // COMMAND CENTER</span>
+          <h2 id="globalCommandsTitle">📚 Все команды</h2>
+          <p>Все доступные команды Protogen в одном месте.</p>
+        </div>
+        <button type="button" class="commands-close" id="globalCommandsClose" aria-label="Закрыть">×</button>
+      </div>
+      <div class="commands-modal-body" id="globalPublicCommandCatalog">
+        {% set icons = {
+          'Наказания':'🛡️','Очистка':'🧹','Пользователи':'👤','Аналитика':'📊',
+          'Инструменты':'🧰','Чат':'💬','Социальные':'⭐','Развлечения':'🎮',
+          'Роли':'👑','РП':'🎭'
+        } %}
+        {% for category, items in command_catalog|groupby('category') %}
+        <section class="public-command-section">
+          <button type="button" class="public-command-toggle" aria-expanded="false">
+            <span><b>{{ icons.get(category, '📁') }} {{ category }}</b><small>{{ items|list|length }} команд</small></span>
+            <i>⌄</i>
+          </button>
+          <div class="public-command-content">
+            {% for item in items %}
+            <div class="public-command-row">
+              <code>{{ item.command }}</code>
+              <div><b>{{ item.label }}</b><small>{{ item.description }}</small></div>
+            </div>
+            {% endfor %}
+          </div>
+        </section>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
 
   <div class="admin-transition" aria-hidden="true"></div>
 

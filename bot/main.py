@@ -1,17 +1,12 @@
 from telegram import Update
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    CallbackQueryHandler,
-    MessageHandler,
-    ChatMemberHandler,
-    filters as tg_filters,
-)
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, ChatMemberHandler, filters as tg_filters
 
-from handlers import (
-    start, warn, ban, unban, mute, unmute, kick, panel, buttons,
-    track_message, track_chat_member, track_my_chat_member,
-    who_admin, my_stats,
+from handlers import start, warn, ban, unban, mute, unmute, kick, panel, buttons, track_message, track_chat_member, track_my_chat_member, who_admin, my_stats
+from commands_extra import (
+    stats, top, bookmark, bookmarks, note, notes, timer, weather, warns, unwarn, tempmute,
+    commands, help_command, dice, eightball, random_command, choose, ship,
+    setmod, delmod, mods, modicon, welcome, rules, rp, reputation, plus, minus, rating,
+    star, stars, mystars, reward, rewards, removereward, my_article,
 )
 from config import TOKEN
 
@@ -23,40 +18,32 @@ async def error_handler(update: Update, context):
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # Кнопки панели.
-    app.add_handler(CallbackQueryHandler(
-        buttons, pattern=r"^(panel_|user_|action_|mod_|warns$|bans$|history_|activity_|moduser_)"
-    ))
+    app.add_handler(CallbackQueryHandler(buttons, pattern=r"^(panel_|user_|action_|mod_|warns$|bans$|history_|activity_|moduser_|mute_menu_|mute_for_)") )
 
-    # Команды.
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("warn", warn))
-    app.add_handler(CommandHandler("ban", ban))
-    app.add_handler(CommandHandler("unban", unban))
-    app.add_handler(CommandHandler("mute", mute))
-    app.add_handler(CommandHandler("unmute", unmute))
-    app.add_handler(CommandHandler("kick", kick))
-    app.add_handler(CommandHandler("panel", panel))
+    command_handlers = {
+        "start": start, "warn": warn, "ban": ban, "unban": unban, "mute": mute, "tempmute": tempmute, "unmute": unmute, "kick": kick,
+        "panel": panel, "stats": stats, "top": top, "bookmark": bookmark, "bookmarks": bookmarks, "note": note, "notes": notes,
+        "timer": timer, "weather": weather, "warns": warns, "unwarn": unwarn, "commands": commands, "help": help_command,
+        "dice": dice, "8ball": eightball, "random": random_command, "choose": choose, "ship": ship,
+        "setmod": setmod, "delmod": delmod, "mods": mods, "modicon": modicon, "welcome": welcome, "rules": rules,
+        "rp": rp, "reputation": reputation, "plus": plus, "minus": minus, "rating": rating, "star": star, "stars": stars, "mystars": mystars,
+        "reward": reward, "rewards": rewards, "removereward": removereward,
+    }
+    for name, handler in command_handlers.items():
+        app.add_handler(CommandHandler(name, handler), group=0)
 
-    # Команды Iris-стиля без слеша.
+    # Iris-style commands without slash.
     app.add_handler(MessageHandler(tg_filters.Regex(r"(?i)^\s*кто\s+админ\s*$"), who_admin), group=0)
     app.add_handler(MessageHandler(tg_filters.Regex(r"(?i)^\s*моя\s+стата\s*$"), my_stats), group=0)
+    app.add_handler(MessageHandler(tg_filters.Regex(r"(?i)^\s*моя\s+статья\s*$"), my_article), group=0)
 
-    # Автоматическое наблюдение за сообщениями и изменениями участников.
     app.add_handler(MessageHandler(tg_filters.ALL, track_message), group=1)
     app.add_handler(ChatMemberHandler(track_chat_member, ChatMemberHandler.CHAT_MEMBER))
     app.add_handler(ChatMemberHandler(track_my_chat_member, ChatMemberHandler.MY_CHAT_MEMBER))
-
     app.add_error_handler(error_handler)
 
     print("🐾 The system_Protogen запущен")
-
-    app.run_polling(allowed_updates=[
-        "message",
-        "callback_query",
-        "chat_member",
-        "my_chat_member",
-    ])
+    app.run_polling(allowed_updates=["message", "callback_query", "chat_member", "my_chat_member"])
 
 
 if __name__ == "__main__":
