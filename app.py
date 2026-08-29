@@ -335,15 +335,14 @@ def dashboard_data():
         db.close()
 
 
-@app.route("/")
-def index():
-    # The public Web chat has its own command directory. It is intentionally
-    # not exposed through the admin/settings navigation.
+def _public_command_catalog():
     catalog = []
     if SessionLocal:
         db = SessionLocal()
         try:
-            rows = db.query(CommandPermission).filter(CommandPermission.enabled.is_(True)).order_by(CommandPermission.category, CommandPermission.id).all()
+            rows = (db.query(CommandPermission)
+                    .filter(CommandPermission.enabled.is_(True))
+                    .order_by(CommandPermission.category, CommandPermission.id).all())
             catalog = [
                 {"command": r.command, "label": r.label, "category": r.category, "description": r.description or ""}
                 for r in rows
@@ -359,7 +358,38 @@ def index():
             for command, label, category, level, enabled, description in DEFAULT_COMMAND_PERMISSIONS
             if enabled and command not in ("/commands", "/help")
         ]
-    return render_template("index.html", command_catalog=catalog)
+    return catalog
+
+
+def _public_command_catalog():
+    catalog = []
+    if SessionLocal:
+        db = SessionLocal()
+        try:
+            rows = (db.query(CommandPermission)
+                    .filter(CommandPermission.enabled.is_(True))
+                    .order_by(CommandPermission.category, CommandPermission.id).all())
+            catalog = [{"command": r.command, "label": r.label, "category": r.category, "description": r.description or ""} for r in rows]
+        except Exception as e:
+            db.rollback()
+            print(f"PUBLIC COMMAND CATALOG ERROR: {type(e).__name__}: {e}")
+        finally:
+            db.close()
+    if not catalog:
+        catalog = [{"command": command, "label": label, "category": category, "description": description}
+                   for command, label, category, level, enabled, description in DEFAULT_COMMAND_PERMISSIONS
+                   if enabled and command not in ("/commands", "/help")]
+    return catalog
+
+
+@app.route("/")
+def index():
+    return render_template("index.html", command_catalog=_public_command_catalog())
+
+
+@app.route("/commands")
+def public_commands():
+    return render_template("commands.html", command_catalog=_public_command_catalog())
 
 
 @app.route("/chat", methods=["POST"])

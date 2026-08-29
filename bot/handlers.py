@@ -1795,53 +1795,6 @@ async def my_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally: session.close()
 
 
-async def protogen_prediction(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Шуточный ответ на «Протоген, ...» / «Протя, ...» с случайным участником."""
-    message = update.effective_message
-    chat = update.effective_chat
-    if not message or not message.text or not chat or chat.type not in ("group", "supergroup"):
-        return
-
-    raw = re.sub(r"(?i)^\s*(?:протоген|протя)\s*,\s*", "", message.text).strip()
-    if not raw:
-        return
-
-    session = Session()
-    try:
-        candidates = (
-            session.query(ChatUser)
-            .filter(
-                ChatUser.chat_id == chat.id,
-                ChatUser.status.notin_(["left", "kicked"]),
-            )
-            .all()
-        )
-
-        # Не выбираем самого бота и по возможности автора запроса.
-        candidates = [u for u in candidates if u.user_id != context.bot.id and u.user_id != update.effective_user.id]
-        if not candidates:
-            return await message.reply_text("🔮 В чате пока некого выбрать для предсказания.")
-
-        import random
-        target = random.choice(candidates)
-        name = target.first_name or target.username or str(target.user_id)
-        mention = f'<a href="tg://user?id={target.user_id}">{_safe_text(name, "Участник")}</a>'
-
-        # Для формата «кто сегодня ...» убираем «кто», чтобы фраза звучала естественно.
-        prediction = re.sub(r"(?iu)^кто\s+", "", raw).strip()
-        if prediction:
-            text = f"🔮 Ясно вижу, что {mention} {prediction}"
-        else:
-            text = f"🔮 Ясно вижу, что {mention}"
-
-        await message.reply_text(text, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
-    except Exception as e:
-        session.rollback()
-        print(f"PROTOGEN PREDICTION ERROR: {type(e).__name__}: {e}")
-    finally:
-        session.close()
-
-
 # =========================================================
 # CUSTOM REASON COMPATIBILITY
 # =========================================================

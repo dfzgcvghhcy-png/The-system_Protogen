@@ -11,7 +11,7 @@ from telegram.ext import (
 from handlers import (
     start, warn, ban, unban, mute, unmute, kick, panel, buttons,
     track_message, track_chat_member, track_my_chat_member,
-    who_admin, my_stats, protogen_prediction,
+    who_admin, my_stats,
 )
 from config import TOKEN
 
@@ -41,14 +41,6 @@ def main():
     # Команды Iris-стиля без слеша.
     app.add_handler(MessageHandler(tg_filters.Regex(r"(?i)^\s*кто\s+админ\s*$"), who_admin), group=0)
     app.add_handler(MessageHandler(tg_filters.Regex(r"(?i)^\s*моя\s+стата\s*$"), my_stats), group=0)
-
-    app.add_handler(
-        MessageHandler(
-            tg_filters.Regex(r"(?i)^\s*(?:протоген|протя)\s*,\s*.+$"),
-            protogen_prediction,
-        ),
-        group=0,
-    )
 
     # Автоматическое наблюдение за сообщениями и изменениями участников.
     app.add_handler(MessageHandler(tg_filters.ALL, track_message), group=1)
