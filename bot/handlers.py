@@ -2,7 +2,7 @@ from telegram import Update, ChatPermissions, InlineKeyboardButton, InlineKeyboa
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 from database import Session, User, Punishment, Activity, BotSetting, Chat, ChatUser, ChatActivity, ChatPunishment
-from filters import is_admin, bot_can_restrict
+from filters import is_admin, bot_can_restrict, check_command_access
 from datetime import datetime, timezone, timedelta
 import pytz
 import io
@@ -418,6 +418,118 @@ async def kick(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+
+
+# =========================================================
+# УДАЛЕНИЕ СООБЩЕНИЙ
+# =========================================================
+
+async def _bulk_delete_message_ids(bot, chat_id, message_ids):
+    """Удаляет сообщения небольшими пачками через Telegram Bot API."""
+    ids = sorted({int(mid) for mid in message_ids if mid and int(mid) > 0})
+    if not ids:
+        return 0
+
+    deleted = 0
+    for start in range(0, len(ids), 100):
+        chunk = ids[start:start + 100]
+        try:
+            ok = await bot.delete_messages(chat_id=chat_id, message_ids=chunk)
+            if ok:
+                deleted += len(chunk)
+        except Exception as e:
+            # Если пачка содержит недоступное сообщение, удаляем по одному,
+            # чтобы одна старая/служебная запись не ломала всю очистку.
+            print(f"BULK DELETE FALLBACK: {type(e).__name__}: {e}")
+            for message_id in chunk:
+                try:
+                    await bot.delete_message(chat_id=chat_id, message_id=message_id)
+                    deleted += 1
+                except Exception as item_error:
+                    print(f"DELETE MESSAGE {message_id} ERROR: {type(item_error).__name__}: {item_error}")
+    return deleted
+
+
+async def delete_message_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Удалить сообщение, на которое ответили командой /del."""
+    if not await check_command_access(update, context, "/del"):
+        return
+
+    reply = update.message.reply_to_message
+    if not reply:
+        return await update.message.reply_text(
+            "⚠️ Ответь командой /del на сообщение, которое нужно удалить."
+        )
+
+    try:
+        await context.bot.delete_message(update.effective_chat.id, reply.message_id)
+        await context.bot.delete_message(update.effective_chat.id, update.message.message_id)
+    except Exception as e:
+        print(f"DEL ERROR: {type(e).__name__}: {e}")
+        await update.message.reply_text(
+            "❌ Не удалось удалить сообщение.\n\n"
+            "Проверь, что Protogen является администратором и имеет право "
+            "удалять сообщения."
+        )
+
+
+async def clear_messages_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Массово удалить последние N сообщений, включая команду."""
+    if not await check_command_access(update, context, "/clear"):
+        return
+
+    amount = 10
+    if context.args:
+        try:
+            amount = int(context.args[0])
+        except ValueError:
+            return await update.message.reply_text("⚠️ Использование: /clear <количество>")
+
+    if not 1 <= amount <= 100:
+        return await update.message.reply_text("⚠️ Количество сообщений должно быть от 1 до 100.")
+
+    current_id = update.message.message_id
+    ids = range(max(1, current_id - amount + 1), current_id + 1)
+
+    try:
+        deleted = await _bulk_delete_message_ids(
+            context.bot, update.effective_chat.id, ids
+        )
+        if deleted == 0:
+            await update.message.reply_text("❌ Не удалось удалить сообщения.")
+    except Exception as e:
+        print(f"CLEAR ERROR: {type(e).__name__}: {e}")
+        await update.message.reply_text(
+            "❌ Не удалось очистить сообщения. Проверь права Protogen."
+        )
+
+
+async def purge_messages_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Очистить диапазон сообщений от сообщения-ответа до команды /purge."""
+    if not await check_command_access(update, context, "/purge"):
+        return
+
+    reply = update.message.reply_to_message
+    if not reply:
+        return await update.message.reply_text(
+            "⚠️ Ответь командой /purge на первое сообщение диапазона."
+        )
+
+    first_id = min(reply.message_id, update.message.message_id)
+    last_id = max(reply.message_id, update.message.message_id)
+    ids = range(first_id, last_id + 1)
+
+    try:
+        deleted = await _bulk_delete_message_ids(
+            context.bot, update.effective_chat.id, ids
+        )
+        if deleted == 0:
+            await update.message.reply_text("❌ Не удалось удалить выбранный диапазон.")
+    except Exception as e:
+        print(f"PURGE ERROR: {type(e).__name__}: {e}")
+        await update.message.reply_text(
+            "❌ Не удалось очистить выбранный диапазон. Проверь права Protogen."
+        )
 
 
 # =========================================================
