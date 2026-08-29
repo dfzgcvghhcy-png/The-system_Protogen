@@ -1088,7 +1088,16 @@ async def show_user_history(query, user_id):
                 icon = {"warn":"⚠️","unwarn":"🧹","mute":"🔇","ban":"🚫","kick":"👢"}.get(p.type, "📌")
                 when = p.created_at.strftime("%d.%m %H:%M") if p.created_at else "—"
                 text += f"{icon} <b>{p.type}</b> · {when}\n📝 {_safe_text(p.reason, 'Не указана')}\n\n"
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Профиль", callback_data=f"user_{user_id}")]]), parse_mode=ParseMode.HTML)
+        markup = InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Профиль", callback_data=f"user_{user_id}")]])
+        # Профиль пользователя — фото-сообщение. Его нельзя редактировать как текст.
+        if query.message and query.message.photo:
+            try:
+                await query.message.delete()
+            except Exception as e:
+                print(f"USER HISTORY PHOTO DELETE ERROR: {type(e).__name__}: {e}")
+            await query.message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+        else:
+            await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
     finally:
         session.close()
 
@@ -1142,11 +1151,24 @@ async def show_activity(query, user_id):
             ]
         ])
 
-        await query.edit_message_text(
-            text,
-            reply_markup=keyboard,
-            parse_mode=ParseMode.HTML,
-        )
+        # Если активность открыта из графического профиля, callback
+        # приходит от PHOTO-сообщения. edit_message_text() для фото невозможен.
+        if query.message and query.message.photo:
+            try:
+                await query.message.delete()
+            except Exception as e:
+                print(f"ACTIVITY PHOTO DELETE ERROR: {type(e).__name__}: {e}")
+            await query.message.reply_text(
+                text,
+                reply_markup=keyboard,
+                parse_mode=ParseMode.HTML,
+            )
+        else:
+            await query.edit_message_text(
+                text,
+                reply_markup=keyboard,
+                parse_mode=ParseMode.HTML,
+            )
 
     finally:
         session.close()

@@ -13,19 +13,7 @@ from filters import is_admin, bot_can_restrict
 
 
 def _name(user):
-    if user is None:
-        return "Пользователь"
-    full_name = getattr(user, "full_name", None)
-    if full_name:
-        return full_name
-    first = getattr(user, "first_name", None) or ""
-    last = getattr(user, "last_name", None) or ""
-    if (first + last).strip():
-        return (first + " " + last).strip()
-    username = getattr(user, "username", None)
-    if username:
-        return f"@{username}" if not str(username).startswith("@") else str(username)
-    return str(getattr(user, "id", "Пользователь"))
+    return user.full_name or (f"@{user.username}" if user.username else str(user.id))
 
 
 def _target_from_reply(update):
@@ -246,72 +234,6 @@ async def tempmute(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"🔇 {_name(target)} получил мут на <b>{duration}</b>.", parse_mode=ParseMode.HTML)
     except Exception as e:
         await update.message.reply_text(f"❌ Не удалось выдать мут: {e}")
-
-
-async def _moderator_required(update, context):
-    if not await is_admin(update, context):
-        await update.message.reply_text("❌ У тебя нет прав администратора.")
-        return False
-    if not await bot_can_restrict(update, context):
-        # Для удаления сообщений Telegram требует can_delete_messages.
-        member = await update.effective_chat.get_member(context.bot.id)
-        if member.status != "creator" and not getattr(member, "can_delete_messages", False):
-            await update.message.reply_text("❌ У бота нет права удалять сообщения.")
-            return False
-    return True
-
-
-async def delete_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await _moderator_required(update, context):
-        return
-    reply = update.message.reply_to_message if update.message else None
-    if not reply:
-        return await update.message.reply_text("🧹 Ответь командой /del на сообщение, которое нужно удалить.")
-    try:
-        await context.bot.delete_message(update.effective_chat.id, reply.message_id)
-        await context.bot.delete_message(update.effective_chat.id, update.message.message_id)
-    except Exception as e:
-        print(f"DEL ERROR: {type(e).__name__}: {e}")
-        await update.message.reply_text("❌ Не удалось удалить сообщение. Проверь права бота.")
-
-
-async def clear_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await _moderator_required(update, context):
-        return
-    try:
-        count = int(context.args[0]) if context.args else 20
-    except ValueError:
-        return await update.message.reply_text("🧹 Использование: /clear 20")
-    count = max(1, min(count, 100))
-    chat_id = update.effective_chat.id
-    start_id = max(1, update.message.message_id - count)
-    deleted = 0
-    for message_id in range(start_id, update.message.message_id + 1):
-        try:
-            await context.bot.delete_message(chat_id, message_id)
-            deleted += 1
-        except Exception:
-            pass
-    # Ничего не отправляем после очистки, чтобы команда сама не оставалась в чате.
-
-
-async def purge_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await _moderator_required(update, context):
-        return
-    reply = update.message.reply_to_message if update.message else None
-    if not reply:
-        return await update.message.reply_text("🧹 Ответь /purge на сообщение, с которого нужно начать очистку.")
-    chat_id = update.effective_chat.id
-    first_id = min(reply.message_id, update.message.message_id)
-    last_id = max(reply.message_id, update.message.message_id)
-    deleted = 0
-    for message_id in range(first_id, last_id + 1):
-        try:
-            await context.bot.delete_message(chat_id, message_id)
-            deleted += 1
-        except Exception:
-            pass
-
 
 
 COMMAND_LIST = {
