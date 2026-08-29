@@ -1,12 +1,141 @@
 <!doctype html>
 <html lang="ru">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Protogen — Команды</title><link rel="stylesheet" href="/static/style.css"><link rel="stylesheet" href="/static/commands.css"></head>
-<body class="commands-article-page"><div class="page-glow"></div>
-<header class="topbar"><div class="brand"><div class="brand-avatar"><img src="/static/my_avatar.png" alt="Protogen Bot"></div><div class="brand-copy"><strong>PROTOGEN BOT</strong><span><i></i> THE SYSTEM // PROTOGEN</span></div></div><div class="topbar-spacer"></div><div class="system-pill"><i></i> СИСТЕМА АКТИВНА</div></header>
-<main class="commands-article-shell">
-<article class="commands-article"><header class="commands-article-hero"><div class="eyebrow">THE SYSTEM // PROTOGEN</div><h1>Команды Protogen</h1><p>Полный справочник команд бота и их возможностей.</p></header>
-<div class="commands-article-body">
-{% set icons = {'Наказания':'🛡️','Очистка':'🧹','Пользователи':'👤','Аналитика':'📊','Инструменты':'🧰','Чат':'💬','Социальные':'⭐','Развлечения':'🎮','Роли':'👑','РП':'🎭'} %}
-{% for category, items in command_catalog|groupby('category') %}<section id="cat-{{ loop.index }}"><h2>{{ icons.get(category, '📁') }} {{ category }}</h2>{% for item in items %}<div class="command-entry"><code>{{ item.command }}</code><b>{{ item.label }}</b><small>{{ item.description or 'Команда Protogen.' }}</small></div>{% endfor %}</section>{% else %}<p>Команды пока не настроены.</p>{% endfor %}<a class="commands-back" href="/">← Вернуться на главную</a></div></article>
-<aside class="commands-toc">{% set icons = {'Наказания':'🛡️','Очистка':'🧹','Пользователи':'👤','Аналитика':'📊','Инструменты':'🧰','Чат':'💬','Социальные':'⭐','Развлечения':'🎮','Роли':'👑','РП':'🎭'} %}<div class="commands-toc-title"># СОДЕРЖАНИЕ</div>{% for category, items in command_catalog|groupby('category') %}<a href="#cat-{{ loop.index }}">{{ loop.index }}. {{ icons.get(category, '📁') }} {{ category }}</a>{% endfor %}</aside>
-</main></body></html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Protogen — Команды</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/commands.css">
+</head>
+<body class="commands-center-page">
+  <div class="cmd-bg-grid"></div>
+  <div class="cmd-orb cmd-orb-a"></div>
+  <div class="cmd-orb cmd-orb-b"></div>
+
+  <header class="cmd-topbar">
+    <a class="cmd-brand" href="/">
+      <span class="cmd-brand-avatar"><img src="/static/my_avatar.png" alt="Protogen Bot"></span>
+      <span class="cmd-brand-text"><strong>PROTOGEN BOT</strong><small><i></i> THE SYSTEM // PROTOGEN</small></span>
+    </a>
+    <div class="cmd-system-status"><i></i> СИСТЕМА АКТИВНА</div>
+  </header>
+
+  <main class="command-center-shell">
+    <section class="command-center-main">
+      <div class="command-hero">
+        <div>
+          <div class="cmd-eyebrow">THE SYSTEM // PROTOGEN</div>
+          <h1>Команды <span>Protogen</span></h1>
+          <p>Полный справочник команд бота и их возможностей.</p>
+        </div>
+        <div class="cmd-hero-logo"><img src="/static/my_avatar.png" alt=""></div>
+      </div>
+
+      <div class="command-toolbar">
+        <div class="command-tabs" id="commandTabs">
+          <button class="command-tab active" data-filter="all">▦ &nbsp;Все команды</button>
+          {% set ns = namespace(categories=[]) %}
+          {% for item in command_catalog %}
+            {% if item.category not in ns.categories %}{% set ns.categories = ns.categories + [item.category] %}{% endif %}
+          {% endfor %}
+          {% set tab_icons = {'Аналитика':'▥','Инструменты':'▣','Наказания':'♢','Очистка':'⌫','Пользователи':'♟','Развлечения':'◈','Роли':'♛','РП':'♜','Социальные':'★','Чат':'●'} %}
+          {% for category in ns.categories %}
+            <button class="command-tab" data-filter="{{ category }}">{{ tab_icons.get(category,'◈') }} &nbsp;{{ category }}</button>
+          {% endfor %}
+        </div>
+        <label class="command-search"><span>⌕</span><input id="commandSearch" type="search" placeholder="Поиск команды..."></label>
+      </div>
+
+      <div class="command-directory" id="commandDirectory">
+        {% set icons = {'Наказания':'🛡️','Очистка':'🧹','Пользователи':'👤','Аналитика':'📊','Инструменты':'🧰','Чат':'💬','Социальные':'⭐','Развлечения':'🎮','Роли':'👑','РП':'🎭'} %}
+        {% for category, items in command_catalog|groupby('category') %}
+        <section class="command-section" data-category="{{ category }}" id="cat-{{ loop.index }}">
+          <div class="command-section-head">
+            <div class="command-section-title"><span class="section-icon">{{ icons.get(category,'📁') }}</span><div><h2>{{ category }}</h2><small>{{ items|list|length }} {{ 'команда' if (items|list|length) == 1 else 'команд' }}</small></div></div>
+            <span class="section-arrow">⌄</span>
+          </div>
+          <div class="command-list">
+            {% for item in items %}
+            <button class="command-card" type="button" data-command="{{ item.command|e }}" data-label="{{ item.label|e }}" data-description="{{ (item.description or 'Команда Protogen.')|e }}">
+              <span class="command-card-icon">{{ icons.get(category,'◈') }}</span>
+              <span class="command-card-copy"><code>{{ item.command }}</code><strong>{{ item.label }}</strong><small>{{ item.description or 'Команда Protogen.' }}</small></span>
+              <span class="command-access">✦ Доступно всем</span>
+              <span class="command-chevron">›</span>
+            </button>
+            {% endfor %}
+          </div>
+        </section>
+        {% else %}
+          <div class="commands-empty">Команды пока не настроены.</div>
+        {% endfor %}
+        <a class="commands-home-link" href="/">← Вернуться на главную</a>
+      </div>
+    </section>
+
+    <aside class="command-sidebar">
+      <div class="toc-card">
+        <div class="toc-heading"><span>#</span> СОДЕРЖАНИЕ</div>
+        <nav id="commandToc">
+          {% for category, items in command_catalog|groupby('category') %}
+          <a href="#cat-{{ loop.index }}" data-toc="{{ category }}"><b>{{ '%02d'|format(loop.index) }}</b><span>{{ icons.get(category,'📁') if icons is defined else '◈' }} {{ category }}</span><i>›</i></a>
+          {% endfor %}
+        </nav>
+      </div>
+      <div class="cmd-tip-card">
+        <div class="tip-avatar"><img src="/static/my_avatar.png" alt=""></div>
+        <div><strong>Подсказка</strong><p>Нажмите на команду, чтобы узнать подробнее и скопировать её.</p></div>
+      </div>
+    </aside>
+  </main>
+
+  <div class="command-detail" id="commandDetail" aria-hidden="true">
+    <div class="command-detail-backdrop" data-close-detail></div>
+    <div class="command-detail-box" role="dialog" aria-modal="true">
+      <button class="detail-close" type="button" data-close-detail>×</button>
+      <div class="detail-kicker">PROTOGEN // COMMAND</div>
+      <code id="detailCommand"></code>
+      <h3 id="detailLabel"></h3>
+      <p id="detailDescription"></p>
+      <button class="detail-copy" id="detailCopy" type="button">⧉ Скопировать команду</button>
+      <span class="copy-state" id="copyState"></span>
+    </div>
+  </div>
+
+<script>
+(function(){
+  const tabs=[...document.querySelectorAll('.command-tab')];
+  const sections=[...document.querySelectorAll('.command-section')];
+  const search=document.getElementById('commandSearch');
+  const toc=[...document.querySelectorAll('[data-toc]')];
+  const detail=document.getElementById('commandDetail');
+  const dCmd=document.getElementById('detailCommand'), dLabel=document.getElementById('detailLabel'), dDesc=document.getElementById('detailDescription');
+  let active='all';
+  function apply(){
+    const q=(search.value||'').trim().toLowerCase();
+    sections.forEach(s=>{
+      const category=s.dataset.category;
+      const catOk=active==='all'||category===active;
+      let visible=0;
+      s.querySelectorAll('.command-card').forEach(card=>{
+        const hay=(card.dataset.command+' '+card.dataset.label+' '+card.dataset.description).toLowerCase();
+        const ok=catOk && (!q||hay.includes(q));
+        card.hidden=!ok; if(ok) visible++;
+      });
+      s.hidden=visible===0;
+    });
+  }
+  tabs.forEach(t=>t.addEventListener('click',()=>{tabs.forEach(x=>x.classList.remove('active'));t.classList.add('active');active=t.dataset.filter;apply();}));
+  search.addEventListener('input',apply);
+  document.querySelectorAll('.command-section-head').forEach(h=>h.addEventListener('click',()=>h.parentElement.classList.toggle('collapsed')));
+  document.querySelectorAll('.command-card').forEach(card=>card.addEventListener('click',()=>{
+    dCmd.textContent=card.dataset.command; dLabel.textContent=card.dataset.label; dDesc.textContent=card.dataset.description;
+    detail.classList.add('open'); detail.setAttribute('aria-hidden','false'); document.getElementById('copyState').textContent='';
+  }));
+  document.querySelectorAll('[data-close-detail]').forEach(x=>x.addEventListener('click',()=>{detail.classList.remove('open');detail.setAttribute('aria-hidden','true');}));
+  document.getElementById('detailCopy').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(dCmd.textContent);document.getElementById('copyState').textContent='Скопировано';}catch(e){document.getElementById('copyState').textContent='Не удалось скопировать';}});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')detail.classList.remove('open');});
+  toc.forEach(a=>a.addEventListener('click',()=>{const target=document.getElementById(a.getAttribute('href').slice(1));if(target){setTimeout(()=>target.scrollIntoView({behavior:'smooth',block:'start'}),0);}}));
+})();
+</script>
+</body>
+</html>
