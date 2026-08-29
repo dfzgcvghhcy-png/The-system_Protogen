@@ -12,7 +12,6 @@ from handlers import (
     start, warn, ban, unban, mute, unmute, kick, panel, buttons,
     track_message, track_chat_member, track_my_chat_member,
     who_admin, my_stats,
-    delete_message_command, clear_messages_command, purge_messages_command,
 )
 from config import TOKEN
 
@@ -38,9 +37,6 @@ def main():
     app.add_handler(CommandHandler("unmute", unmute))
     app.add_handler(CommandHandler("kick", kick))
     app.add_handler(CommandHandler("panel", panel))
-    app.add_handler(CommandHandler("del", delete_message_command))
-    app.add_handler(CommandHandler("clear", clear_messages_command))
-    app.add_handler(CommandHandler("purge", purge_messages_command))
 
     # Команды Iris-стиля без слеша.
     app.add_handler(MessageHandler(tg_filters.Regex(r"(?i)^\s*кто\s+админ\s*$"), who_admin), group=0)

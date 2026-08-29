@@ -1,72 +1,12 @@
 <!doctype html>
 <html lang="ru">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ProtogenAdmin — Все команды</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='commands.css') }}">
-</head>
-<body class="commands-page">
-<div class="bg"></div><div class="grid"></div><div class="scanlines"></div>
-{% include '_admin_sidebar.html' %}
-<div class="admin-main-wrap">
-{% include '_admin_topbar.html' %}
-<main class="commands-main">
-  <section class="commands-hero">
-    <div>
-      <div class="eyebrow">04 // COMMAND DIRECTORY</div>
-      <h1>Все команды <span>📚</span></h1>
-      <p>Справочник команд Protogen. Показаны только команды, доступные вашей роли.</p>
-    </div>
-    <div class="command-count"><b>{{ commands|length }}</b><small>ДОСТУПНЫХ КОМАНД</small></div>
-  </section>
-
-  {% if error %}<div class="error-box">⚠️ {{ error }}</div>{% endif %}
-
-  <section class="command-directory">
-    {% set icons = {
-      'Наказания':'🛡️','Очистка':'🧹','Пользователи':'👤','Аналитика':'📊',
-      'Инструменты':'🧰','Чат':'💬','Социальные':'⭐','Развлечения':'🎮',
-      'Роли':'👑','РП':'🎭'
-    } %}
-    {% for category, items in categories.items() %}
-    <article class="command-section">
-      <button class="command-section-toggle" type="button" aria-expanded="false">
-        <span class="command-section-title">
-          <strong>{{ icons.get(category, '📁') }} {{ category }}</strong>
-          <small>{{ items|length }} команд{{ 'а' if items|length in [2,3,4] else 'ы' if items|length == 1 else '' }}</small>
-        </span>
-        <i>⌄</i>
-      </button>
-      <div class="command-section-content">
-        <div class="command-list">
-        {% for command in items %}
-          <div class="command-row">
-            <div class="command-name"><code>{{ command.command }}</code></div>
-            <div class="command-info">
-              <b>{{ command.label }}</b>
-              <small>{{ command.description or 'Команда Protogen' }}</small>
-            </div>
-          </div>
-        {% endfor %}
-        </div>
-      </div>
-    </article>
-    {% else %}
-      <div class="empty-command-box">Нет доступных команд для вашей роли.</div>
-    {% endfor %}
-  </section>
-</main>
-</div>
-<script>
-document.querySelectorAll('.command-section-toggle').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const card = btn.closest('.command-section');
-    const open = card.classList.toggle('open');
-    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-  });
-});
-</script>
-</body>
-</html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Protogen — Команды</title><link rel="stylesheet" href="/static/style.css"><link rel="stylesheet" href="/static/commands.css"></head>
+<body class="commands-article-page"><div class="page-glow"></div>
+<header class="topbar"><div class="brand"><div class="brand-avatar"><img src="/static/my_avatar.png" alt="Protogen Bot"></div><div class="brand-copy"><strong>PROTOGEN BOT</strong><span><i></i> THE SYSTEM // PROTOGEN</span></div></div><div class="topbar-spacer"></div><div class="system-pill"><i></i> СИСТЕМА АКТИВНА</div></header>
+<main class="commands-article-shell">
+<article class="commands-article"><header class="commands-article-hero"><div class="eyebrow">THE SYSTEM // PROTOGEN</div><h1>Команды Protogen</h1><p>Полный справочник команд бота и их возможностей.</p></header>
+<div class="commands-article-body">
+{% set icons = {'Наказания':'🛡️','Очистка':'🧹','Пользователи':'👤','Аналитика':'📊','Инструменты':'🧰','Чат':'💬','Социальные':'⭐','Развлечения':'🎮','Роли':'👑','РП':'🎭'} %}
+{% for category, items in command_catalog|groupby('category') %}<section id="cat-{{ loop.index }}"><h2>{{ icons.get(category, '📁') }} {{ category }}</h2>{% for item in items %}<div class="command-entry"><code>{{ item.command }}</code><b>{{ item.label }}</b><small>{{ item.description or 'Команда Protogen.' }}</small></div>{% endfor %}</section>{% else %}<p>Команды пока не настроены.</p>{% endfor %}<a class="commands-back" href="/">← Вернуться на главную</a></div></article>
+<aside class="commands-toc">{% set icons = {'Наказания':'🛡️','Очистка':'🧹','Пользователи':'👤','Аналитика':'📊','Инструменты':'🧰','Чат':'💬','Социальные':'⭐','Развлечения':'🎮','Роли':'👑','РП':'🎭'} %}<div class="commands-toc-title"># СОДЕРЖАНИЕ</div>{% for category, items in command_catalog|groupby('category') %}<a href="#cat-{{ loop.index }}">{{ loop.index }}. {{ icons.get(category, '📁') }} {{ category }}</a>{% endfor %}</aside>
+</main></body></html>

@@ -39,43 +39,6 @@
 
   topChatBtn?.addEventListener('click', () => toggleChat(true));
 
-  // ---------------------------------------------------------
-  // PUBLIC COMMAND DIRECTORY — opens from the hero button next
-  // to "Настройки системы". It is a Web-only panel.
-  // ---------------------------------------------------------
-  const publicCommandsBtn = $('#publicCommandsBtn');
-  const globalCommandsOverlay = $('#globalCommandsOverlay');
-  const globalCommandsClose = $('#globalCommandsClose');
-
-  function closeGlobalCommandDirectory() {
-    globalCommandsOverlay?.setAttribute('hidden', '');
-    document.body.classList.remove('commands-open');
-  }
-
-  publicCommandsBtn?.addEventListener('click', (e) => {
-    e.preventDefault();
-    globalCommandsOverlay?.removeAttribute('hidden');
-    document.body.classList.add('commands-open');
-  });
-
-  globalCommandsClose?.addEventListener('click', closeGlobalCommandDirectory);
-
-  globalCommandsOverlay?.addEventListener('click', (e) => {
-    if (e.target === globalCommandsOverlay) closeGlobalCommandDirectory();
-  });
-
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeGlobalCommandDirectory();
-  });
-
-  $$('.public-command-toggle').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const section = btn.closest('.public-command-section');
-      const open = section.classList.toggle('open');
-      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    });
-  });
-
   function addMessage(text, type = 'bot') {
     if (!messages) return null;
     const div = document.createElement('div');

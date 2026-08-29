@@ -23,3 +23,25 @@
 .command-info small{display:block;margin-top:4px;color:#718898;font-size:11px}
 .empty-command-box{padding:28px;border:1px dashed rgba(0,255,225,.15);border-radius:16px;color:#8fa7b6;text-align:center}
 @media(max-width:700px){.commands-main{padding:20px 16px}.commands-hero{align-items:flex-start;flex-direction:column}.command-row{grid-template-columns:1fr;gap:6px}}
+
+
+/* Standalone Iris-style public command article */
+.commands-article-page{min-height:100vh}
+.commands-article-shell{width:min(1320px,calc(100% - 40px));margin:0 auto;padding:42px 0 70px;display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:24px}
+.commands-article{min-width:0;border:1px solid rgba(0,255,225,.12);border-radius:20px;background:rgba(6,12,20,.82);box-shadow:0 20px 70px rgba(0,0,0,.28);overflow:hidden}
+.commands-article-hero{padding:32px 34px;border-bottom:1px solid rgba(255,255,255,.06);background:linear-gradient(135deg,rgba(0,255,225,.045),rgba(123,63,255,.055))}
+.commands-article-hero h1{font-size:38px;margin:7px 0 8px;letter-spacing:-1px}
+.commands-article-hero p{margin:0;color:#91a7b5;font-size:15px}
+.commands-article-body{padding:30px 34px}
+.commands-article-body h2{font-size:23px;margin:34px 0 15px;padding-left:14px;border-left:3px solid #00ffe1}
+.commands-article-body h2:first-child{margin-top:0}
+.command-entry{padding:15px 17px;margin:10px 0;border:1px solid rgba(255,255,255,.065);border-radius:13px;background:rgba(255,255,255,.018)}
+.command-entry code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;color:#00ffe1;font-size:14px}
+.command-entry b{display:block;margin:7px 0 4px;font-size:13px;color:#e2edf2}
+.command-entry small{display:block;color:#8298a6;line-height:1.5;font-size:12px}
+.commands-toc{position:sticky;top:24px;align-self:start;border:1px solid rgba(0,255,225,.11);border-radius:17px;background:rgba(7,13,21,.86);padding:18px}
+.commands-toc-title{font-size:11px;letter-spacing:1.4px;color:#9fb0ba;margin-bottom:12px}
+.commands-toc a{display:block;color:#a9bac3;text-decoration:none;padding:9px 10px;border-radius:9px;font-size:12px}
+.commands-toc a:hover{background:rgba(0,255,225,.05);color:#00ffe1}
+.commands-back{display:inline-flex;margin-top:18px;color:#00ffe1;text-decoration:none;font-size:12px}
+@media(max-width:850px){.commands-article-shell{grid-template-columns:1fr}.commands-toc{position:static;order:-1}.commands-article-hero h1{font-size:30px}}
