@@ -13,6 +13,14 @@ from handlers import (
     track_message, track_chat_member, track_my_chat_member,
     who_admin, my_stats,
 )
+from commands_extra import (
+    stats, top, bookmark, bookmarks, note, notes, timer, weather,
+    warns, unwarn, tempmute, commands, help_command, dice, eightball,
+    random_command, choose, ship, setmod, delmod, mods, modicon,
+    welcome, rules, reputation, plus, minus, rating, star, stars, mystars,
+    reward, rewards, removereward, rp, my_article,
+    delete_message, clear_messages, purge_messages,
+)
 from config import TOKEN
 
 
@@ -37,6 +45,25 @@ def main():
     app.add_handler(CommandHandler("unmute", unmute))
     app.add_handler(CommandHandler("kick", kick))
     app.add_handler(CommandHandler("panel", panel))
+
+    # Дополнительные команды Protogen.
+    extra_commands = {
+        "stats": stats, "top": top, "bookmark": bookmark, "bookmarks": bookmarks,
+        "note": note, "notes": notes, "timer": timer, "weather": weather,
+        "warns": warns, "unwarn": unwarn, "tempmute": tempmute,
+        "commands": commands, "help": help_command,
+        "dice": dice, "8ball": eightball, "random": random_command,
+        "choose": choose, "ship": ship,
+        "setmod": setmod, "delmod": delmod, "mods": mods, "modicon": modicon,
+        "welcome": welcome, "rules": rules,
+        "reputation": reputation, "plus": plus, "minus": minus, "rating": rating,
+        "star": star, "stars": stars, "mystars": mystars,
+        "reward": reward, "rewards": rewards, "removereward": removereward,
+        "rp": rp, "myarticle": my_article,
+        "del": delete_message, "clear": clear_messages, "purge": purge_messages,
+    }
+    for command_name, callback in extra_commands.items():
+        app.add_handler(CommandHandler(command_name, callback))
 
     # Команды Iris-стиля без слеша.
     app.add_handler(MessageHandler(tg_filters.Regex(r"(?i)^\s*кто\s+админ\s*$"), who_admin), group=0)
