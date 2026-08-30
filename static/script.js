@@ -2,6 +2,35 @@
   const $ = (s, root = document) => root.querySelector(s);
   const $$ = (s, root = document) => [...root.querySelectorAll(s)];
 
+  // === PROTOGEN STARTUP INTRO ===
+  const intro = document.querySelector('#protogenIntro');
+  const introSkip = document.querySelector('#introSkip');
+  const INTRO_SESSION_KEY = 'protogen_intro_seen_v1';
+  let introTimer = null;
+
+  function closeProtogenIntro(markSeen = true) {
+    if (!intro) return;
+    if (markSeen) sessionStorage.setItem(INTRO_SESSION_KEY, '1');
+    intro.classList.add('is-exiting');
+    intro.classList.remove('is-visible');
+    document.body.classList.remove('intro-lock');
+    if (introTimer) window.clearTimeout(introTimer);
+    window.setTimeout(() => intro.setAttribute('aria-hidden', 'true'), 620);
+  }
+
+  if (intro && !sessionStorage.getItem(INTRO_SESSION_KEY)) {
+    intro.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('intro-lock');
+    requestAnimationFrame(() => intro.classList.add('is-visible'));
+    introTimer = window.setTimeout(() => closeProtogenIntro(true), 4500);
+  } else if (intro) {
+    intro.setAttribute('aria-hidden', 'true');
+  }
+
+  introSkip?.addEventListener('click', () => closeProtogenIntro(true));
+  // === /PROTOGEN STARTUP INTRO ===
+
+
   // ---------------------------------------------------------
   // CHAT PANEL — hidden by default, toggle on click.
   // ---------------------------------------------------------
