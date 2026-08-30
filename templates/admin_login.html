@@ -73,11 +73,19 @@
     .back{display:block;text-align:center;color:#60797a;text-decoration:none;font-size:9px;margin-top:14px}
     .back:hover{color:var(--cyan)}
     @keyframes drift{from{transform:translate(-1%,-1%) scale(1)}to{transform:translate(1%,1%) scale(1.04)}}
+    .auth.auth-denied{animation:authDeniedShake .48s cubic-bezier(.36,.07,.19,.97) both;border-color:rgba(255,70,105,.72);box-shadow:0 0 0 1px rgba(255,70,105,.18),0 0 60px rgba(255,35,85,.16),0 30px 100px rgba(0,0,0,.55)}
+    .auth.auth-denied:after{content:"ACCESS DENIED";position:absolute;right:18px;top:18px;color:#ff607d;font-size:8px;letter-spacing:1.6px;font-weight:900;text-shadow:0 0 12px rgba(255,70,110,.55);animation:deniedBlink .9s ease-in-out 2}
+    .auth-denied .error{animation:errorPulse .9s ease-out 1;background:rgba(255,45,88,.1);border-color:rgba(255,75,112,.58);box-shadow:0 0 25px rgba(255,40,85,.08)}
+    .auth-denied input{border-color:rgba(255,80,110,.24)}
+    @keyframes authDeniedShake{10%,90%{transform:translateX(-1px)}20%,80%{transform:translateX(4px)}30%,50%,70%{transform:translateX(-7px)}40%,60%{transform:translateX(7px)}}
+    @keyframes errorPulse{0%{transform:scale(.985);opacity:.55}45%{transform:scale(1.018)}100%{transform:scale(1);opacity:1}}
+    @keyframes deniedBlink{50%{opacity:.25}}
+
   </style>
 </head>
 <body>
   <div class="scan"></div>
-  <main class="auth">
+  <main class="auth" id="authCard">
     <div class="brand">
       <div class="avatar"><img src="/static/my_avatar.png" alt="Protogen"></div>
       <div>
@@ -91,7 +99,7 @@
     <p class="sub">Административная панель закрыта. Введи свои учётные данные для продолжения.</p>
 
     {% if error %}
-      <div class="error">⚠ {{ error }}</div>
+      <div class="error" id="loginError">⚠ {{ error }}</div>
     {% endif %}
 
     <form method="post" autocomplete="on">
@@ -111,5 +119,31 @@
     <div class="secure">🔒 ДОСТУП ТОЛЬКО АВТОРИЗОВАННЫМ АДМИНИСТРАТОРАМ · <b>SECURE</b></div>
     <a class="back" href="/">← Вернуться на главную</a>
   </main>
+
+  <audio id="loginDeniedSound" preload="auto" src="{{ url_for('static', filename='login-denied.mp3') }}"></audio>
+  {% if error == "Неверный логин или пароль." %}
+  <script>
+  (() => {
+    const card = document.getElementById('authCard');
+    const sound = document.getElementById('loginDeniedSound');
+    card?.classList.add('auth-denied');
+    if (!sound) return;
+    sound.volume = 0.92;
+    let played = false;
+    const playDenied = () => {
+      if (played) return;
+      sound.currentTime = 0;
+      const p = sound.play();
+      if (p && typeof p.then === 'function') {
+        p.then(() => { played = true; }).catch(() => {});
+      }
+    };
+    window.addEventListener('load', playDenied, {once:true});
+    document.addEventListener('pointerdown', playDenied, {once:true});
+    document.addEventListener('keydown', playDenied, {once:true});
+    setTimeout(() => card?.classList.remove('auth-denied'), 1900);
+  })();
+  </script>
+  {% endif %}
 </body>
 </html>

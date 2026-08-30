@@ -5,8 +5,31 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>ProtogenAdmin Console</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='system-boot.css') }}">
 </head>
 <body class="admin-dashboard-page">
+
+  <div class="system-entry-sequence" data-system-boot data-boot-key="protogen-admin-entry-v1" aria-hidden="false">
+    <div class="boot-scan"></div>
+    <section class="boot-shell" role="status" aria-live="polite">
+      <button class="boot-skip" type="button" data-boot-skip>ПРОПУСТИТЬ</button>
+      <div class="boot-brandline">THE SYSTEM_PROTOGEN // <b>SECURE NODE</b></div>
+      <div class="boot-core">
+        <div class="boot-orbit"></div>
+        <img class="boot-avatar" src="{{ url_for('static', filename='my_avatar.png') }}" alt="">
+      </div>
+      <div class="boot-kicker">AUTHENTICATION COMPLETE</div>
+      <div class="boot-title">ACCESS GRANTED</div>
+      <div class="boot-subtitle">ADMIN CONSOLE // SECURE SESSION ESTABLISHED</div>
+      <div class="boot-statuses">
+        <div class="boot-status"><i></i>IDENTITY VERIFIED</div>
+        <div class="boot-status"><i></i>DATABASE LINKED</div>
+        <div class="boot-status"><i></i>PROTOGEN CORE ONLINE</div>
+      </div>
+      <div class="boot-progress"><i></i></div>
+      <div class="boot-progress-meta"><span>INITIALIZING ADMIN ENVIRONMENT</span><b data-boot-percent>0%</b></div>
+    </section>
+  </div>
   <div class="bg"></div><div class="grid"></div><div class="scanlines"></div>
   <div class="admin-app">
     {% include '_admin_sidebar.html' %}
@@ -97,4 +120,6 @@ const recent=d.recent||[];$('recent').innerHTML=recent.length?recent.slice(0,4).
 renderTopUsers(d.top_users||d.users_top||[]);
 }catch(e){$('db-status').textContent='ERROR';$('db-status').className='bad';$('recent').innerHTML='<div class="empty">Не удалось загрузить данные: '+esc(e.message)+'</div>';}}
 $('refresh').addEventListener('click',loadDashboard);loadDashboard();setInterval(loadDashboard,30000);const wave=$('protoWave');if(wave)wave.innerHTML=Array.from({length:34},(_,i)=>`<i style="--h:${12+(i*17)%48}px"></i>`).join('');
-</script></body></html>
+</script>
+<script src="{{ url_for('static', filename='system-boot.js') }}"></script>
+</body></html>

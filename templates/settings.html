@@ -6,8 +6,31 @@
 <title>ProtogenAdmin — Настройки</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='settings.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='system-boot.css') }}">
 </head>
 <body class="settings-page">
+
+<div class="system-entry-sequence" data-system-boot data-boot-key="protogen-settings-entry-v1" aria-hidden="false">
+  <div class="boot-scan"></div>
+  <section class="boot-shell" role="status" aria-live="polite">
+    <button class="boot-skip" type="button" data-boot-skip>ПРОПУСТИТЬ</button>
+    <div class="boot-brandline">THE SYSTEM_PROTOGEN // <b>CONFIGURATION MODE</b></div>
+    <div class="boot-core">
+      <div class="boot-orbit"></div>
+      <img class="boot-avatar" src="{{ url_for('static', filename='my_avatar.png') }}" alt="">
+    </div>
+    <div class="boot-kicker">BOT CONTROL MODULE</div>
+    <div class="boot-title">CONFIGURATION</div>
+    <div class="boot-subtitle">LOADING PROTOGEN SETTINGS // PLEASE STAND BY</div>
+    <div class="boot-statuses">
+      <div class="boot-status"><i></i>MODERATION MODULE</div>
+      <div class="boot-status"><i></i>AI PERSONALITY</div>
+      <div class="boot-status"><i></i>AUTOMATION READY</div>
+    </div>
+    <div class="boot-progress"><i></i></div>
+    <div class="boot-progress-meta"><span>SYNCHRONIZING BOT CONFIGURATION</span><b data-boot-percent>0%</b></div>
+  </section>
+</div>
 <div class="bg"></div><div class="grid"></div>
 
 
@@ -267,4 +290,5 @@
 })();
 </script>
 {% endif %}
+<script src="{{ url_for('static', filename='system-boot.js') }}"></script>
 </body></html>
