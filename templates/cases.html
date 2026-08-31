@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ProtogenAdmin — CASE Center</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='cases.css') }}">
+</head>
+<body class="cases-page">
+<div class="bg"></div><div class="grid"></div><div class="scanlines"></div>
+{% include '_admin_sidebar.html' %}
+<div class="admin-main-wrap">
+{% include '_admin_topbar.html' %}
+<main class="cases-main">
+  <section class="cases-hero">
+    <div>
+      <div class="cases-kicker">04 // INCIDENT RESPONSE</div>
+      <h1>CASE Center <span>🚨</span></h1>
+      <p>Жалобы участников, доказательства и решения модераторов в одном журнале.</p>
+    </div>
+    <div class="threat-badge"><i></i> INCIDENT MONITOR<small>{{ stats.open }} OPEN CASES</small></div>
+  </section>
+
+  {% if error %}<div class="case-error">⚠️ {{ error }}</div>{% endif %}
+
+  <section class="case-stats">
+    <article><span>OPEN</span><strong>{{ stats.open }}</strong><small>требуют решения</small></article>
+    <article><span>CLOSED</span><strong>{{ stats.closed }}</strong><small>обработано</small></article>
+    <article><span>TOTAL</span><strong>{{ stats.total }}</strong><small>всего зарегистрировано</small></article>
+  </section>
+
+  <section class="case-toolbar">
+    <form method="get" class="case-search">
+      <input type="hidden" name="status" value="{{ status_filter }}">
+      <span>⌕</span><input name="q" value="{{ query }}" placeholder="CASE ID, Telegram ID, причина...">
+      <button>НАЙТИ</button>
+    </form>
+    <nav class="case-filters">
+      <a class="{{ 'active' if status_filter == 'open' else '' }}" href="?status=open">ОТКРЫТЫЕ</a>
+      <a class="{{ 'active' if status_filter == 'closed' else '' }}" href="?status=closed">ЗАКРЫТЫЕ</a>
+      <a class="{{ 'active' if status_filter == 'all' else '' }}" href="?status=all">ВСЕ</a>
+    </nav>
+  </section>
+
+  <section class="case-list">
+  {% for c in cases %}
+    <article class="case-card {{ 'case-open' if c.status == 'open' else 'case-closed' }}" id="case-{{ c.id }}">
+      <header>
+        <div class="case-id"><i></i><span>CASE</span><strong>#{{ '%04d'|format(c.id) }}</strong></div>
+        <div class="case-state {{ c.status }}">{{ 'OPEN' if c.status == 'open' else 'CLOSED' }}</div>
+      </header>
+      <div class="case-grid">
+        <div class="case-person">
+          <small>REPORTER</small>
+          <b>{{ user_names.get(c.reporter_id, c.reporter_id) }}</b>
+          <code>{{ c.reporter_id }}</code>
+        </div>
+        <div class="case-arrow">→</div>
+        <div class="case-person target">
+          <small>TARGET</small>
+          <b>{{ user_names.get(c.target_id, c.target_id) }}</b>
+          <code>{{ c.target_id }}</code>
+        </div>
+        <div class="case-meta">
+          <span>CHAT <b>{{ c.chat_id }}</b></span>
+          <span>MSG <b>{{ c.message_id or '—' }}</b></span>
+          <span>TIME <b>{{ c.created_at.strftime('%d.%m.%Y %H:%M') if c.created_at else '—' }}</b></span>
+        </div>
+      </div>
+      <div class="case-evidence">
+        <div><small>ПРИЧИНА</small><p>{{ c.reason or 'Не указана' }}</p></div>
+        <div><small>СООБЩЕНИЕ / ДОКАЗАТЕЛЬСТВО</small><blockquote>{{ c.message_text or '[медиа без текста]' }}</blockquote></div>
+      </div>
+      {% if c.status == 'closed' %}
+      <div class="case-resolution">
+        <span>RESOLUTION</span>
+        <b>{{ {'warn':'⚠️ WARN','mute':'🔇 MUTE','ban':'🚫 BAN','closed':'✅ CLOSED','reopened':'↻ REOPENED'}.get(c.resolution, c.resolution or 'CLOSED') }}</b>
+        <small>{{ c.moderator_name or (c.moderator_id if c.moderator_id else '—') }}{% if c.closed_at %} · {{ c.closed_at.strftime('%d.%m.%Y %H:%M') }}{% endif %}</small>
+        {% if c.resolution_note %}<em>{{ c.resolution_note }}</em>{% endif %}
+      </div>
+      {% endif %}
+      <footer>
+        {% if c.status == 'open' %}
+        <span>Действия Warn / Mute / Ban выполняются кнопками в Telegram CASE-карточке.</span>
+        <button class="case-action close" data-case="{{ c.id }}" data-action="close">✓ ЗАКРЫТЬ БЕЗ НАКАЗАНИЯ</button>
+        {% else %}
+        <span>CASE обработан и сохранён в базе.</span>
+        <button class="case-action reopen" data-case="{{ c.id }}" data-action="reopen">↻ ОТКРЫТЬ СНОВА</button>
+        {% endif %}
+      </footer>
+    </article>
+  {% else %}
+    <div class="case-empty"><span>◈</span><b>CASE НЕ НАЙДЕНЫ</b><small>В этом режиме журнал пока пуст.</small></div>
+  {% endfor %}
+  </section>
+
+  <div class="case-footnote"><i></i><div><b>PROTOGEN CASE PROTOCOL</b><small>/report создаёт дело по конкретному сообщению. Решение из Telegram автоматически попадает сюда и в историю наказаний.</small></div><span>DATABASE ONLINE</span></div>
+  <footer class="page-footer">PROTOGEN SYSTEM // INCIDENT RESPONSE CENTER · <span>SECURE SESSION</span></footer>
+</main>
+</div>
+<script>
+document.querySelectorAll('.case-action').forEach(button=>{
+  button.addEventListener('click', async()=>{
+    const action=button.dataset.action;
+    const caseId=button.dataset.case;
+    let note='';
+    if(action==='close'){
+      note=prompt('Причина закрытия CASE (необязательно):','') ?? null;
+      if(note===null) return;
+    }
+    button.disabled=true;
+    const old=button.textContent;
+    button.textContent='ОБРАБОТКА...';
+    try{
+      const r=await fetch(`/api/admin/cases/${caseId}/status`,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({action,note:note||''})
+      });
+      const data=await r.json();
+      if(!r.ok || !data.ok) throw new Error(data.error||'Ошибка');
+      location.reload();
+    }catch(e){
+      alert('CASE: '+e.message);
+      button.disabled=false;button.textContent=old;
+    }
+  });
+});
+</script>
+</body>
+</html>

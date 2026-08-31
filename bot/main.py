@@ -22,6 +22,7 @@ from commands_extra import (
     delete_message, clear_messages, purge_messages,
 )
 from config import TOKEN
+from cases import report, report_case_callback
 
 
 async def error_handler(update: Update, context):
@@ -30,6 +31,9 @@ async def error_handler(update: Update, context):
 
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
+
+    # CASE-кнопки жалоб обрабатываются отдельно от панели профиля.
+    app.add_handler(CallbackQueryHandler(report_case_callback, pattern=r"^case_"))
 
     # Кнопки панели.
     app.add_handler(CallbackQueryHandler(
@@ -45,6 +49,7 @@ def main():
     app.add_handler(CommandHandler("unmute", unmute))
     app.add_handler(CommandHandler("kick", kick))
     app.add_handler(CommandHandler("panel", panel))
+    app.add_handler(CommandHandler("report", report))
 
     # Дополнительные команды Protogen.
     extra_commands = {

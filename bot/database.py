@@ -9,6 +9,7 @@ from sqlalchemy import (
     String,
     DateTime,
     Boolean,
+    Text,
     inspect,
     text,
 )
@@ -318,6 +319,26 @@ class Note(Base):
     content = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class ReportCase(Base):
+    __tablename__ = "report_cases"
+
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    reporter_id = Column(BigInteger, nullable=False, index=True)
+    target_id = Column(BigInteger, nullable=False, index=True)
+    message_id = Column(BigInteger, nullable=True, index=True)
+    message_text = Column(Text, nullable=True)
+    reason = Column(Text, default="Не указана")
+    status = Column(String(20), default="open", index=True)
+    resolution = Column(String(40), nullable=True)
+    resolution_note = Column(Text, nullable=True)
+    moderator_id = Column(BigInteger, nullable=True)
+    moderator_name = Column(String(120), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    closed_at = Column(DateTime, nullable=True)
+
 
 class Punishment(Base):
     __tablename__ = "punishments"

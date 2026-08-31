@@ -316,7 +316,7 @@ async def purge_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 COMMAND_LIST = {
     "📊 Информация": ["/stats", "/top", "/bookmark", "/bookmarks", "/note", "/notes", "/timer", "/weather"],
-    "🛡 Модерация": ["/warn", "/warns", "/unwarn", "/mute", "/tempmute", "/unmute", "/ban", "/unban", "/kick"],
+    "🛡 Модерация": ["/report", "/warn", "/warns", "/unwarn", "/mute", "/tempmute", "/unmute", "/ban", "/unban", "/kick"],
     "🎮 Развлечения": ["/dice", "/8ball", "/random", "/choose", "/ship", "/rp"],
     "👑 Управление": ["/setmod", "/delmod", "/mods", "/modicon", "/welcome", "/rules"],
     "⭐ Репутация": ["/reputation", "/plus", "/minus", "/rating", "/star", "/stars", "/mystars"],

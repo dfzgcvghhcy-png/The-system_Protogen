@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from functools import wraps
 
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, send_file
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, Text, func, desc, or_, text
+from sqlalchemy import create_engine, Column, Integer, BigInteger, String, DateTime, Boolean, Text, func, desc, or_, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -67,6 +67,25 @@ class Punishment(Base):
     reason = Column(String, default="Не указана")
     moderator_id = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ReportCase(Base):
+    __tablename__ = "report_cases"
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    reporter_id = Column(BigInteger, nullable=False, index=True)
+    target_id = Column(BigInteger, nullable=False, index=True)
+    message_id = Column(BigInteger, nullable=True, index=True)
+    message_text = Column(Text, nullable=True)
+    reason = Column(Text, default="Не указана")
+    status = Column(String(20), default="open", index=True)
+    resolution = Column(String(40), nullable=True)
+    resolution_note = Column(Text, nullable=True)
+    moderator_id = Column(BigInteger, nullable=True)
+    moderator_name = Column(String(120), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    closed_at = Column(DateTime, nullable=True)
 
 
 class BotSetting(Base):
@@ -138,6 +157,7 @@ class CommandPermission(Base):
 
 
 DEFAULT_COMMAND_PERMISSIONS = [
+    ("/report", "Пожаловаться модераторам", "Безопасность", 0, True, "Создать CASE по сообщению пользователя"),
     ("/warn", "Выдать предупреждение", "Наказания", 1, True, "Предупредить пользователя"),
     ("/warns", "Предупреждения", "Наказания", 1, True, "Просмотр варнов пользователя"),
     ("/unwarn", "Снять предупреждение", "Наказания", 1, True, "Снять одно предупреждение"),
@@ -835,6 +855,125 @@ def admin_moderation_command(command_id):
     except Exception as e:
         db.rollback()
         return jsonify({"ok": False, "error": str(e)}), 400
+    finally:
+        db.close()
+
+
+# ============================================================
+# REPORT CASE CENTER
+# ============================================================
+
+@app.route("/admin/cases")
+@role_required("moderator")
+def admin_cases():
+    if not SessionLocal:
+        return render_template(
+            "cases.html",
+            username=session.get("admin_username", ADMIN_USERNAME),
+            cases=[], stats={"open": 0, "closed": 0, "total": 0},
+            status_filter="open", query="", error="DATABASE_URL не настроен.",
+            user_names={},
+        )
+
+    status_filter = request.args.get("status", "open").strip().lower()
+    if status_filter not in {"open", "closed", "all"}:
+        status_filter = "open"
+    query = request.args.get("q", "").strip()
+    focus_case = request.args.get("case", "").strip()
+
+    db = SessionLocal()
+    try:
+        q = db.query(ReportCase)
+        if status_filter != "all":
+            q = q.filter(ReportCase.status == status_filter)
+
+        if focus_case.isdigit():
+            q = q.filter(ReportCase.id == int(focus_case))
+        elif query:
+            conditions = [ReportCase.reason.ilike(f"%{query}%")]
+            if query.lstrip("-").isdigit():
+                value = int(query)
+                conditions.extend([
+                    ReportCase.id == value,
+                    ReportCase.reporter_id == value,
+                    ReportCase.target_id == value,
+                    ReportCase.chat_id == value,
+                ])
+            q = q.filter(or_(*conditions))
+
+        cases = q.order_by(desc(ReportCase.created_at)).limit(200).all()
+        all_ids = {x.reporter_id for x in cases} | {x.target_id for x in cases}
+        user_names = {}
+        if all_ids:
+            for user in db.query(User).filter(User.id.in_(all_ids)).all():
+                display = f"{user.first_name or ''} {user.last_name or ''}".strip()
+                if not display:
+                    display = f"@{user.username}" if user.username else str(user.id)
+                user_names[user.id] = display
+
+        stats = {
+            "open": db.query(func.count(ReportCase.id)).filter(ReportCase.status == "open").scalar() or 0,
+            "closed": db.query(func.count(ReportCase.id)).filter(ReportCase.status == "closed").scalar() or 0,
+            "total": db.query(func.count(ReportCase.id)).scalar() or 0,
+        }
+        return render_template(
+            "cases.html",
+            username=session.get("admin_username", ADMIN_USERNAME),
+            cases=cases,
+            stats=stats,
+            status_filter=status_filter,
+            query=query,
+            error=None,
+            user_names=user_names,
+        )
+    except Exception as e:
+        print(f"CASES PAGE ERROR: {type(e).__name__}: {e}")
+        return render_template(
+            "cases.html",
+            username=session.get("admin_username", ADMIN_USERNAME),
+            cases=[], stats={"open": 0, "closed": 0, "total": 0},
+            status_filter=status_filter, query=query,
+            error=f"{type(e).__name__}: {e}", user_names={},
+        )
+    finally:
+        db.close()
+
+
+@app.route("/api/admin/cases/<int:case_id>/status", methods=["POST"])
+@role_required("moderator")
+def admin_case_status(case_id):
+    if not SessionLocal:
+        return jsonify({"ok": False, "error": "DATABASE_URL не настроен."}), 500
+    data = request.get_json(silent=True) or {}
+    action = str(data.get("action", "")).strip().lower()
+    note = str(data.get("note", "")).strip()[:500]
+    if action not in {"close", "reopen"}:
+        return jsonify({"ok": False, "error": "Неизвестное действие."}), 400
+
+    db = SessionLocal()
+    try:
+        row = db.get(ReportCase, case_id)
+        if not row:
+            return jsonify({"ok": False, "error": "CASE не найден."}), 404
+        if action == "close":
+            row.status = "closed"
+            row.resolution = "closed"
+            row.closed_at = datetime.utcnow()
+            row.moderator_name = session.get("admin_username", "web")
+            row.resolution_note = note or None
+        else:
+            row.status = "open"
+            row.resolution = "reopened"
+            row.closed_at = None
+            row.resolution_note = note or None
+            row.moderator_name = session.get("admin_username", "web")
+        row.updated_at = datetime.utcnow()
+        db.commit()
+        return jsonify({"ok": True, "status": row.status, "resolution": row.resolution})
+    except Exception as e:
+        db.rollback()
+        print(f"CASE STATUS ERROR: {type(e).__name__}: {e}")
+        return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
     finally:
         db.close()
 
