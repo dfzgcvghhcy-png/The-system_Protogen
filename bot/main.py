@@ -33,7 +33,7 @@ def main():
 
     # Кнопки панели.
     app.add_handler(CallbackQueryHandler(
-        buttons, pattern=r"^(panel_|user_|action_|mod_|warns$|bans$|history_|activity_|moduser_)"
+        buttons, pattern=r"^(panel_|user_|action_|mod_|mute_|warns$|bans$|history_|activity_|moduser_)"
     ))
 
     # Команды.

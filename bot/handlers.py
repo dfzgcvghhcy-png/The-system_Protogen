@@ -1076,7 +1076,7 @@ async def send_user_profile(query, context, user_id):
         session.close()
 
 
-async def show_user_history(query, user_id):
+async def show_user_history(query, context, user_id):
     session = Session()
     try:
         rows = session.query(Punishment).filter(Punishment.user_id == user_id).order_by(Punishment.id.desc()).limit(15).all()
@@ -1088,12 +1088,39 @@ async def show_user_history(query, user_id):
                 icon = {"warn":"⚠️","unwarn":"🧹","mute":"🔇","ban":"🚫","kick":"👢"}.get(p.type, "📌")
                 when = p.created_at.strftime("%d.%m %H:%M") if p.created_at else "—"
                 text += f"{icon} <b>{p.type}</b> · {when}\n📝 {_safe_text(p.reason, 'Не указана')}\n\n"
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Профиль", callback_data=f"user_{user_id}")]]), parse_mode=ParseMode.HTML)
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton("◀️ Профиль", callback_data=f"user_{user_id}")
+        ]])
+
+        # Профиль отправляется как фото. Telegram не позволяет заменить
+        # photo-сообщение через edit_message_text(), поэтому для текстовых
+        # экранов истории удаляем карточку и отправляем обычное сообщение.
+        if query.message.photo:
+            chat_id = query.message.chat_id
+            try:
+                await query.message.delete()
+            except Exception as e:
+                print(
+                    f"HISTORY PROFILE DELETE ERROR [{user_id}]: "
+                    f"{type(e).__name__}: {e}"
+                )
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=text,
+                reply_markup=keyboard,
+                parse_mode=ParseMode.HTML,
+            )
+        else:
+            await query.edit_message_text(
+                text,
+                reply_markup=keyboard,
+                parse_mode=ParseMode.HTML,
+            )
     finally:
         session.close()
 
 
-async def show_activity(query, user_id):
+async def show_activity(query, context, user_id):
     session = Session()
 
     try:
@@ -1142,11 +1169,30 @@ async def show_activity(query, user_id):
             ]
         ])
 
-        await query.edit_message_text(
-            text,
-            reply_markup=keyboard,
-            parse_mode=ParseMode.HTML,
-        )
+        # Профиль — это photo-сообщение, а edit_message_text() работает
+        # только с текстовыми сообщениями. Для активности открываем новый
+        # текстовый экран и убираем старую карточку профиля.
+        if query.message.photo:
+            chat_id = query.message.chat_id
+            try:
+                await query.message.delete()
+            except Exception as e:
+                print(
+                    f"ACTIVITY PROFILE DELETE ERROR [{user_id}]: "
+                    f"{type(e).__name__}: {e}"
+                )
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=text,
+                reply_markup=keyboard,
+                parse_mode=ParseMode.HTML,
+            )
+        else:
+            await query.edit_message_text(
+                text,
+                reply_markup=keyboard,
+                parse_mode=ParseMode.HTML,
+            )
 
     finally:
         session.close()
@@ -1215,9 +1261,9 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("user_"):
         return await send_user_profile(query, context, int(data.split("_", 1)[1]))
     if data.startswith("history_"):
-        return await show_user_history(query, int(data.split("_", 1)[1]))
+        return await show_user_history(query, context, int(data.split("_", 1)[1]))
     if data.startswith("activity_"):
-        return await show_activity(query, int(data.split("_", 1)[1]))
+        return await show_activity(query, context, int(data.split("_", 1)[1]))
     if data.startswith("moduser_"):
         user_id = int(data.split("_", 1)[1])
         keyboard = InlineKeyboardMarkup([
