@@ -504,6 +504,18 @@ class BotSetting(Base):
     anti_raid_enabled = Column(Boolean, default=True)
     auto_warn_action = Column(String(20), default="mute")
 
+    # AutoMod 2.0 thresholds. Kept in bot_settings so Web and Telegram
+    # always use the same values after a Railway restart.
+    flood_limit = Column(Integer, default=6)
+    flood_window_seconds = Column(Integer, default=8)
+    caps_percent = Column(Integer, default=75)
+    caps_min_letters = Column(Integer, default=12)
+    repeat_limit = Column(Integer, default=3)
+    repeat_window_seconds = Column(Integer, default=30)
+    raid_join_limit = Column(Integer, default=6)
+    raid_window_seconds = Column(Integer, default=20)
+    raid_mode_minutes = Column(Integer, default=10)
+
     # ========================================================
     # PROTOGEN PERSONALITY
     # ========================================================
@@ -780,6 +792,15 @@ def migrate_protogen_extra_columns():
         "anti_repeat_enabled": "BOOLEAN DEFAULT TRUE",
         "anti_raid_enabled": "BOOLEAN DEFAULT TRUE",
         "auto_warn_action": "VARCHAR(20) DEFAULT 'mute'",
+        "flood_limit": "INTEGER DEFAULT 6",
+        "flood_window_seconds": "INTEGER DEFAULT 8",
+        "caps_percent": "INTEGER DEFAULT 75",
+        "caps_min_letters": "INTEGER DEFAULT 12",
+        "repeat_limit": "INTEGER DEFAULT 3",
+        "repeat_window_seconds": "INTEGER DEFAULT 30",
+        "raid_join_limit": "INTEGER DEFAULT 6",
+        "raid_window_seconds": "INTEGER DEFAULT 20",
+        "raid_mode_minutes": "INTEGER DEFAULT 10",
     }
     with engine.begin() as connection:
         for name, definition in additions.items():

@@ -88,6 +88,15 @@ class BotSetting(Base):
     anti_repeat_enabled = Column(Boolean, default=True)
     anti_raid_enabled = Column(Boolean, default=True)
     auto_warn_action = Column(String(20), default="mute")
+    flood_limit = Column(Integer, default=6)
+    flood_window_seconds = Column(Integer, default=8)
+    caps_percent = Column(Integer, default=75)
+    caps_min_letters = Column(Integer, default=12)
+    repeat_limit = Column(Integer, default=3)
+    repeat_window_seconds = Column(Integer, default=30)
+    raid_join_limit = Column(Integer, default=6)
+    raid_window_seconds = Column(Integer, default=20)
+    raid_mode_minutes = Column(Integer, default=10)
     personality_daring = Column(Integer, default=75)
     personality_sarcasm = Column(Integer, default=70)
     personality_aggression = Column(Integer, default=45)
@@ -192,7 +201,24 @@ if engine:
         for column, default in (("personality_daring",75),("personality_sarcasm",70),("personality_aggression",45),("personality_humor",85),("personality_friendliness",60)):
             connection.execute(text(f"ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS {column} INTEGER DEFAULT {default}"))
         connection.execute(text("""UPDATE bot_settings SET personality_daring=COALESCE(personality_daring,75), personality_sarcasm=COALESCE(personality_sarcasm,70), personality_aggression=COALESCE(personality_aggression,45), personality_humor=COALESCE(personality_humor,85), personality_friendliness=COALESCE(personality_friendliness,60) WHERE id=1"""))
-        for column, definition in (("anti_flood_enabled","BOOLEAN DEFAULT TRUE"),("anti_links_enabled","BOOLEAN DEFAULT FALSE"),("anti_invites_enabled","BOOLEAN DEFAULT TRUE"),("anti_caps_enabled","BOOLEAN DEFAULT FALSE"),("anti_repeat_enabled","BOOLEAN DEFAULT TRUE"),("anti_raid_enabled","BOOLEAN DEFAULT TRUE"),("auto_warn_action","VARCHAR(20) DEFAULT 'mute'")):
+        for column, definition in (
+            ("anti_flood_enabled","BOOLEAN DEFAULT TRUE"),
+            ("anti_links_enabled","BOOLEAN DEFAULT FALSE"),
+            ("anti_invites_enabled","BOOLEAN DEFAULT TRUE"),
+            ("anti_caps_enabled","BOOLEAN DEFAULT FALSE"),
+            ("anti_repeat_enabled","BOOLEAN DEFAULT TRUE"),
+            ("anti_raid_enabled","BOOLEAN DEFAULT TRUE"),
+            ("auto_warn_action","VARCHAR(20) DEFAULT 'mute'"),
+            ("flood_limit","INTEGER DEFAULT 6"),
+            ("flood_window_seconds","INTEGER DEFAULT 8"),
+            ("caps_percent","INTEGER DEFAULT 75"),
+            ("caps_min_letters","INTEGER DEFAULT 12"),
+            ("repeat_limit","INTEGER DEFAULT 3"),
+            ("repeat_window_seconds","INTEGER DEFAULT 30"),
+            ("raid_join_limit","INTEGER DEFAULT 6"),
+            ("raid_window_seconds","INTEGER DEFAULT 20"),
+            ("raid_mode_minutes","INTEGER DEFAULT 10"),
+        ):
             connection.execute(text(f"ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS {column} {definition}"))
     # Seed the first creator account from Railway Variables only once.
     # After that, all additional panel users live in PostgreSQL.
@@ -717,6 +743,15 @@ def admin_moderation_api():
                     "anti_repeat_enabled": bool(s.anti_repeat_enabled),
                     "anti_raid_enabled": bool(s.anti_raid_enabled),
                     "auto_warn_action": s.auto_warn_action or "mute",
+                    "flood_limit": int(s.flood_limit or 6),
+                    "flood_window_seconds": int(s.flood_window_seconds or 8),
+                    "caps_percent": int(s.caps_percent or 75),
+                    "caps_min_letters": int(s.caps_min_letters or 12),
+                    "repeat_limit": int(s.repeat_limit or 3),
+                    "repeat_window_seconds": int(s.repeat_window_seconds or 30),
+                    "raid_join_limit": int(s.raid_join_limit or 6),
+                    "raid_window_seconds": int(s.raid_window_seconds or 20),
+                    "raid_mode_minutes": int(s.raid_mode_minutes or 10),
                 },
                 "commands": [{"id": c.id, "command": c.command, "label": c.label, "category": c.category, "min_role_level": c.min_role_level, "enabled": bool(c.enabled), "description": c.description or ""} for c in commands]
             })
@@ -731,9 +766,26 @@ def admin_moderation_api():
             if key in data.get("settings", {}):
                 setattr(s, key, bool(data["settings"][key]))
 
-        if "auto_warn_action" in data.get("settings", {}):
-            action=str(data["settings"]["auto_warn_action"]).lower()
+        settings_payload = data.get("settings", {})
+        if "auto_warn_action" in settings_payload:
+            action=str(settings_payload["auto_warn_action"]).lower()
             if action in {"none","mute","ban"}: s.auto_warn_action=action
+
+        numeric_settings = {
+            "flood_limit": (3, 20),
+            "flood_window_seconds": (3, 60),
+            "caps_percent": (50, 100),
+            "caps_min_letters": (5, 100),
+            "repeat_limit": (2, 10),
+            "repeat_window_seconds": (5, 180),
+            "raid_join_limit": (3, 50),
+            "raid_window_seconds": (5, 120),
+            "raid_mode_minutes": (1, 120),
+        }
+        for key, (minimum, maximum) in numeric_settings.items():
+            if key in settings_payload:
+                value = max(minimum, min(maximum, int(settings_payload[key])))
+                setattr(s, key, value)
 
         for item in data.get("commands", []):
             command = str(item.get("command", "")).strip()

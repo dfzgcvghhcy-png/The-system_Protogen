@@ -4,9 +4,12 @@ from telegram.constants import ParseMode
 from database import Session, User, Punishment, Activity, BotSetting, Chat, ChatUser, ChatActivity, ChatPunishment
 from filters import is_admin, bot_can_restrict
 from datetime import datetime, timezone, timedelta
+from collections import defaultdict, deque
 import pytz
 import io
 import re
+import time
+import html
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
@@ -14,9 +17,18 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter
 # =========================================================
 # WEB SETTINGS
 # =========================================================
-DEFAULT_BOT_SETTINGS = dict(moderation_enabled=True, auto_delete_spam=True,
+DEFAULT_BOT_SETTINGS = dict(
+    moderation_enabled=True, auto_delete_spam=True,
     warn_enabled=True, mute_enabled=True, ban_enabled=True, kick_enabled=True,
-    ai_moderation_enabled=False, warn_limit=3, mute_duration=60)
+    ai_moderation_enabled=False, warn_limit=3, mute_duration=60,
+    anti_flood_enabled=True, anti_links_enabled=False, anti_invites_enabled=True,
+    anti_caps_enabled=False, anti_repeat_enabled=True, anti_raid_enabled=True,
+    auto_warn_action="mute",
+    flood_limit=6, flood_window_seconds=8,
+    caps_percent=75, caps_min_letters=12,
+    repeat_limit=3, repeat_window_seconds=30,
+    raid_join_limit=6, raid_window_seconds=20, raid_mode_minutes=10,
+)
 
 def get_bot_settings():
     session=Session()
@@ -648,6 +660,306 @@ def _save_user_from_telegram(session, tg_user, status=None, joined_at=None, coun
     return user
 
 
+
+# =========================================================
+# AUTOMOD 2.0
+# =========================================================
+
+# Runtime windows deliberately live in memory: they are short-lived anti-spam
+# counters, while every punishment and every tuning value is persisted in DB.
+_AUTOMOD_MESSAGE_WINDOWS = defaultdict(deque)
+_AUTOMOD_REPEAT_STATE = {}
+_RAID_JOIN_WINDOWS = defaultdict(deque)
+_RAID_UNTIL = {}
+
+_LINK_RE = re.compile(r"(?i)(?:https?://|www\.)\S+|\b[a-z0-9][a-z0-9.-]+\.(?:com|net|org|ru|рф|io|gg|me|dev|app|site|online)(?:/\S*)?")
+_INVITE_RE = re.compile(r"(?i)(?:https?://)?(?:t\.me|telegram\.me)/(?:joinchat/|\+)[A-Za-z0-9_-]+|tg://join\?invite=")
+
+
+def _trim_window(items, now, seconds):
+    while items and now - items[0] > seconds:
+        items.popleft()
+
+
+async def _member_is_admin(chat, user_id):
+    try:
+        member = await chat.get_member(user_id)
+        return member.status in ("administrator", "creator")
+    except Exception:
+        return False
+
+
+async def _bot_has_restrict_rights(chat, bot_id):
+    try:
+        member = await chat.get_member(bot_id)
+        if member.status == "creator":
+            return True
+        return member.status == "administrator" and bool(getattr(member, "can_restrict_members", False))
+    except Exception:
+        return False
+
+
+def _register_automod_warn(chat_id, user_tg, reason, bot_id):
+    """Persist AutoMod warn using the same counters/history as manual moderation."""
+    session = Session()
+    try:
+        user = session.get(User, user_tg.id)
+        if not user:
+            user = User(
+                id=user_tg.id,
+                warns=0,
+                username=user_tg.username,
+                first_name=user_tg.first_name,
+                last_name=user_tg.last_name,
+                status="member",
+                first_seen=datetime.utcnow(),
+                last_seen=datetime.utcnow(),
+            )
+            session.add(user)
+        user.warns = (user.warns or 0) + 1
+        session.add(Punishment(
+            user_id=user_tg.id,
+            type="warn",
+            reason=reason,
+            moderator_id=bot_id,
+        ))
+        _record_chat_punishment(session, chat_id, user_tg.id, "warn", reason, bot_id)
+        session.commit()
+        return int(user.warns or 0)
+    except Exception as e:
+        session.rollback()
+        print(f"AUTOMOD WARN DB ERROR: {type(e).__name__}: {e}")
+        return 0
+    finally:
+        session.close()
+
+
+def _record_automod_action(chat_id, user_id, action, reason, bot_id):
+    session = Session()
+    try:
+        session.add(Punishment(user_id=user_id, type=action, reason=reason, moderator_id=bot_id))
+        _record_chat_punishment(session, chat_id, user_id, action, reason, bot_id)
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        print(f"AUTOMOD ACTION DB ERROR: {type(e).__name__}: {e}")
+    finally:
+        session.close()
+
+
+async def _apply_automod_limit_action(update, context, settings, warns_count, reason):
+    limit = max(1, int(settings.get("warn_limit", 3) or 3))
+    # Trigger only on exact multiples of the limit. This prevents a muted user
+    # from being punished again for every later warning.
+    if warns_count <= 0 or warns_count % limit != 0:
+        return None
+
+    action = str(settings.get("auto_warn_action", "mute") or "mute").lower()
+    if action not in {"mute", "ban"}:
+        return None
+
+    chat = update.effective_chat
+    user = update.effective_user
+    if not await _bot_has_restrict_rights(chat, context.bot.id):
+        return "no_rights"
+
+    try:
+        if action == "mute" and settings.get("mute_enabled", True):
+            permissions = ChatPermissions(
+                can_send_messages=False,
+                can_send_audios=False,
+                can_send_documents=False,
+                can_send_photos=False,
+                can_send_videos=False,
+                can_send_video_notes=False,
+                can_send_voice_notes=False,
+                can_send_polls=False,
+                can_send_other_messages=False,
+                can_add_web_page_previews=False,
+            )
+            minutes = max(1, int(settings.get("mute_duration", 60) or 60))
+            until_date = datetime.utcnow() + timedelta(minutes=minutes)
+            await context.bot.restrict_chat_member(chat.id, user.id, permissions=permissions, until_date=until_date)
+            _record_automod_action(chat.id, user.id, "mute", f"AutoMod: {reason}", context.bot.id)
+            return f"mute:{minutes}"
+
+        if action == "ban" and settings.get("ban_enabled", True):
+            await context.bot.ban_chat_member(chat.id, user.id)
+            _record_automod_action(chat.id, user.id, "ban", f"AutoMod: {reason}", context.bot.id)
+            return "ban"
+    except Exception as e:
+        print(f"AUTOMOD LIMIT ACTION ERROR: {type(e).__name__}: {e}")
+    return None
+
+
+def _detect_message_violation(chat_id, user_id, text, settings):
+    """Return a human-readable reason for the first matching AutoMod rule."""
+    now = time.monotonic()
+    normalized = re.sub(r"\s+", " ", (text or "").strip().lower())
+
+    if settings.get("anti_invites_enabled") and _INVITE_RE.search(text or ""):
+        return "Telegram-приглашение"
+
+    if settings.get("anti_links_enabled") and _LINK_RE.search(text or ""):
+        return "запрещённая ссылка"
+
+    if settings.get("anti_caps_enabled"):
+        letters = [c for c in text or "" if c.isalpha()]
+        minimum = max(1, int(settings.get("caps_min_letters", 12) or 12))
+        if len(letters) >= minimum:
+            upper = sum(1 for c in letters if c.isupper())
+            ratio = (upper * 100) / len(letters)
+            if ratio >= max(50, int(settings.get("caps_percent", 75) or 75)):
+                return f"чрезмерный CAPS ({int(ratio)}%)"
+
+    if settings.get("anti_repeat_enabled") and normalized and len(normalized) >= 2:
+        key = (chat_id, user_id)
+        previous_text, items = _AUTOMOD_REPEAT_STATE.get(key, (None, deque()))
+        if previous_text != normalized:
+            items = deque()
+        items.append(now)
+        window = max(5, int(settings.get("repeat_window_seconds", 30) or 30))
+        _trim_window(items, now, window)
+        _AUTOMOD_REPEAT_STATE[key] = (normalized, items)
+        if len(items) >= max(2, int(settings.get("repeat_limit", 3) or 3)):
+            items.clear()
+            return "повтор одинакового сообщения"
+
+    if settings.get("anti_flood_enabled"):
+        key = (chat_id, user_id)
+        items = _AUTOMOD_MESSAGE_WINDOWS[key]
+        items.append(now)
+        window = max(3, int(settings.get("flood_window_seconds", 8) or 8))
+        _trim_window(items, now, window)
+        if len(items) >= max(3, int(settings.get("flood_limit", 6) or 6)):
+            items.clear()
+            return f"флуд ({settings.get('flood_limit', 6)} сообщений / {window} сек.)"
+
+    return None
+
+
+async def _run_automod(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    message = update.effective_message
+    chat = update.effective_chat
+    user = update.effective_user
+    if not message or not chat or not user or user.is_bot:
+        return
+    if chat.type not in ("group", "supergroup"):
+        return
+
+    settings = get_bot_settings()
+    if not settings.get("moderation_enabled", True):
+        return
+    if await _member_is_admin(chat, user.id):
+        return
+
+    text = message.text or message.caption or ""
+    if not text:
+        return
+
+    reason = _detect_message_violation(chat.id, user.id, text, settings)
+    if not reason:
+        return
+
+    deleted = False
+    if settings.get("auto_delete_spam", True):
+        try:
+            await message.delete()
+            deleted = True
+        except Exception as e:
+            print(f"AUTOMOD DELETE ERROR: {type(e).__name__}: {e}")
+
+    warns_count = 0
+    if settings.get("warn_enabled", True):
+        warns_count = _register_automod_warn(chat.id, user, f"AutoMod: {reason}", context.bot.id)
+
+    action_result = None
+    if warns_count:
+        action_result = await _apply_automod_limit_action(update, context, settings, warns_count, reason)
+
+    safe_name = html.escape(user.full_name or user.username or str(user.id))
+    lines = [
+        "⚠️ <b>AUTOMOD // НАРУШЕНИЕ</b>",
+        f"👤 {safe_name}",
+        f"🧩 Причина: <b>{html.escape(reason)}</b>",
+    ]
+    if warns_count:
+        lines.append(f"⚠️ Warn: <b>{warns_count}/{max(1, int(settings.get('warn_limit', 3) or 3))}</b>")
+    if deleted:
+        lines.append("🗑 Сообщение удалено")
+    if action_result and action_result.startswith("mute:"):
+        lines.append(f"🔇 Автодействие: <b>Mute {action_result.split(':',1)[1]} мин.</b>")
+    elif action_result == "ban":
+        lines.append("🚫 Автодействие: <b>Ban</b>")
+    elif action_result == "no_rights":
+        lines.append("🔐 Автодействие не выполнено: у бота нет права ограничивать участников")
+
+    try:
+        await context.bot.send_message(chat.id, "\n".join(lines), parse_mode=ParseMode.HTML)
+    except Exception as e:
+        print(f"AUTOMOD NOTICE ERROR: {type(e).__name__}: {e}")
+
+
+async def _handle_raid_join(update: Update, context: ContextTypes.DEFAULT_TYPE, tg_user):
+    chat = update.effective_chat
+    if not chat or not tg_user or tg_user.is_bot or chat.type not in ("group", "supergroup"):
+        return
+
+    settings = get_bot_settings()
+    if not settings.get("moderation_enabled", True) or not settings.get("anti_raid_enabled", True):
+        return
+
+    now = time.monotonic()
+    joins = _RAID_JOIN_WINDOWS[chat.id]
+    joins.append(now)
+    window = max(5, int(settings.get("raid_window_seconds", 20) or 20))
+    _trim_window(joins, now, window)
+    threshold = max(3, int(settings.get("raid_join_limit", 6) or 6))
+    active_until = _RAID_UNTIL.get(chat.id, 0)
+
+    just_activated = False
+    if len(joins) >= threshold and active_until <= now:
+        minutes = max(1, int(settings.get("raid_mode_minutes", 10) or 10))
+        active_until = now + minutes * 60
+        _RAID_UNTIL[chat.id] = active_until
+        joins.clear()
+        just_activated = True
+
+    if active_until > now and await _bot_has_restrict_rights(chat, context.bot.id):
+        try:
+            permissions = ChatPermissions(
+                can_send_messages=False,
+                can_send_audios=False,
+                can_send_documents=False,
+                can_send_photos=False,
+                can_send_videos=False,
+                can_send_video_notes=False,
+                can_send_voice_notes=False,
+                can_send_polls=False,
+                can_send_other_messages=False,
+                can_add_web_page_previews=False,
+            )
+            remaining = max(1, int((active_until - now) / 60) + 1)
+            until_date = datetime.utcnow() + timedelta(minutes=remaining)
+            await context.bot.restrict_chat_member(chat.id, tg_user.id, permissions=permissions, until_date=until_date)
+            _record_automod_action(chat.id, tg_user.id, "mute", "Anti-Raid quarantine", context.bot.id)
+        except Exception as e:
+            print(f"ANTI RAID RESTRICT ERROR: {type(e).__name__}: {e}")
+
+    if just_activated:
+        minutes = max(1, int(settings.get("raid_mode_minutes", 10) or 10))
+        try:
+            await context.bot.send_message(
+                chat.id,
+                "⚠️ <b>THREAT DETECTED // RAID PROTOCOL ACTIVATED</b>\n\n"
+                f"Зафиксировано <b>{threshold}</b> быстрых входов за <b>{window} сек.</b>\n"
+                f"🔒 Новые участники временно переводятся в карантин.\n"
+                f"⏱ RAID MODE: <b>{minutes} мин.</b>",
+                parse_mode=ParseMode.HTML,
+            )
+        except Exception as e:
+            print(f"ANTI RAID ALERT ERROR: {type(e).__name__}: {e}")
+
 async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Автоматически сохраняет автора каждого сообщения и дневную активность."""
     if not update.effective_message or not update.effective_user:
@@ -731,6 +1043,13 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         session.close()
 
+    # Статистика и AutoMod независимы: даже если PostgreSQL временно недоступен,
+    # защита чата всё равно продолжит работать.
+    try:
+        await _run_automod(update, context)
+    except Exception as e:
+        print(f"AUTOMOD ERROR: {type(e).__name__}: {e}")
+
 
 async def track_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     change = update.chat_member
@@ -742,10 +1061,12 @@ async def track_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     old_status = change.old_chat_member.status if change.old_chat_member else None
 
     session = Session()
+    joined_event = False
     try:
         joined_at = None
         if new_status in ("member", "administrator", "creator") and old_status not in ("member", "administrator", "creator"):
             joined_at = datetime.utcnow()
+            joined_event = True
 
         user = _save_user_from_telegram(
             session,
@@ -764,6 +1085,12 @@ async def track_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"TRACK MEMBER ERROR: {e}")
     finally:
         session.close()
+
+    if joined_event and new_status == "member":
+        try:
+            await _handle_raid_join(update, context, tg_user)
+        except Exception as e:
+            print(f"ANTI RAID ERROR: {type(e).__name__}: {e}")
 
 
 async def track_my_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):

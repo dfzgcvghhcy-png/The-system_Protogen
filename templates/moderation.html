@@ -44,6 +44,26 @@
         <label class="toggle-row {% if not is_creator %}locked{% endif %}"><span><b>{{ label }}</b><small>{{ desc }}</small></span><input type="checkbox" data-setting="{{ key }}" {% if settings and settings|attr(key) %}checked{% endif %} {% if not is_creator %}disabled{% endif %}><i></i></label>
         {% endfor %}
       </div>
+
+      <div class="automod-tuning">
+        <div class="tuning-title"><b>AUTOMOD 2.0 // ЧУВСТВИТЕЛЬНОСТЬ</b><small>Пороговые значения применяются ботом сразу после сохранения.</small></div>
+        <div class="tuning-grid">
+          {% for key,label,unit,value,minv,maxv in [
+            ('flood_limit','Сообщений для Flood','шт.', settings.flood_limit if settings else 6,3,20),
+            ('flood_window_seconds','Окно Flood','сек.', settings.flood_window_seconds if settings else 8,3,60),
+            ('caps_percent','Порог CAPS','%', settings.caps_percent if settings else 75,50,100),
+            ('caps_min_letters','Минимум букв CAPS','букв', settings.caps_min_letters if settings else 12,5,100),
+            ('repeat_limit','Повторов текста','шт.', settings.repeat_limit if settings else 3,2,10),
+            ('repeat_window_seconds','Окно повторов','сек.', settings.repeat_window_seconds if settings else 30,5,180),
+            ('raid_join_limit','Входов для RAID','чел.', settings.raid_join_limit if settings else 6,3,50),
+            ('raid_window_seconds','Окно RAID','сек.', settings.raid_window_seconds if settings else 20,5,120),
+            ('raid_mode_minutes','Длительность RAID MODE','мин.', settings.raid_mode_minutes if settings else 10,1,120)
+          ] %}
+          <label class="tuning-field {% if not is_creator %}locked{% endif %}"><span>{{ label }}<small>{{ unit }}</small></span><input type="number" data-number-setting="{{ key }}" value="{{ value }}" min="{{ minv }}" max="{{ maxv }}" {% if not is_creator %}disabled{% endif %}></label>
+          {% endfor %}
+        </div>
+        <div class="automation-note automod-note"><span>⚡</span><div><b>Цепочка реакции</b><small>Нарушение → удаление сообщения → Warn → при достижении лимита выполняется выбранное действие Mute/Ban.</small></div></div>
+      </div>
       </div>
     </article>
 
@@ -105,7 +125,7 @@ document.querySelectorAll('.locked').forEach(el=>el.addEventListener('click',e=>
 const save=document.getElementById('saveModeration');
 save?.addEventListener('click',async()=>{
  if(!isCreator){denied();return}
- const settings={}; document.querySelectorAll('[data-setting]').forEach(x=>settings[x.dataset.setting]=x.checked); const autoWarn=document.getElementById('autoWarnAction'); if(autoWarn) settings.auto_warn_action=autoWarn.value;
+ const settings={}; document.querySelectorAll('[data-setting]').forEach(x=>settings[x.dataset.setting]=x.checked); document.querySelectorAll('[data-number-setting]').forEach(x=>settings[x.dataset.numberSetting]=Number(x.value)); const autoWarn=document.getElementById('autoWarnAction'); if(autoWarn) settings.auto_warn_action=autoWarn.value;
  const commands=rows.map(row=>({command:row.dataset.command,min_role_level:Number(row.querySelector('[data-role-level]').value),enabled:row.querySelector('[data-command-enabled]').checked}));
  save.disabled=true; save.textContent='⟳ СОХРАНЕНИЕ...';
  try{const r=await fetch('/api/admin/moderation',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({settings,commands})});const d=await r.json();if(!r.ok)throw Error(d.error||'Ошибка');save.textContent='✓ СОХРАНЕНО';setTimeout(()=>{save.textContent='✓ СОХРАНИТЬ';save.disabled=false},1200)}catch(e){save.disabled=false;save.textContent='✓ СОХРАНИТЬ';alert(e.message)}});
