@@ -2,11 +2,11 @@ import os
 import io
 import time
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, send_file
-from sqlalchemy import create_engine, Column, Integer, BigInteger, String, DateTime, Boolean, Text, func, desc, or_, text
+from sqlalchemy import create_engine, Column, Integer, BigInteger, String, DateTime, Boolean, Text, func, desc, or_, text, UniqueConstraint
 from sqlalchemy.orm import declarative_base, sessionmaker
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -116,11 +116,124 @@ class BotSetting(Base):
     raid_join_limit = Column(Integer, default=6)
     raid_window_seconds = Column(Integer, default=20)
     raid_mode_minutes = Column(Integer, default=10)
+    verification_enabled = Column(Boolean, default=False)
+    verification_timeout_minutes = Column(Integer, default=3)
+    verification_kick_unverified = Column(Boolean, default=True)
+    ai_moderation_threshold = Column(Integer, default=85)
+    daily_enabled = Column(Boolean, default=True)
     personality_daring = Column(Integer, default=75)
     personality_sarcasm = Column(Integer, default=70)
     personality_aggression = Column(Integer, default=45)
     personality_humor = Column(Integer, default=85)
     personality_friendliness = Column(Integer, default=60)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ModeratorNote(Base):
+    __tablename__ = "moderator_notes"
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    user_id = Column(BigInteger, nullable=False, index=True)
+    moderator_id = Column(BigInteger, nullable=False, index=True)
+    note = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class Appeal(Base):
+    __tablename__ = "appeals"
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    user_id = Column(BigInteger, nullable=False, index=True)
+    punishment_id = Column(Integer, nullable=True, index=True)
+    punishment_type = Column(String(30), nullable=True)
+    punishment_reason = Column(Text, nullable=True)
+    reason = Column(Text, nullable=False)
+    status = Column(String(20), default="open", index=True)
+    moderator_id = Column(BigInteger, nullable=True)
+    decision_note = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    decided_at = Column(DateTime, nullable=True)
+
+
+class SupportTicket(Base):
+    __tablename__ = "support_tickets"
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    user_id = Column(BigInteger, nullable=False, index=True)
+    category = Column(String(40), default="question")
+    subject = Column(String(160), nullable=True)
+    body = Column(Text, nullable=False)
+    status = Column(String(20), default="open", index=True)
+    response = Column(Text, nullable=True)
+    moderator_id = Column(BigInteger, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    closed_at = Column(DateTime, nullable=True)
+
+
+class ScheduledPost(Base):
+    __tablename__ = "scheduled_posts"
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    creator_id = Column(BigInteger, nullable=False, index=True)
+    text = Column(Text, nullable=False)
+    schedule_type = Column(String(20), default="once")
+    send_at = Column(DateTime, nullable=False, index=True)
+    time_spec = Column(String(40), nullable=True)
+    active = Column(Boolean, default=True, index=True)
+    last_sent_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class DailyClaim(Base):
+    __tablename__ = "daily_claims"
+    __table_args__ = (UniqueConstraint("chat_id", "user_id", "claim_day", "claim_type", name="uq_daily_claim"),)
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    user_id = Column(BigInteger, nullable=False, index=True)
+    claim_day = Column(String(10), nullable=False, index=True)
+    claim_type = Column(String(20), nullable=False, default="reward")
+    xp_awarded = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class VerificationChallenge(Base):
+    __tablename__ = "verification_challenges"
+    __table_args__ = (UniqueConstraint("chat_id", "user_id", name="uq_verification_chat_user"),)
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    user_id = Column(BigInteger, nullable=False, index=True)
+    message_id = Column(BigInteger, nullable=True)
+    status = Column(String(20), default="pending", index=True)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    verified_at = Column(DateTime, nullable=True)
+
+
+class AIModerationEvent(Base):
+    __tablename__ = "ai_moderation_events"
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    user_id = Column(BigInteger, nullable=False, index=True)
+    message_id = Column(BigInteger, nullable=True, index=True)
+    message_text = Column(Text, nullable=True)
+    risk_score = Column(Integer, default=0, index=True)
+    category = Column(String(60), nullable=True)
+    reason = Column(Text, nullable=True)
+    recommendation = Column(String(30), default="review")
+    source = Column(String(20), default="heuristic")
+    status = Column(String(20), default="open", index=True)
+    moderator_id = Column(BigInteger, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    resolved_at = Column(DateTime, nullable=True)
+
+
+class SecurityState(Base):
+    __tablename__ = "security_states"
+    chat_id = Column(BigInteger, primary_key=True)
+    raid_until = Column(DateTime, nullable=True, index=True)
+    status = Column(String(20), default="normal")
+    last_trigger = Column(String(120), nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
@@ -158,6 +271,18 @@ class CommandPermission(Base):
 
 DEFAULT_COMMAND_PERMISSIONS = [
     ("/report", "Пожаловаться модераторам", "Безопасность", 0, True, "Создать CASE по сообщению пользователя"),
+    ("/appeal", "Апелляция", "Безопасность", 0, True, "Оспорить последнее наказание"),
+    ("/ticket", "Support ticket", "Поддержка", 0, True, "Создать обращение в Support Center"),
+    ("/mytickets", "Мои tickets", "Поддержка", 0, True, "Показать свои обращения"),
+    ("/daily", "Ежедневная награда", "Прогресс", 0, True, "Получить ежедневные XP"),
+    ("/dailyquest", "Daily quest", "Прогресс", 0, True, "Ежедневное задание и награда"),
+    ("/modnote", "Заметка модератора", "Модерация", 1, True, "Добавить внутреннюю заметку о пользователе"),
+    ("/modnotes", "Заметки модераторов", "Модерация", 1, True, "Показать внутренние заметки"),
+    ("/delmodnote", "Удалить mod note", "Модерация", 1, True, "Удалить внутреннюю заметку"),
+    ("/schedule", "Запланировать сообщение", "Автоматизация", 1, True, "Одноразовая или ежедневная публикация"),
+    ("/schedules", "План публикаций", "Автоматизация", 1, True, "Показать активные публикации"),
+    ("/cancelschedule", "Отменить публикацию", "Автоматизация", 1, True, "Отменить запланированную публикацию"),
+    ("/raidmode", "RAID MODE", "Безопасность", 1, True, "Вручную включить или выключить RAID protocol"),
     ("/warn", "Выдать предупреждение", "Наказания", 1, True, "Предупредить пользователя"),
     ("/warns", "Предупреждения", "Наказания", 1, True, "Просмотр варнов пользователя"),
     ("/unwarn", "Снять предупреждение", "Наказания", 1, True, "Снять одно предупреждение"),
@@ -211,6 +336,10 @@ DEFAULT_COMMAND_PERMISSIONS = [
     ("/gbstop", "Остановить голосование", "Наказания", 2, True, "Остановить голосование за бан"),
     ("/gblist", "Список голосований", "Наказания", 1, True, "Активные голосования"),
     ("/rp", "РП-команды", "РП", 0, True, "Безопасные РП-действия"),
+    ("/level", "Мой уровень", "Прогресс", 0, True, "Графическая карточка уровня, XP и серии"),
+    ("/levels", "Топ уровней", "Прогресс", 0, True, "Топ участников по XP"),
+    ("/achievements", "Достижения", "Прогресс", 0, True, "Открытые и закрытые достижения"),
+    ("/streak", "Серия активности", "Прогресс", 0, True, "Текущая и лучшая серия активности"),
 ]
 
 # Create missing tables only after ALL SQLAlchemy models are registered.
@@ -238,6 +367,11 @@ if engine:
             ("raid_join_limit","INTEGER DEFAULT 6"),
             ("raid_window_seconds","INTEGER DEFAULT 20"),
             ("raid_mode_minutes","INTEGER DEFAULT 10"),
+            ("verification_enabled","BOOLEAN DEFAULT FALSE"),
+            ("verification_timeout_minutes","INTEGER DEFAULT 3"),
+            ("verification_kick_unverified","BOOLEAN DEFAULT TRUE"),
+            ("ai_moderation_threshold","INTEGER DEFAULT 85"),
+            ("daily_enabled","BOOLEAN DEFAULT TRUE"),
         ):
             connection.execute(text(f"ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS {column} {definition}"))
     # Seed the first creator account from Railway Variables only once.
@@ -772,6 +906,11 @@ def admin_moderation_api():
                     "raid_join_limit": int(s.raid_join_limit or 6),
                     "raid_window_seconds": int(s.raid_window_seconds or 20),
                     "raid_mode_minutes": int(s.raid_mode_minutes or 10),
+                    "verification_enabled": bool(s.verification_enabled),
+                    "verification_timeout_minutes": int(s.verification_timeout_minutes or 3),
+                    "verification_kick_unverified": bool(s.verification_kick_unverified),
+                    "ai_moderation_threshold": int(s.ai_moderation_threshold or 85),
+                    "daily_enabled": bool(s.daily_enabled),
                 },
                 "commands": [{"id": c.id, "command": c.command, "label": c.label, "category": c.category, "min_role_level": c.min_role_level, "enabled": bool(c.enabled), "description": c.description or ""} for c in commands]
             })
@@ -781,7 +920,7 @@ def admin_moderation_api():
 
         data = request.get_json(silent=True) or {}
         s = get_bot_settings(db)
-        allowed_flags = {"moderation_enabled", "auto_delete_spam", "warn_enabled", "mute_enabled", "ban_enabled", "kick_enabled", "ai_moderation_enabled", "anti_flood_enabled", "anti_links_enabled", "anti_invites_enabled", "anti_caps_enabled", "anti_repeat_enabled", "anti_raid_enabled"}
+        allowed_flags = {"moderation_enabled", "auto_delete_spam", "warn_enabled", "mute_enabled", "ban_enabled", "kick_enabled", "ai_moderation_enabled", "anti_flood_enabled", "anti_links_enabled", "anti_invites_enabled", "anti_caps_enabled", "anti_repeat_enabled", "anti_raid_enabled", "verification_enabled", "verification_kick_unverified", "daily_enabled"}
         for key in allowed_flags:
             if key in data.get("settings", {}):
                 setattr(s, key, bool(data["settings"][key]))
@@ -801,6 +940,8 @@ def admin_moderation_api():
             "raid_join_limit": (3, 50),
             "raid_window_seconds": (5, 120),
             "raid_mode_minutes": (1, 120),
+            "verification_timeout_minutes": (1, 30),
+            "ai_moderation_threshold": (50, 100),
         }
         for key, (minimum, maximum) in numeric_settings.items():
             if key in settings_payload:
@@ -982,6 +1123,295 @@ def admin_case_status(case_id):
 # USERS
 # ============================================================
 
+# ============================================================
+# OPERATIONS CENTER // APPEALS, SUPPORT, SCHEDULER, SECURITY
+# ============================================================
+
+@app.route("/admin/operations")
+@role_required("moderator")
+def admin_operations():
+    if not SessionLocal:
+        return render_template("operations.html", appeals=[], tickets=[], schedules=[], ai_events=[], notes=[],
+                               security_states=[], verifications=[], raid_active_count=0,
+                               counts={"appeals":0,"tickets":0,"schedules":0,"ai":0,"verification":0}, now=datetime.utcnow())
+    db = SessionLocal()
+    try:
+        # Ensure known Telegram chats are visible in Security Center even before the first RAID event.
+        try:
+            chat_rows = db.execute(text("SELECT chat_id FROM chats WHERE is_active = TRUE ORDER BY last_seen DESC LIMIT 30")).all()
+            known = {int(r[0]) for r in chat_rows}
+            existing = {int(x.chat_id) for x in db.query(SecurityState).all()}
+            for chat_id in known - existing:
+                db.add(SecurityState(chat_id=chat_id, status="normal", updated_at=datetime.utcnow()))
+            if known - existing:
+                db.commit()
+        except Exception as e:
+            db.rollback()
+            print(f"OPERATIONS CHAT SYNC ERROR: {type(e).__name__}: {e}")
+
+        appeals = db.query(Appeal).order_by(Appeal.created_at.desc()).limit(60).all()
+        tickets = db.query(SupportTicket).order_by(SupportTicket.created_at.desc()).limit(60).all()
+        schedules = db.query(ScheduledPost).order_by(ScheduledPost.active.desc(), ScheduledPost.send_at.asc()).limit(80).all()
+        ai_events = db.query(AIModerationEvent).order_by(AIModerationEvent.created_at.desc()).limit(60).all()
+        notes = db.query(ModeratorNote).order_by(ModeratorNote.created_at.desc()).limit(60).all()
+        security_states = db.query(SecurityState).order_by(SecurityState.updated_at.desc()).limit(30).all()
+        verifications = (db.query(VerificationChallenge)
+                         .filter(VerificationChallenge.status == "pending")
+                         .order_by(VerificationChallenge.expires_at.asc()).limit(50).all())
+        now = datetime.utcnow()
+        raid_active_count = sum(1 for x in security_states if x.raid_until and x.raid_until > now)
+        counts = {
+            "appeals": db.query(Appeal).filter(Appeal.status == "open").count(),
+            "tickets": db.query(SupportTicket).filter(SupportTicket.status.in_(["open", "answered"])).count(),
+            "schedules": db.query(ScheduledPost).filter(ScheduledPost.active.is_(True)).count(),
+            "ai": db.query(AIModerationEvent).filter(AIModerationEvent.status == "open").count(),
+            "verification": db.query(VerificationChallenge).filter(VerificationChallenge.status == "pending").count(),
+        }
+        return render_template("operations.html", appeals=appeals, tickets=tickets, schedules=schedules,
+                               ai_events=ai_events, notes=notes, security_states=security_states,
+                               verifications=verifications, raid_active_count=raid_active_count,
+                               counts=counts, now=now)
+    except Exception as e:
+        db.rollback()
+        print(f"OPERATIONS PAGE ERROR: {type(e).__name__}: {e}")
+        return render_template("operations.html", appeals=[], tickets=[], schedules=[], ai_events=[], notes=[],
+                               security_states=[], verifications=[], raid_active_count=0,
+                               counts={"appeals":0,"tickets":0,"schedules":0,"ai":0,"verification":0}, now=datetime.utcnow())
+    finally:
+        db.close()
+
+
+@app.route("/api/admin/appeals/<int:appeal_id>/decision", methods=["POST"])
+@role_required("moderator")
+def admin_appeal_decision(appeal_id):
+    if not SessionLocal:
+        return jsonify({"ok": False, "error": "DATABASE_URL не настроен."}), 500
+    data = request.get_json(silent=True) or {}
+    action = (data.get("action") or "").lower()
+    if action not in {"accepted", "rejected"}:
+        return jsonify({"ok": False, "error": "Некорректное решение."}), 400
+    db = SessionLocal()
+    try:
+        row = db.get(Appeal, appeal_id)
+        if not row:
+            return jsonify({"ok": False, "error": "Апелляция не найдена."}), 404
+        if row.status != "open":
+            return jsonify({"ok": False, "error": "Апелляция уже обработана."}), 409
+        if action == "accepted":
+            ptype = (row.punishment_type or "").lower()
+            if ptype == "ban":
+                _telegram_api("unbanChatMember", {"chat_id": row.chat_id, "user_id": row.user_id, "only_if_banned": True})
+            elif ptype == "mute":
+                _telegram_api("restrictChatMember", {
+                    "chat_id": row.chat_id, "user_id": row.user_id,
+                    "permissions": {
+                        "can_send_messages": True, "can_send_audios": True, "can_send_documents": True,
+                        "can_send_photos": True, "can_send_videos": True, "can_send_video_notes": True,
+                        "can_send_voice_notes": True, "can_send_polls": True, "can_send_other_messages": True,
+                        "can_add_web_page_previews": True,
+                    }
+                })
+
+            undo_type = {"warn": "unwarn", "mute": "unmute", "ban": "unban"}.get(ptype)
+            if undo_type:
+                global_user = db.get(User, row.user_id)
+                if global_user:
+                    if ptype == "warn":
+                        global_user.warns = max(0, int(global_user.warns or 0) - 1)
+                    elif ptype in {"mute", "ban"}:
+                        global_user.status = "member"
+                try:
+                    if ptype == "warn":
+                        db.execute(text("UPDATE chat_users SET warns = CASE WHEN warns > 0 THEN warns - 1 ELSE 0 END WHERE chat_id=:chat_id AND user_id=:user_id"),
+                                   {"chat_id": row.chat_id, "user_id": row.user_id})
+                    elif ptype in {"mute", "ban"}:
+                        db.execute(text("UPDATE chat_users SET status='member' WHERE chat_id=:chat_id AND user_id=:user_id"),
+                                   {"chat_id": row.chat_id, "user_id": row.user_id})
+                    db.execute(text("INSERT INTO chat_punishments (chat_id,user_id,type,reason,moderator_id,created_at) VALUES (:chat_id,:user_id,:type,:reason,:moderator_id,:created_at)"),
+                               {"chat_id": row.chat_id, "user_id": row.user_id, "type": undo_type,
+                                "reason": f"Appeal #{row.id:04d} accepted", "moderator_id": None, "created_at": datetime.utcnow()})
+                except Exception as e:
+                    print(f"APPEAL CHAT HISTORY ERROR: {type(e).__name__}: {e}")
+                db.add(Punishment(user_id=row.user_id, type=undo_type,
+                                  reason=f"Appeal #{row.id:04d} accepted", moderator_id=None))
+        row.status = action
+        row.moderator_id = None
+        row.decision_note = f"Решение из Web: {session.get('admin_username', 'admin')}"
+        row.decided_at = datetime.utcnow()
+        db.commit()
+        try:
+            _telegram_api("sendMessage", {"chat_id": row.chat_id,
+                "text": f"⚖️ APPEAL #{row.id:04d}: {'✅ ПРИНЯТА' if action == 'accepted' else '❌ ОТКЛОНЕНА'}\nПользователь: {row.user_id}"})
+        except Exception as e:
+            print(f"APPEAL WEB NOTIFY ERROR: {type(e).__name__}: {e}")
+        return jsonify({"ok": True})
+    except Exception as e:
+        db.rollback()
+        return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
+    finally:
+        db.close()
+
+
+@app.route("/api/admin/tickets/<int:ticket_id>/reply", methods=["POST"])
+@role_required("moderator")
+def admin_ticket_reply(ticket_id):
+    if not SessionLocal:
+        return jsonify({"ok": False, "error": "DATABASE_URL не настроен."}), 500
+    response_text = ((request.get_json(silent=True) or {}).get("response") or "").strip()
+    if not response_text:
+        return jsonify({"ok": False, "error": "Ответ пуст."}), 400
+    db = SessionLocal()
+    try:
+        row = db.get(SupportTicket, ticket_id)
+        if not row:
+            return jsonify({"ok": False, "error": "Ticket не найден."}), 404
+        delivered = False
+        try:
+            _telegram_api("sendMessage", {"chat_id": row.user_id, "text": f"🎫 TICKET #{row.id:04d} // ОТВЕТ\n\n{response_text}"})
+            delivered = True
+        except Exception:
+            # User may not have opened the bot in DM; fall back to the source group.
+            try:
+                _telegram_api("sendMessage", {"chat_id": row.chat_id,
+                    "text": f"🎫 TICKET #{row.id:04d} // ОТВЕТ\nПользователь: {row.user_id}\n\n{response_text}"})
+                delivered = True
+            except Exception as e:
+                raise RuntimeError(f"Telegram не принял ответ: {e}")
+        row.response = response_text[:3000]
+        row.status = "answered"
+        row.updated_at = datetime.utcnow()
+        db.commit()
+        return jsonify({"ok": True, "delivered": delivered})
+    except Exception as e:
+        db.rollback()
+        return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
+    finally:
+        db.close()
+
+
+@app.route("/api/admin/tickets/<int:ticket_id>/status", methods=["POST"])
+@role_required("moderator")
+def admin_ticket_status(ticket_id):
+    if not SessionLocal:
+        return jsonify({"ok": False, "error": "DATABASE_URL не настроен."}), 500
+    status = ((request.get_json(silent=True) or {}).get("status") or "").lower()
+    if status not in {"open", "answered", "closed"}:
+        return jsonify({"ok": False, "error": "Некорректный статус."}), 400
+    db = SessionLocal()
+    try:
+        row = db.get(SupportTicket, ticket_id)
+        if not row:
+            return jsonify({"ok": False, "error": "Ticket не найден."}), 404
+        row.status = status
+        row.updated_at = datetime.utcnow()
+        row.closed_at = datetime.utcnow() if status == "closed" else None
+        db.commit()
+        return jsonify({"ok": True})
+    except Exception as e:
+        db.rollback(); return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        db.close()
+
+
+@app.route("/api/admin/schedules", methods=["POST"])
+@role_required("moderator")
+def admin_schedule_create():
+    if not SessionLocal:
+        return jsonify({"ok": False, "error": "DATABASE_URL не настроен."}), 500
+    data = request.get_json(silent=True) or {}
+    try:
+        chat_id = int(data.get("chat_id"))
+    except Exception:
+        return jsonify({"ok": False, "error": "Chat ID должен быть числом."}), 400
+    text_value = (data.get("text") or "").strip()
+    schedule_type = (data.get("schedule_type") or "once").lower()
+    raw_time = (data.get("send_at") or "").strip()
+    time_spec = (data.get("time_spec") or "").strip() or None
+    if not text_value or len(text_value) > 3500:
+        return jsonify({"ok": False, "error": "Текст обязателен и должен быть короче 3500 символов."}), 400
+    if schedule_type not in {"once", "daily"}:
+        return jsonify({"ok": False, "error": "Тип расписания должен быть once или daily."}), 400
+    try:
+        parsed = datetime.fromisoformat(raw_time.replace("Z", "+00:00"))
+        if parsed.tzinfo is not None:
+            parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+        send_at = parsed
+    except Exception:
+        return jsonify({"ok": False, "error": "Некорректная дата публикации."}), 400
+    if send_at <= datetime.utcnow() + timedelta(seconds=10):
+        return jsonify({"ok": False, "error": "Время публикации должно быть в будущем."}), 400
+    if schedule_type == "daily" and (not time_spec or len(time_spec) != 5 or time_spec[2] != ':'):
+        return jsonify({"ok": False, "error": "Для daily требуется время HH:MM."}), 400
+    db = SessionLocal()
+    try:
+        row = ScheduledPost(chat_id=chat_id, creator_id=0, text=text_value,
+                            schedule_type=schedule_type, send_at=send_at,
+                            time_spec=time_spec, active=True, created_at=datetime.utcnow())
+        db.add(row); db.commit(); db.refresh(row)
+        return jsonify({"ok": True, "id": row.id})
+    except Exception as e:
+        db.rollback(); return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
+    finally:
+        db.close()
+
+
+@app.route("/api/admin/schedules/<int:post_id>/cancel", methods=["POST"])
+@role_required("moderator")
+def admin_schedule_cancel(post_id):
+    if not SessionLocal:
+        return jsonify({"ok": False, "error": "DATABASE_URL не настроен."}), 500
+    db = SessionLocal()
+    try:
+        row = db.get(ScheduledPost, post_id)
+        if not row:
+            return jsonify({"ok": False, "error": "Schedule не найден."}), 404
+        row.active = False
+        db.commit()
+        return jsonify({"ok": True})
+    except Exception as e:
+        db.rollback(); return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        db.close()
+
+
+@app.route("/api/admin/security/<int:chat_id>/raid", methods=["POST"])
+@role_required("moderator")
+def admin_security_raid(chat_id):
+    if not SessionLocal:
+        return jsonify({"ok": False, "error": "DATABASE_URL не настроен."}), 500
+    data = request.get_json(silent=True) or {}
+    action = (data.get("action") or "").lower()
+    if action not in {"on", "off"}:
+        return jsonify({"ok": False, "error": "Некорректное действие."}), 400
+    minutes = max(1, min(120, int(data.get("minutes") or 10)))
+    db = SessionLocal()
+    try:
+        row = db.get(SecurityState, chat_id)
+        if not row:
+            row = SecurityState(chat_id=chat_id)
+            db.add(row)
+        if action == "on":
+            row.status = "raid"
+            row.raid_until = datetime.utcnow() + timedelta(minutes=minutes)
+            row.last_trigger = f"Web manual: {session.get('admin_username','admin')}"
+        else:
+            row.status = "normal"
+            row.raid_until = None
+            row.last_trigger = f"Web disabled: {session.get('admin_username','admin')}"
+        row.updated_at = datetime.utcnow()
+        db.commit()
+        try:
+            _telegram_api("sendMessage", {"chat_id": chat_id,
+                "text": "⚠️ THREAT DETECTED // RAID PROTOCOL ACTIVATED" if action == "on" else "✅ RAID PROTOCOL DISABLED // SYSTEM NORMAL"})
+        except Exception as e:
+            print(f"RAID WEB NOTIFY ERROR: {type(e).__name__}: {e}")
+        return jsonify({"ok": True})
+    except Exception as e:
+        db.rollback(); return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
+    finally:
+        db.close()
+
+
 @app.route("/admin/users")
 @admin_required
 def admin_users():
@@ -1017,10 +1447,13 @@ def admin_user_profile(user_id):
     try:
         user = db.get(User, user_id)
         if not user:
-            return render_template("user_profile.html", username=session.get("admin_username", ADMIN_USERNAME), user=None, punishments=[], activity=[])
+            return render_template("user_profile.html", username=session.get("admin_username", ADMIN_USERNAME), user=None, punishments=[], activity=[], mod_notes=[], appeals=[], tickets=[])
         punishments = db.query(Punishment).filter(Punishment.user_id == user_id).order_by(desc(Punishment.created_at)).limit(100).all()
         activity = db.query(Activity).filter(Activity.user_id == user_id).order_by(desc(Activity.day)).limit(30).all()
-        return render_template("user_profile.html", username=session.get("admin_username", ADMIN_USERNAME), user=user, punishments=punishments, activity=activity)
+        mod_notes = db.query(ModeratorNote).filter(ModeratorNote.user_id == user_id).order_by(desc(ModeratorNote.created_at)).limit(30).all()
+        appeals = db.query(Appeal).filter(Appeal.user_id == user_id).order_by(desc(Appeal.created_at)).limit(20).all()
+        tickets = db.query(SupportTicket).filter(SupportTicket.user_id == user_id).order_by(desc(SupportTicket.created_at)).limit(20).all()
+        return render_template("user_profile.html", username=session.get("admin_username", ADMIN_USERNAME), user=user, punishments=punishments, activity=activity, mod_notes=mod_notes, appeals=appeals, tickets=tickets)
     finally:
         db.close()
 

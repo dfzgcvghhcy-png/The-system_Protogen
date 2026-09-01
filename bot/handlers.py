@@ -1,8 +1,11 @@
 from telegram import Update, ChatPermissions, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
-from database import Session, User, Punishment, Activity, BotSetting, Chat, ChatUser, ChatActivity, ChatPunishment
+from database import Session, User, Punishment, Activity, BotSetting, Chat, ChatUser, ChatActivity, ChatPunishment, UserProgress, UserAchievement, SecurityState
 from filters import is_admin, bot_can_restrict
+from progression import record_message_progress
+from community import start_verification
+from ai_moderation import maybe_ai_moderate
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict, deque
 import pytz
@@ -28,6 +31,9 @@ DEFAULT_BOT_SETTINGS = dict(
     caps_percent=75, caps_min_letters=12,
     repeat_limit=3, repeat_window_seconds=30,
     raid_join_limit=6, raid_window_seconds=20, raid_mode_minutes=10,
+    verification_enabled=False, verification_timeout_minutes=3,
+    verification_kick_unverified=True, ai_moderation_threshold=85,
+    daily_enabled=True,
 )
 
 def get_bot_settings():
@@ -534,7 +540,7 @@ def _draw_avatar(canvas, avatar, center, radius):
     )
 
 
-def _make_profile_card(user, status, avatar=None):
+def _make_profile_card(user, status, avatar=None, progress=None, achievements_count=0):
     W, H = 1200, 700
     image = Image.new("RGB", (W, H), (5, 8, 22))
     draw = ImageDraw.Draw(image)
@@ -574,6 +580,14 @@ def _make_profile_card(user, status, avatar=None):
 
     draw.text((60, 190), display_name[:26], font=big, fill=(245,245,255))
     draw.text((60, 245), username[:34], font=normal, fill=(0,255,245))
+
+    # Прогресс участника. Не влияет на старую карточку, если данных ещё нет.
+    if progress is not None:
+        p_level = int(getattr(progress, "level", 1) or 1)
+        p_xp = int(getattr(progress, "xp", 0) or 0)
+        p_streak = int(getattr(progress, "streak_days", 0) or 0)
+        draw.text((825, 48), f"LEVEL {p_level}  |  XP {p_xp}", font=normal, fill=(0,255,245))
+        draw.text((825, 96), f"STREAK {p_streak}D  |  ACH {achievements_count}", font=small, fill=(150,170,210))
 
     # Данные.
     left_x, right_x = 60, 625
@@ -910,12 +924,38 @@ async def _handle_raid_join(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         return
 
     now = time.monotonic()
+
+    # RAID state is mirrored to PostgreSQL so Web and Telegram share the same protocol.
+    manual_active_until = None
+    security_db = Session()
+    try:
+        security = security_db.get(SecurityState, chat.id)
+        if security and security.raid_until and security.raid_until > datetime.utcnow():
+            manual_active_until = security.raid_until
+        elif security and security.status == "raid":
+            security.status = "normal"
+            security.raid_until = None
+            security_db.commit()
+        elif security and security.status == "normal" and not security.raid_until:
+            trigger = (security.last_trigger or "").lower()
+            if "disabled" in trigger or "manual off" in trigger:
+                _RAID_UNTIL.pop(chat.id, None)
+    except Exception as e:
+        security_db.rollback()
+        print(f"SECURITY STATE READ ERROR: {type(e).__name__}: {e}")
+    finally:
+        security_db.close()
+
     joins = _RAID_JOIN_WINDOWS[chat.id]
     joins.append(now)
     window = max(5, int(settings.get("raid_window_seconds", 20) or 20))
     _trim_window(joins, now, window)
     threshold = max(3, int(settings.get("raid_join_limit", 6) or 6))
     active_until = _RAID_UNTIL.get(chat.id, 0)
+    if manual_active_until:
+        remaining_seconds = max(1.0, (manual_active_until - datetime.utcnow()).total_seconds())
+        active_until = max(active_until, now + remaining_seconds)
+        _RAID_UNTIL[chat.id] = active_until
 
     just_activated = False
     if len(joins) >= threshold and active_until <= now:
@@ -924,6 +964,22 @@ async def _handle_raid_join(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         _RAID_UNTIL[chat.id] = active_until
         joins.clear()
         just_activated = True
+        security_db = Session()
+        try:
+            state = security_db.get(SecurityState, chat.id)
+            if not state:
+                state = SecurityState(chat_id=chat.id)
+                security_db.add(state)
+            state.status = "raid"
+            state.raid_until = datetime.utcnow() + timedelta(minutes=minutes)
+            state.last_trigger = f"AutoMod: {threshold} joins / {window}s"
+            state.updated_at = datetime.utcnow()
+            security_db.commit()
+        except Exception as e:
+            security_db.rollback()
+            print(f"SECURITY STATE WRITE ERROR: {type(e).__name__}: {e}")
+        finally:
+            security_db.close()
 
     if active_until > now and await _bot_has_restrict_rights(chat, context.bot.id):
         try:
@@ -1050,6 +1106,33 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         print(f"AUTOMOD ERROR: {type(e).__name__}: {e}")
 
+    # AI-модератор работает как ассистент: только review, без автоматического бана.
+    try:
+        await maybe_ai_moderate(update, context, get_bot_settings())
+    except Exception as e:
+        print(f"AI MODERATION ERROR: {type(e).__name__}: {e}")
+
+    # XP/уровни работают отдельной транзакцией и не могут сломать AutoMod/статистику.
+    try:
+        chat = update.effective_chat
+        if chat and chat.type in ("group", "supergroup"):
+            message_text = update.effective_message.text or update.effective_message.caption or ""
+            progress_result = record_message_progress(chat.id, user_tg.id, message_text)
+            if progress_result:
+                notable_achievements = [
+                    a for a in progress_result.get("new_achievements", [])
+                    if a.get("key") != "first_signal"
+                ]
+                if progress_result.get("level_up") or notable_achievements:
+                    lines = ["⚡ <b>PROTOGEN // ПРОГРЕСС ОБНОВЛЁН</b>"]
+                    if progress_result.get("level_up"):
+                        lines.append(f"⬆️ Новый уровень: <b>{progress_result['level']}</b>")
+                    for achievement in notable_achievements:
+                        lines.append(f"🏆 Достижение: <b>{html.escape(achievement['title'])}</b>")
+                    await update.effective_message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
+    except Exception as e:
+        print(f"PROGRESSION ERROR: {type(e).__name__}: {e}")
+
 
 async def track_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     change = update.chat_member
@@ -1091,6 +1174,10 @@ async def track_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await _handle_raid_join(update, context, tg_user)
         except Exception as e:
             print(f"ANTI RAID ERROR: {type(e).__name__}: {e}")
+        try:
+            await start_verification(update, context, tg_user)
+        except Exception as e:
+            print(f"VERIFICATION ERROR: {type(e).__name__}: {e}")
 
 
 async def track_my_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1322,11 +1409,23 @@ async def send_user_profile(query, context, user_id):
         user.kicks = counts["kick"]
         session.commit()
 
+        profile_chat_id = query.message.chat.id
+        progress = (
+            session.query(UserProgress)
+            .filter(UserProgress.chat_id == profile_chat_id, UserProgress.user_id == user_id)
+            .first()
+        )
+        achievements_count = (
+            session.query(UserAchievement)
+            .filter(UserAchievement.chat_id == profile_chat_id, UserAchievement.user_id == user_id)
+            .count()
+        )
+
         # Генерация карточки отдельно обрабатывается,
         # чтобы ошибка Pillow не выглядела как "кнопка не работает".
         try:
             avatar = await _download_avatar(context.bot, user_id)
-            card = _make_profile_card(user, user.status, avatar)
+            card = _make_profile_card(user, user.status, avatar, progress, achievements_count)
 
             buf = io.BytesIO()
             card.save(buf, format="PNG")
@@ -1379,6 +1478,13 @@ async def send_user_profile(query, context, user_id):
             caption=(
                 "👤 <b>Профиль участника</b>\n"
                 "Графическая карточка сформирована из данных бота."
+                + (
+                    f"\n⚡ Уровень <b>{int(progress.level or 1)}</b> · "
+                    f"🔥 серия <b>{int(progress.streak_days or 0)} дн.</b> · "
+                    f"🏆 <b>{achievements_count}</b>"
+                    if progress is not None else
+                    "\n⚡ Уровень <b>1</b> · 🔥 серия <b>0 дн.</b> · 🏆 <b>0</b>"
+                )
             ),
             reply_markup=keyboard,
             parse_mode=ParseMode.HTML,

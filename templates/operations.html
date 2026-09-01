@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ProtogenAdmin — Operations Center</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='operations.css') }}">
+</head>
+<body class="operations-page">
+<div class="bg"></div><div class="grid"></div><div class="scanlines"></div>
+{% include '_admin_sidebar.html' %}
+<div class="admin-main-wrap">
+{% include '_admin_topbar.html' %}
+<main class="ops-main">
+  <section class="ops-hero">
+    <div><div class="eyebrow">05 // OPERATIONS NETWORK</div><h1>Operations Center <span>◈</span></h1><p>Апелляции, support tickets, планировщик, AI Review, верификация и RAID protocol — в одном центре.</p></div>
+    <div class="ops-status {% if raid_active_count %}danger{% endif %}"><i></i>{{ 'THREAT ACTIVE' if raid_active_count else 'SYSTEM NORMAL' }}<small>{{ raid_active_count }} активных RAID-протоколов</small></div>
+  </section>
+
+  <section class="ops-kpis">
+    <article><span>⚖</span><div><b>{{ counts.appeals }}</b><small>Открытые апелляции</small></div></article>
+    <article><span>🎫</span><div><b>{{ counts.tickets }}</b><small>Открытые tickets</small></div></article>
+    <article><span>📅</span><div><b>{{ counts.schedules }}</b><small>Активные публикации</small></div></article>
+    <article><span>🧠</span><div><b>{{ counts.ai }}</b><small>AI Review</small></div></article>
+    <article><span>🔐</span><div><b>{{ counts.verification }}</b><small>Ожидают верификацию</small></div></article>
+  </section>
+
+  <nav class="ops-tabs">
+    <a href="#appeals">Апелляции</a><a href="#tickets">Support</a><a href="#scheduler">Scheduler</a><a href="#security">Security</a><a href="#ai">AI Review</a><a href="#notes">Mod Notes</a>
+  </nav>
+
+  <section id="appeals" class="ops-panel">
+    <header><div><span>01 // APPEALS</span><h2>⚖ Апелляции наказаний</h2></div><small>Принятая апелляция автоматически пытается снять Ban/Mute через Telegram API.</small></header>
+    <div class="ops-list">
+      {% for a in appeals %}
+      <article class="ops-row" data-appeal="{{ a.id }}">
+        <div class="row-id">#{{ '%04d'|format(a.id) }}</div>
+        <div class="row-body"><b>User {{ a.user_id }}</b><small>{{ a.punishment_type or '—' }} · {{ a.created_at.strftime('%d.%m.%Y %H:%M') if a.created_at else '—' }}</small><p>{{ a.reason }}</p>{% if a.punishment_reason %}<em>Наказание: {{ a.punishment_reason }}</em>{% endif %}</div>
+        <div class="row-state {{ a.status }}">{{ a.status|upper }}</div>
+        {% if a.status == 'open' %}<div class="row-actions"><button data-appeal-action="accepted">✓ Принять</button><button class="danger" data-appeal-action="rejected">× Отклонить</button></div>{% endif %}
+      </article>
+      {% else %}<div class="empty">Открытых или недавних апелляций нет.</div>{% endfor %}
+    </div>
+  </section>
+
+  <section id="tickets" class="ops-panel">
+    <header><div><span>02 // SUPPORT</span><h2>🎫 Support Center</h2></div><small>Ответ отправляется пользователю через Protogen и сохраняется в PostgreSQL.</small></header>
+    <div class="ops-list">
+      {% for t in tickets %}
+      <article class="ops-row ticket-row" data-ticket="{{ t.id }}">
+        <div class="row-id">#{{ '%04d'|format(t.id) }}</div>
+        <div class="row-body"><b>User {{ t.user_id }}</b><small>{{ t.status }} · {{ t.created_at.strftime('%d.%m.%Y %H:%M') if t.created_at else '—' }}</small><p>{{ t.body }}</p>{% if t.response %}<em>Ответ: {{ t.response }}</em>{% endif %}</div>
+        <div class="row-state {{ t.status }}">{{ t.status|upper }}</div>
+        {% if t.status != 'closed' %}<div class="ticket-compose"><input type="text" maxlength="1200" placeholder="Ответ пользователю..."><button data-ticket-reply>↗ Ответить</button><button class="ghost" data-ticket-close>Закрыть</button></div>{% endif %}
+      </article>
+      {% else %}<div class="empty">Обращений пока нет.</div>{% endfor %}
+    </div>
+  </section>
+
+  <section id="scheduler" class="ops-panel">
+    <header><div><span>03 // AUTOMATION</span><h2>📅 Планировщик публикаций</h2></div><small>Создавай публикации прямо из Web или через /schedule. Worker подхватит Web-задачу максимум за минуту.</small></header>
+    <div class="scheduler-create">
+      <input id="scheduleChat" type="number" placeholder="Telegram Chat ID" value="{{ security_states[0].chat_id if security_states else '' }}">
+      <input id="scheduleWhen" type="datetime-local">
+      <select id="scheduleType"><option value="once">Один раз</option><option value="daily">Каждый день</option></select>
+      <textarea id="scheduleText" maxlength="3500" placeholder="Текст публикации..."></textarea>
+      <button id="scheduleCreate">＋ СОЗДАТЬ</button>
+    </div>
+    <div class="ops-list compact">
+      {% for s in schedules %}
+      <article class="ops-row" data-schedule="{{ s.id }}"><div class="row-id">#{{ s.id }}</div><div class="row-body"><b>{{ s.schedule_type|upper }} · Chat {{ s.chat_id }}</b><small>{{ s.send_at.strftime('%d.%m.%Y %H:%M') if s.send_at else '—' }} UTC</small><p>{{ s.text }}</p></div><div class="row-state {{ 'open' if s.active else 'closed' }}">{{ 'ACTIVE' if s.active else 'OFF' }}</div>{% if s.active %}<div class="row-actions"><button class="danger" data-schedule-cancel>Отменить</button></div>{% endif %}</article>
+      {% else %}<div class="empty">Запланированных сообщений нет.</div>{% endfor %}
+    </div>
+  </section>
+
+  <section id="security" class="ops-panel security-panel {% if raid_active_count %}threat{% endif %}">
+    <header><div><span>04 // SECURITY</span><h2>🛡 Security / RAID Protocol</h2></div><small>Web и Telegram используют одно состояние PostgreSQL.</small></header>
+    <div class="security-grid">
+      {% for s in security_states %}
+      <article class="security-node" data-chat="{{ s.chat_id }}"><span class="pulse"></span><b>CHAT {{ s.chat_id }}</b><strong>{{ 'RAID ACTIVE' if s.raid_until and s.raid_until > now else 'NORMAL' }}</strong><small>{% if s.raid_until and s.raid_until > now %}до {{ s.raid_until.strftime('%d.%m %H:%M') }} UTC{% else %}Протокол не активен{% endif %}</small><em>{{ s.last_trigger or '—' }}</em><div><button data-raid="on">⚠ RAID 10 мин</button><button class="ghost" data-raid="off">✓ Норма</button></div></article>
+      {% else %}<div class="empty">Security state появится после первого RAID-события или ручного запуска /raidmode.</div>{% endfor %}
+    </div>
+    {% if verifications %}<h3>🔐 Ожидают подтверждение</h3><div class="verify-strip">{% for v in verifications %}<span>User {{ v.user_id }} · Chat {{ v.chat_id }} · до {{ v.expires_at.strftime('%H:%M:%S') if v.expires_at else '—' }}</span>{% endfor %}</div>{% endif %}
+  </section>
+
+  <section id="ai" class="ops-panel">
+    <header><div><span>05 // AI REVIEW</span><h2>🧠 AI-модератор</h2></div><small>AI не банит автоматически: события требуют решения модератора.</small></header>
+    <div class="ops-list compact">
+      {% for e in ai_events %}
+      <article class="ops-row"><div class="risk-ring">{{ e.risk_score }}%</div><div class="row-body"><b>{{ e.category or 'Review' }} · User {{ e.user_id }}</b><small>{{ e.source }} · {{ e.status }} · {{ e.created_at.strftime('%d.%m %H:%M') if e.created_at else '—' }}</small><p>{{ e.message_text }}</p><em>{{ e.reason or '' }}</em></div><div class="row-state {{ e.status }}">{{ e.status|upper }}</div></article>
+      {% else %}<div class="empty">AI Review пока не создавал событий.</div>{% endfor %}
+    </div>
+  </section>
+
+  <section id="notes" class="ops-panel">
+    <header><div><span>06 // INTERNAL NOTES</span><h2>📝 Mod Notes</h2></div><small>Внутренние заметки видны только модерации.</small></header>
+    <div class="ops-list compact">
+      {% for n in notes %}<article class="ops-row"><div class="row-id">#{{ n.id }}</div><div class="row-body"><b>User {{ n.user_id }}</b><small>mod {{ n.moderator_id }} · {{ n.created_at.strftime('%d.%m %H:%M') if n.created_at else '—' }}</small><p>{{ n.note }}</p></div></article>{% else %}<div class="empty">Внутренних заметок пока нет.</div>{% endfor %}
+    </div>
+  </section>
+</main>
+</div>
+<script>
+async function api(url, body){const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});const d=await r.json();if(!r.ok||d.ok===false)throw Error(d.error||'Ошибка');return d}
+document.getElementById('scheduleCreate')?.addEventListener('click',async()=>{
+ const chat=document.getElementById('scheduleChat'), when=document.getElementById('scheduleWhen'), type=document.getElementById('scheduleType'), text=document.getElementById('scheduleText'), btn=document.getElementById('scheduleCreate');
+ if(!chat.value||!when.value||!text.value.trim()){alert('Заполни Chat ID, дату и текст.');return}
+ const local=new Date(when.value); if(Number.isNaN(local.getTime())){alert('Некорректная дата.');return}
+ const hhmm=when.value.slice(11,16); btn.disabled=true;
+ try{await api('/api/admin/schedules',{chat_id:Number(chat.value),send_at:local.toISOString(),schedule_type:type.value,time_spec:type.value==='daily'?hhmm:null,text:text.value.trim()});location.reload()}catch(err){alert(err.message);btn.disabled=false}
+});
+document.addEventListener('click',async e=>{
+ const appealBtn=e.target.closest('[data-appeal-action]'); if(appealBtn){const row=appealBtn.closest('[data-appeal]');appealBtn.disabled=true;try{await api(`/api/admin/appeals/${row.dataset.appeal}/decision`,{action:appealBtn.dataset.appealAction});location.reload()}catch(err){alert(err.message);appealBtn.disabled=false}return}
+ const replyBtn=e.target.closest('[data-ticket-reply]'); if(replyBtn){const row=replyBtn.closest('[data-ticket]'),input=row.querySelector('input');if(!input.value.trim())return;replyBtn.disabled=true;try{await api(`/api/admin/tickets/${row.dataset.ticket}/reply`,{response:input.value.trim()});location.reload()}catch(err){alert(err.message);replyBtn.disabled=false}return}
+ const closeBtn=e.target.closest('[data-ticket-close]'); if(closeBtn){const row=closeBtn.closest('[data-ticket]');try{await api(`/api/admin/tickets/${row.dataset.ticket}/status`,{status:'closed'});location.reload()}catch(err){alert(err.message)}return}
+ const cancel=e.target.closest('[data-schedule-cancel]'); if(cancel){const row=cancel.closest('[data-schedule]');try{await api(`/api/admin/schedules/${row.dataset.schedule}/cancel`,{});location.reload()}catch(err){alert(err.message)}return}
+ const raid=e.target.closest('[data-raid]'); if(raid){const row=raid.closest('[data-chat]');try{await api(`/api/admin/security/${row.dataset.chat}/raid`,{action:raid.dataset.raid,minutes:10});location.reload()}catch(err){alert(err.message)}return}
+});
+</script>
+</body>
+</html>

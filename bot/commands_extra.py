@@ -321,6 +321,11 @@ COMMAND_LIST = {
     "👑 Управление": ["/setmod", "/delmod", "/mods", "/modicon", "/welcome", "/rules"],
     "⭐ Репутация": ["/reputation", "/plus", "/minus", "/rating", "/star", "/stars", "/mystars"],
     "🏅 Награды": ["/reward", "/rewards", "/removereward"],
+    "⚡ Прогресс": ["/level", "/levels", "/achievements", "/streak", "/daily", "/dailyquest"],
+    "🚨 Безопасность": ["/report", "/appeal", "/raidmode"],
+    "🎫 Поддержка": ["/ticket", "/mytickets"],
+    "📝 Mod Notes": ["/modnote", "/modnotes", "/delmodnote"],
+    "📅 Автоматизация": ["/schedule", "/schedules", "/cancelschedule"],
     "ℹ️ Справка": ["/commands", "/help", "/panel", "Кто админ", "Моя статья"],
 }
 

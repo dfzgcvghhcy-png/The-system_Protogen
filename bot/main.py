@@ -23,6 +23,14 @@ from commands_extra import (
 )
 from config import TOKEN
 from cases import report, report_case_callback
+from progression import level_command, levels_command, achievements_command, streak_command
+from appeals import appeal_command, appeal_callback
+from community import (
+    modnote, modnotes, delmodnote, ticket, mytickets, daily, dailyquest,
+    schedule, schedules, cancelschedule, verification_callback, raidmode,
+    restore_community_jobs,
+)
+from ai_moderation import ai_review_callback
 
 
 async def error_handler(update: Update, context):
@@ -30,7 +38,12 @@ async def error_handler(update: Update, context):
 
 
 def main():
-    app = ApplicationBuilder().token(TOKEN).build()
+    app = ApplicationBuilder().token(TOKEN).post_init(restore_community_jobs).build()
+
+    # Operations Center callbacks.
+    app.add_handler(CallbackQueryHandler(appeal_callback, pattern=r"^appeal_"))
+    app.add_handler(CallbackQueryHandler(ai_review_callback, pattern=r"^aireview_"))
+    app.add_handler(CallbackQueryHandler(verification_callback, pattern=r"^verify_"))
 
     # CASE-кнопки жалоб обрабатываются отдельно от панели профиля.
     app.add_handler(CallbackQueryHandler(report_case_callback, pattern=r"^case_"))
@@ -50,6 +63,7 @@ def main():
     app.add_handler(CommandHandler("kick", kick))
     app.add_handler(CommandHandler("panel", panel))
     app.add_handler(CommandHandler("report", report))
+    app.add_handler(CommandHandler("appeal", appeal_command))
 
     # Дополнительные команды Protogen.
     extra_commands = {
@@ -65,6 +79,13 @@ def main():
         "star": star, "stars": stars, "mystars": mystars,
         "reward": reward, "rewards": rewards, "removereward": removereward,
         "rp": rp, "myarticle": my_article,
+        "level": level_command, "levels": levels_command,
+        "achievements": achievements_command, "streak": streak_command,
+        "modnote": modnote, "modnotes": modnotes, "delmodnote": delmodnote,
+        "ticket": ticket, "mytickets": mytickets,
+        "daily": daily, "dailyquest": dailyquest,
+        "schedule": schedule, "schedules": schedules, "cancelschedule": cancelschedule,
+        "raidmode": raidmode,
         "del": delete_message, "clear": clear_messages, "purge": purge_messages,
     }
     for command_name, callback in extra_commands.items():

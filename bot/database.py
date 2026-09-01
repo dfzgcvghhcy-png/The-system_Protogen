@@ -10,6 +10,7 @@ from sqlalchemy import (
     DateTime,
     Boolean,
     Text,
+    UniqueConstraint,
     inspect,
     text,
 )
@@ -537,6 +538,13 @@ class BotSetting(Base):
     raid_window_seconds = Column(Integer, default=20)
     raid_mode_minutes = Column(Integer, default=10)
 
+    # Advanced protection / community systems
+    verification_enabled = Column(Boolean, default=False)
+    verification_timeout_minutes = Column(Integer, default=3)
+    verification_kick_unverified = Column(Boolean, default=True)
+    ai_moderation_threshold = Column(Integer, default=85)
+    daily_enabled = Column(Boolean, default=True)
+
     # ========================================================
     # PROTOGEN PERSONALITY
     # ========================================================
@@ -630,6 +638,163 @@ class ChatPunishment(Base):
     moderator_id = Column(BigInteger, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
+
+# ============================================================
+# PROGRESSION // XP, LEVELS, STREAKS, ACHIEVEMENTS
+# ============================================================
+
+class UserProgress(Base):
+    __tablename__ = "user_progress"
+    __table_args__ = (
+        UniqueConstraint("chat_id", "user_id", name="uq_user_progress_chat_user"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    user_id = Column(BigInteger, nullable=False, index=True)
+    xp = Column(Integer, nullable=False, default=0)
+    level = Column(Integer, nullable=False, default=1)
+    streak_days = Column(Integer, nullable=False, default=0)
+    best_streak = Column(Integer, nullable=False, default=0)
+    last_activity_day = Column(String(10), nullable=True)
+    last_xp_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class UserAchievement(Base):
+    __tablename__ = "user_achievements"
+    __table_args__ = (
+        UniqueConstraint(
+            "chat_id", "user_id", "achievement_key",
+            name="uq_user_achievement_chat_user_key",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    user_id = Column(BigInteger, nullable=False, index=True)
+    achievement_key = Column(String(80), nullable=False, index=True)
+    title = Column(String(120), nullable=False)
+    description = Column(String(255), nullable=False, default="")
+    unlocked_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+
+# ============================================================
+# OPERATIONS CENTER // NOTES, APPEALS, TICKETS, SCHEDULER
+# ============================================================
+
+class ModeratorNote(Base):
+    __tablename__ = "moderator_notes"
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    user_id = Column(BigInteger, nullable=False, index=True)
+    moderator_id = Column(BigInteger, nullable=False, index=True)
+    note = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class Appeal(Base):
+    __tablename__ = "appeals"
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    user_id = Column(BigInteger, nullable=False, index=True)
+    punishment_id = Column(Integer, nullable=True, index=True)
+    punishment_type = Column(String(30), nullable=True)
+    punishment_reason = Column(Text, nullable=True)
+    reason = Column(Text, nullable=False)
+    status = Column(String(20), default="open", index=True)
+    moderator_id = Column(BigInteger, nullable=True)
+    decision_note = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    decided_at = Column(DateTime, nullable=True)
+
+
+class SupportTicket(Base):
+    __tablename__ = "support_tickets"
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    user_id = Column(BigInteger, nullable=False, index=True)
+    category = Column(String(40), default="question")
+    subject = Column(String(160), nullable=True)
+    body = Column(Text, nullable=False)
+    status = Column(String(20), default="open", index=True)
+    response = Column(Text, nullable=True)
+    moderator_id = Column(BigInteger, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    closed_at = Column(DateTime, nullable=True)
+
+
+class ScheduledPost(Base):
+    __tablename__ = "scheduled_posts"
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    creator_id = Column(BigInteger, nullable=False, index=True)
+    text = Column(Text, nullable=False)
+    schedule_type = Column(String(20), default="once")
+    send_at = Column(DateTime, nullable=False, index=True)
+    time_spec = Column(String(40), nullable=True)
+    active = Column(Boolean, default=True, index=True)
+    last_sent_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class DailyClaim(Base):
+    __tablename__ = "daily_claims"
+    __table_args__ = (
+        UniqueConstraint("chat_id", "user_id", "claim_day", "claim_type", name="uq_daily_claim"),
+    )
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    user_id = Column(BigInteger, nullable=False, index=True)
+    claim_day = Column(String(10), nullable=False, index=True)
+    claim_type = Column(String(20), nullable=False, default="reward")
+    xp_awarded = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class VerificationChallenge(Base):
+    __tablename__ = "verification_challenges"
+    __table_args__ = (
+        UniqueConstraint("chat_id", "user_id", name="uq_verification_chat_user"),
+    )
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    user_id = Column(BigInteger, nullable=False, index=True)
+    message_id = Column(BigInteger, nullable=True)
+    status = Column(String(20), default="pending", index=True)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    verified_at = Column(DateTime, nullable=True)
+
+
+class AIModerationEvent(Base):
+    __tablename__ = "ai_moderation_events"
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    user_id = Column(BigInteger, nullable=False, index=True)
+    message_id = Column(BigInteger, nullable=True, index=True)
+    message_text = Column(Text, nullable=True)
+    risk_score = Column(Integer, default=0, index=True)
+    category = Column(String(60), nullable=True)
+    reason = Column(Text, nullable=True)
+    recommendation = Column(String(30), default="review")
+    source = Column(String(20), default="heuristic")
+    status = Column(String(20), default="open", index=True)
+    moderator_id = Column(BigInteger, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    resolved_at = Column(DateTime, nullable=True)
+
+
+class SecurityState(Base):
+    __tablename__ = "security_states"
+    chat_id = Column(BigInteger, primary_key=True)
+    raid_until = Column(DateTime, nullable=True, index=True)
+    status = Column(String(20), default="normal")
+    last_trigger = Column(String(120), nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 # ============================================================
 # CREATE TABLES
@@ -822,6 +987,11 @@ def migrate_protogen_extra_columns():
         "raid_join_limit": "INTEGER DEFAULT 6",
         "raid_window_seconds": "INTEGER DEFAULT 20",
         "raid_mode_minutes": "INTEGER DEFAULT 10",
+        "verification_enabled": "BOOLEAN DEFAULT FALSE",
+        "verification_timeout_minutes": "INTEGER DEFAULT 3",
+        "verification_kick_unverified": "BOOLEAN DEFAULT TRUE",
+        "ai_moderation_threshold": "INTEGER DEFAULT 85",
+        "daily_enabled": "BOOLEAN DEFAULT TRUE",
     }
     with engine.begin() as connection:
         for name, definition in additions.items():
