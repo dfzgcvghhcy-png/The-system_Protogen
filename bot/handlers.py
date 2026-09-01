@@ -8,6 +8,7 @@ from community import start_verification
 from ai_moderation import maybe_ai_moderate
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict, deque
+import asyncio
 import pytz
 import io
 import re
@@ -66,6 +67,21 @@ async def check_callback_setting(query,name):
 
 
 SITE_URL = "https://web-production-c2beb.up.railway.app"
+
+# Progress/achievement notifications are intentionally temporary so they do not
+# clutter busy chats. Users can still review unlocked achievements with
+# /achievements and their current level with /level.
+PROGRESS_NOTICE_TTL_SECONDS = 15
+
+
+async def _delete_message_after(message, delay: int = PROGRESS_NOTICE_TTL_SECONDS):
+    try:
+        await asyncio.sleep(max(1, int(delay)))
+        await message.delete()
+    except Exception:
+        # Deletion can fail if the bot lost delete rights or the message was
+        # already removed manually. This must never affect message tracking.
+        pass
 
 
 # =========================================================
@@ -1129,7 +1145,17 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         lines.append(f"⬆️ Новый уровень: <b>{progress_result['level']}</b>")
                     for achievement in notable_achievements:
                         lines.append(f"🏆 Достижение: <b>{html.escape(achievement['title'])}</b>")
-                    await update.effective_message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
+                    progress_notice = await update.effective_message.reply_text(
+                        "\n".join(lines),
+                        parse_mode=ParseMode.HTML,
+                    )
+                    # Keep level/achievement popups readable for a moment, then
+                    # remove only the bot notification (never the user's message).
+                    context.application.create_task(
+                        _delete_message_after(progress_notice),
+                        update=update,
+                        name=f"delete-progress-notice-{progress_notice.message_id}",
+                    )
     except Exception as e:
         print(f"PROGRESSION ERROR: {type(e).__name__}: {e}")
 
