@@ -71,7 +71,7 @@ SITE_URL = "https://web-production-c2beb.up.railway.app"
 # Progress/achievement notifications are intentionally temporary so they do not
 # clutter busy chats. Users can still review unlocked achievements with
 # /achievements and their current level with /level.
-PROGRESS_NOTICE_TTL_SECONDS = 15
+PROGRESS_NOTICE_TTL_SECONDS = 6
 
 
 async def _delete_message_after(message, delay: int = PROGRESS_NOTICE_TTL_SECONDS):
