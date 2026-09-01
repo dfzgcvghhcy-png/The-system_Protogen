@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ProtogenAdmin — Аудит</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='audit.css') }}">
+</head>
+<body>
+<div class="bg"></div><div class="grid"></div>
+{% include '_admin_sidebar.html' %}
+<div class="admin-main-wrap">
+{% include '_admin_topbar.html' %}
+<main class="audit-main">
+  <section class="audit-hero">
+    <div><div class="eyebrow">SECURITY CORE // DEPUTY WATCH</div><h1>Журнал аудита</h1><p>Все входы и действия роли «Заместитель создателя». Этот журнал доступен только Создателю.</p></div>
+    <div class="audit-live"><i></i> IMMUTABLE WATCH</div>
+  </section>
+
+  {% if error %}<div class="audit-error">⚠ {{ error }}</div>{% endif %}
+
+  <section class="audit-grid">
+    <article class="audit-panel config-panel">
+      <div class="panel-kicker">TELEGRAM ALERTS</div><h2>Уведомления Создателю</h2>
+      <p>Укажи свой Telegram ID один раз. После этого входы и изменения заместителя будут приходить тебе сразу.</p>
+      <form method="post" class="notify-form">
+        <label>Telegram ID<input name="creator_telegram_id" inputmode="numeric" value="{{ config.creator_telegram_id or '' }}" placeholder="Например: 1575848380"></label>
+        <label class="check"><input type="checkbox" name="notify_enabled" {% if config and config.notify_enabled %}checked{% endif %}><span>Отправлять уведомления</span></label>
+        <button type="submit">Сохранить уведомления</button>
+      </form>
+      <div class="security-note">Заместитель не видит эту страницу, не может отключить аудит и не может удалять записи.</div>
+    </article>
+
+    <article class="audit-panel summary-panel">
+      <div class="panel-kicker">AUDIT STATUS</div><h2>Контроль активен</h2>
+      <div class="summary-cards"><div><span>Записей</span><b>{{ logs|length }}</b></div><div><span>Последнее событие</span><b>{{ logs[0].created_at.strftime('%d.%m %H:%M') if logs else '—' }}</b></div></div>
+      <p>Сохраняются IP, User-Agent, раздел, действие, HTTP-метод, статус и данные изменения. Пароли и токены маскируются.</p>
+    </article>
+  </section>
+
+  <section class="audit-panel filter-panel">
+    <form method="get" class="filters">
+      <input name="username" value="{{ filters.username }}" placeholder="Пользователь">
+      <select name="action"><option value="">Все действия</option>{% for a in ['LOGIN','VIEW','CHANGE','ATTEMPT'] %}<option value="{{ a }}" {% if filters.action==a %}selected{% endif %}>{{ a }}</option>{% endfor %}</select>
+      <input name="section" value="{{ filters.section }}" placeholder="Раздел">
+      <input type="date" name="date_from" value="{{ filters.date_from }}">
+      <input type="date" name="date_to" value="{{ filters.date_to }}">
+      <button>Фильтр</button><a href="/admin/audit">Сбросить</a>
+    </form>
+  </section>
+
+  <section class="audit-panel log-panel">
+    <div class="log-head"><div><div class="panel-kicker">EVENT STREAM</div><h2>События</h2></div><span>до 500 последних</span></div>
+    <div class="audit-list">
+    {% for row in logs %}
+      <article class="audit-row action-{{ row.action|lower }}">
+        <div class="event-id">#{{ row.id }}</div>
+        <div class="event-main"><div class="event-title"><b>{{ row.username }}</b><span>{{ row.action }}</span><em>{{ row.section }}</em></div><div class="event-meta">{{ row.method }} {{ row.path }} · IP {{ row.ip_address or '—' }} · HTTP {{ row.status_code or '—' }}</div>
+          {% if row.old_value or row.new_value %}<details><summary>Показать детали изменения</summary>{% if row.old_value %}<div class="diff old"><b>Было</b><pre>{{ row.old_value }}</pre></div>{% endif %}{% if row.new_value %}<div class="diff new"><b>Стало / данные</b><pre>{{ row.new_value }}</pre></div>{% endif %}<div class="ua">User-Agent: {{ row.user_agent or '—' }}</div></details>{% endif %}
+        </div>
+        <time>{{ row.created_at.strftime('%d.%m.%Y %H:%M:%S') if row.created_at else '—' }}</time>
+      </article>
+    {% else %}<div class="audit-empty">Событий пока нет. Как только Заместитель создателя войдёт или выполнит действие, оно появится здесь.</div>{% endfor %}
+    </div>
+  </section>
+  <footer>THE SYSTEM_PROTOGEN · SECURITY AUDIT · <span>CREATOR ONLY</span></footer>
+</main>
+</div>
+</body></html>

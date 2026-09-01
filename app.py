@@ -1,11 +1,12 @@
 import os
 import io
 import time
+import json
 import requests
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session, send_file
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, send_file, g
 from sqlalchemy import create_engine, Column, Integer, BigInteger, String, DateTime, Boolean, Text, func, desc, or_, text, UniqueConstraint
 from sqlalchemy.orm import declarative_base, sessionmaker
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -257,6 +258,31 @@ class WebAccount(Base):
     last_login = Column(DateTime, nullable=True)
 
 
+class AuditLog(Base):
+    __tablename__ = "web_audit_logs"
+    id = Column(Integer, primary_key=True)
+    username = Column(String(80), nullable=False, index=True)
+    role = Column(String(30), nullable=False, index=True)
+    action = Column(String(40), nullable=False, index=True)
+    section = Column(String(120), nullable=False, index=True)
+    method = Column(String(12), nullable=False)
+    path = Column(String(255), nullable=False)
+    old_value = Column(Text, nullable=True)
+    new_value = Column(Text, nullable=True)
+    ip_address = Column(String(80), nullable=True)
+    user_agent = Column(String(500), nullable=True)
+    status_code = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class AuditConfig(Base):
+    __tablename__ = "web_audit_config"
+    id = Column(Integer, primary_key=True, default=1)
+    creator_telegram_id = Column(BigInteger, nullable=True)
+    notify_enabled = Column(Boolean, default=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class CommandPermission(Base):
     __tablename__ = "command_permissions"
     id = Column(Integer, primary_key=True)
@@ -402,10 +428,12 @@ if engine:
 ROLE_NAMES = {
     "moderator": "МОДЕРАТОР",
     "admin": "АДМИНИСТРАТОР",
+    "deputy_creator": "ЗАМЕСТИТЕЛЬ СОЗДАТЕЛЯ",
     "creator": "СОЗДАТЕЛЬ",
 }
 
-ROLE_LEVELS = {"moderator": 1, "admin": 2, "creator": 3}
+# Creator stays one level above the deputy so creator-only security zones remain protected.
+ROLE_LEVELS = {"moderator": 1, "admin": 2, "deputy_creator": 3, "creator": 4}
 
 
 def current_role():
@@ -442,6 +470,21 @@ def creator_required(view):
     return role_required("creator")(view)
 
 
+def creator_or_deputy_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if not session.get("admin_authenticated"):
+            return redirect(url_for("admin_login"))
+        if current_role() not in {"creator", "deputy_creator"}:
+            return redirect(url_for("access_denied", required="deputy_creator"))
+        return view(*args, **kwargs)
+    return wrapped
+
+
+def has_creator_operational_access():
+    return current_role() in {"creator", "deputy_creator"}
+
+
 @app.context_processor
 def inject_panel_user():
     role = current_role()
@@ -449,6 +492,8 @@ def inject_panel_user():
         "panel_role": role,
         "panel_role_name": ROLE_NAMES.get(role, "ПОЛЬЗОВАТЕЛЬ"),
         "is_creator": role == "creator",
+        "is_deputy_creator": role == "deputy_creator",
+        "has_creator_operational_access": has_creator_operational_access(),
         "is_admin_or_creator": has_role("admin"),
     }
 
@@ -644,6 +689,128 @@ def chat():
     })
 
 
+# ============================================================
+# DEPUTY CREATOR AUDIT SYSTEM
+# ============================================================
+
+_AUDIT_SECRET_KEYS = {"password", "new_password", "token", "secret", "bot_token"}
+
+def _audit_safe_payload():
+    data = request.get_json(silent=True) if request.is_json else request.form.to_dict(flat=True)
+    data = dict(data or {})
+    for key in list(data):
+        if key.lower() in _AUDIT_SECRET_KEYS or "password" in key.lower() or "token" in key.lower():
+            data[key] = "***"
+    return data
+
+def _audit_section(path):
+    if path.startswith("/admin/settings"): return "Настройки"
+    if path.startswith("/admin/moderation") or path.startswith("/api/admin/moderation"): return "Модерация"
+    if path.startswith("/admin/users") or path.startswith("/api/admin/users"): return "Пользователи"
+    if path.startswith("/admin/cases") or path.startswith("/api/admin/cases"): return "CASE Center"
+    if path.startswith("/admin/operations") or path.startswith("/api/admin/operations"): return "Операции"
+    if path.startswith("/admin/statistics"): return "Статистика"
+    if path.startswith("/admin/history"): return "История"
+    if path.startswith("/api/admin/wallpaper"): return "Оформление"
+    if path == "/admin": return "Главная"
+    return path.replace("/api/admin/", "").replace("/admin/", "").strip("/") or "Панель"
+
+def _creator_telegram_id(db):
+    for key in ("CREATOR_TELEGRAM_ID", "OWNER_TELEGRAM_ID", "ADMIN_TELEGRAM_ID", "BOT_OWNER_ID"):
+        value = os.getenv(key)
+        if value:
+            try: return int(value)
+            except ValueError: pass
+    cfg = db.get(AuditConfig, 1)
+    if cfg and cfg.notify_enabled and cfg.creator_telegram_id:
+        return int(cfg.creator_telegram_id)
+    return None
+
+def _send_audit_notification(log_id):
+    if not SessionLocal: return
+    db = SessionLocal()
+    try:
+        row = db.get(AuditLog, log_id)
+        if not row: return
+        chat_id = _creator_telegram_id(db)
+        if not chat_id: return
+        token = _telegram_token()
+        if not token: return
+        icon = "👁" if row.action in {"VIEW", "LOGIN"} else "🔐"
+        old_line = f"\nБыло: {row.old_value[:700]}" if row.old_value else ""
+        new_line = f"\nСтало/данные: {row.new_value[:900]}" if row.new_value else ""
+        text_value = (
+            f"{icon} SYSTEM AUDIT // #{row.id}\n"
+            f"Пользователь: {row.username}\n"
+            f"Роль: {ROLE_NAMES.get(row.role, row.role)}\n"
+            f"Действие: {row.action}\n"
+            f"Раздел: {row.section}\n"
+            f"Метод: {row.method}\n"
+            f"IP: {row.ip_address or '—'}"
+            f"{old_line}{new_line}\n"
+            f"Время: {row.created_at.strftime('%d.%m.%Y %H:%M:%S')} UTC"
+        )
+        requests.post(f"https://api.telegram.org/bot{token}/sendMessage", json={"chat_id": chat_id, "text": text_value}, timeout=7)
+    except Exception as e:
+        print(f"AUDIT TELEGRAM ERROR: {type(e).__name__}: {e}")
+    finally:
+        db.close()
+
+def _record_audit(action, section, old_value=None, new_value=None, status_code=None):
+    if not SessionLocal or current_role() != "deputy_creator": return
+    db = SessionLocal()
+    try:
+        forwarded = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        row = AuditLog(
+            username=session.get("admin_username") or "unknown", role=current_role(),
+            action=action, section=section, method=request.method, path=request.path,
+            old_value=old_value, new_value=new_value,
+            ip_address=forwarded or request.remote_addr,
+            user_agent=(request.headers.get("User-Agent") or "")[:500],
+            status_code=status_code, created_at=datetime.utcnow(),
+        )
+        db.add(row); db.commit(); log_id=row.id
+    except Exception as e:
+        db.rollback(); print(f"AUDIT DB ERROR: {type(e).__name__}: {e}"); return
+    finally:
+        db.close()
+    _send_audit_notification(log_id)
+
+@app.before_request
+def _capture_deputy_audit_before():
+    if not session.get("admin_authenticated") or current_role() != "deputy_creator": return
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+        g.audit_payload = _audit_safe_payload()
+        if request.path == "/admin/settings" and SessionLocal:
+            db=SessionLocal()
+            try:
+                st=get_bot_settings(db)
+                g.audit_old=json.dumps({c.name:getattr(st,c.name) for c in st.__table__.columns if c.name not in {"updated_at"}}, ensure_ascii=False, default=str, sort_keys=True)
+            finally: db.close()
+
+@app.after_request
+def _capture_deputy_audit_after(response):
+    if not session.get("admin_authenticated") or current_role() != "deputy_creator": return response
+    if request.path == "/admin/login" and request.method == "POST" and response.status_code in {301,302,303,307,308}:
+        _record_audit("LOGIN", "Авторизация", new_value="Успешный вход в Web", status_code=response.status_code)
+        return response
+    if not request.path.startswith("/admin") and not request.path.startswith("/api/admin"): return response
+    if request.path.startswith("/admin/audit") or request.path.startswith("/api/admin/audit"): return response
+    if request.method == "GET" and not request.path.startswith("/api/"):
+        _record_audit("VIEW", _audit_section(request.path), new_value=f"Открыта страница {request.path}", status_code=response.status_code)
+    elif request.method in {"POST","PUT","PATCH","DELETE"}:
+        old_value=getattr(g,"audit_old",None)
+        new_value=json.dumps(getattr(g,"audit_payload",{}) or {}, ensure_ascii=False, default=str, sort_keys=True)
+        if request.path == "/admin/settings" and response.status_code < 300 and SessionLocal:
+            db=SessionLocal()
+            try:
+                st=get_bot_settings(db)
+                new_value=json.dumps({c.name:getattr(st,c.name) for c in st.__table__.columns if c.name not in {"updated_at"}}, ensure_ascii=False, default=str, sort_keys=True)
+            finally: db.close()
+        _record_audit("CHANGE" if response.status_code < 300 else "ATTEMPT", _audit_section(request.path), old_value=old_value, new_value=new_value, status_code=response.status_code)
+    return response
+
+
 @app.route("/admin/login", methods=["GET", "POST"])
 def admin_login():
     error = None
@@ -727,7 +894,7 @@ def get_site_settings(db):
 
 
 @app.route("/api/admin/wallpaper", methods=["GET"])
-@role_required("creator")
+@creator_or_deputy_required
 def admin_wallpaper_get():
     if not SessionLocal:
         return jsonify({"error": "DATABASE_URL не настроен."}), 500
@@ -750,7 +917,7 @@ def admin_wallpaper_get():
 
 
 @app.route("/api/admin/wallpaper", methods=["POST"])
-@role_required("creator")
+@creator_or_deputy_required
 def admin_wallpaper_select():
     if not SessionLocal:
         return jsonify({"error": "DATABASE_URL не настроен."}), 500
@@ -780,7 +947,7 @@ def admin_wallpaper_select():
 
 
 @app.route("/api/admin/wallpaper/upload", methods=["POST"])
-@role_required("creator")
+@creator_or_deputy_required
 def admin_wallpaper_upload():
     if not SessionLocal:
         return jsonify({"error": "DATABASE_URL не настроен."}), 500
@@ -826,7 +993,7 @@ def admin_wallpaper_upload():
 
 
 @app.route("/api/admin/wallpaper/custom", methods=["DELETE"])
-@role_required("creator")
+@creator_or_deputy_required
 def admin_wallpaper_delete():
     if not SessionLocal:
         return jsonify({"error": "DATABASE_URL не настроен."}), 500
@@ -915,8 +1082,8 @@ def admin_moderation_api():
                 "commands": [{"id": c.id, "command": c.command, "label": c.label, "category": c.category, "min_role_level": c.min_role_level, "enabled": bool(c.enabled), "description": c.description or ""} for c in commands]
             })
 
-        if not has_role("creator"):
-            return jsonify({"ok": False, "error": "Изменять настройки модерации может только Создатель."}), 403
+        if not has_creator_operational_access():
+            return jsonify({"ok": False, "error": "Недостаточно прав для изменения настроек модерации."}), 403
 
         data = request.get_json(silent=True) or {}
         s = get_bot_settings(db)
@@ -976,8 +1143,8 @@ def admin_moderation_api():
 @app.route("/api/admin/moderation/command/<int:command_id>", methods=["POST"])
 @role_required("moderator")
 def admin_moderation_command(command_id):
-    if not has_role("creator"):
-        return jsonify({"ok": False, "error": "Только Создатель может изменять доступ команд."}), 403
+    if not has_creator_operational_access():
+        return jsonify({"ok": False, "error": "Недостаточно прав для изменения доступа команд."}), 403
     if not SessionLocal:
         return jsonify({"ok": False, "error": "DATABASE_URL не настроен."}), 500
     db = SessionLocal()
@@ -1564,7 +1731,7 @@ def _quick_action_chat_id(db):
 
 
 @app.route("/api/admin/users/<int:user_id>/quick-action", methods=["POST"])
-@role_required("creator")
+@creator_or_deputy_required
 def admin_user_quick_action(user_id):
     if not SessionLocal:
         return jsonify({"ok": False, "error": "DATABASE_URL не настроен."}), 500
@@ -1703,7 +1870,7 @@ def admin_users_api():
 # ============================================================
 
 @app.route("/admin/history")
-@role_required("creator")
+@creator_or_deputy_required
 def admin_history():
     if not SessionLocal:
         return render_template(
@@ -1769,7 +1936,7 @@ def admin_history():
 
 
 @app.route("/api/admin/history")
-@role_required("creator")
+@creator_or_deputy_required
 def admin_history_api():
     if not SessionLocal:
         return jsonify({"error": "DATABASE_URL не настроен."}), 500
@@ -1987,8 +2154,8 @@ def admin_settings():
     try:
         s=get_bot_settings(db); saved=False; error=None
         if request.method=="POST":
-            if not has_role("creator"):
-                return redirect(url_for("access_denied", required="creator"))
+            if not has_creator_operational_access():
+                return redirect(url_for("access_denied", required="deputy_creator"))
             flag=lambda k: request.form.get(k)=="on"
             s.moderation_enabled=flag("moderation_enabled"); s.auto_delete_spam=flag("auto_delete_spam")
             s.warn_enabled=flag("warn_enabled"); s.mute_enabled=flag("mute_enabled")
@@ -2009,6 +2176,43 @@ def admin_settings():
         db.rollback(); print(f"SETTINGS PAGE ERROR: {type(e).__name__}: {e}")
         return render_template("settings.html",username=session.get("admin_username",ADMIN_USERNAME),settings=None,error=f"{type(e).__name__}: {e}",saved=False)
     finally: db.close()
+
+@app.route("/admin/audit", methods=["GET", "POST"])
+@creator_required
+def admin_audit():
+    if not SessionLocal:
+        return render_template("audit.html", logs=[], config=None, error="DATABASE_URL не настроен.", filters={})
+    db=SessionLocal()
+    try:
+        cfg=db.get(AuditConfig,1)
+        if not cfg:
+            cfg=AuditConfig(id=1, notify_enabled=True); db.add(cfg); db.commit(); db.refresh(cfg)
+        error=None
+        if request.method=="POST":
+            raw=(request.form.get("creator_telegram_id") or "").strip()
+            try:
+                cfg.creator_telegram_id=int(raw) if raw else None
+                cfg.notify_enabled=request.form.get("notify_enabled")=="on"
+                cfg.updated_at=datetime.utcnow(); db.commit()
+            except ValueError:
+                error="Telegram ID должен быть числом."; db.rollback()
+        username=(request.args.get("username") or "").strip()
+        action=(request.args.get("action") or "").strip().upper()
+        section=(request.args.get("section") or "").strip()
+        date_from=(request.args.get("date_from") or "").strip()
+        date_to=(request.args.get("date_to") or "").strip()
+        q=db.query(AuditLog)
+        if username: q=q.filter(AuditLog.username.ilike(f"%{username}%"))
+        if action: q=q.filter(AuditLog.action==action)
+        if section: q=q.filter(AuditLog.section.ilike(f"%{section}%"))
+        try:
+            if date_from: q=q.filter(AuditLog.created_at>=datetime.strptime(date_from,"%Y-%m-%d"))
+            if date_to: q=q.filter(AuditLog.created_at<datetime.strptime(date_to,"%Y-%m-%d")+timedelta(days=1))
+        except ValueError: error="Некорректный формат даты."
+        logs=q.order_by(AuditLog.created_at.desc()).limit(500).all()
+        return render_template("audit.html", logs=logs, config=cfg, error=error, filters={"username":username,"action":action,"section":section,"date_from":date_from,"date_to":date_to})
+    finally: db.close()
+
 
 @app.route("/api/admin/accounts", methods=["POST"])
 @creator_required
@@ -2050,6 +2254,8 @@ def admin_account_delete(account_id):
         account = db.get(WebAccount, account_id)
         if not account:
             return jsonify({"ok": False, "error": "Аккаунт не найден."}), 404
+        if account.role == "creator":
+            return jsonify({"ok": False, "error": "Аккаунт Создателя защищён от удаления."}), 400
         if account.username == session.get("admin_username"):
             return jsonify({"ok": False, "error": "Нельзя удалить свой текущий аккаунт."}), 400
         db.delete(account)
@@ -2072,6 +2278,8 @@ def admin_account_password(account_id):
         account = db.get(WebAccount, account_id)
         if not account:
             return jsonify({"ok": False, "error": "Аккаунт не найден."}), 404
+        if account.role == "creator" and account.username != session.get("admin_username"):
+            return jsonify({"ok": False, "error": "Пароль Создателя может менять только сам Создатель."}), 403
         account.password_hash = generate_password_hash(password)
         db.commit()
         return jsonify({"ok": True, "message": "Пароль обновлён."})
@@ -2092,6 +2300,8 @@ def admin_account_role(account_id):
         account = db.get(WebAccount, account_id)
         if not account:
             return jsonify({"ok": False, "error": "Аккаунт не найден."}), 404
+        if account.role == "creator" and role != "creator":
+            return jsonify({"ok": False, "error": "Роль Создателя защищена и не может быть понижена."}), 403
         if account.username == session.get("admin_username") and role != "creator":
             return jsonify({"ok": False, "error": "Нельзя понизить роль своего текущего аккаунта."}), 400
         account.role = role

@@ -281,10 +281,10 @@
   if (mute) document.getElementById('muteMeter')?.style.setProperty('width',(Number(mute.value)/1440*100)+'%');
 })();
 </script>
-{% if not is_creator %}
+{% if not has_creator_operational_access %}
 <script>
 (function(){
-  const deny=()=>{ window.location.href='/admin/access-denied?required=creator'; };
+  const deny=()=>{ window.location.href='/admin/access-denied?required=deputy_creator'; };
   document.querySelectorAll('#settingsForm input,#settingsForm select,#settingsForm button,#settingsForm a').forEach(el=>el.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();deny();},true));
   document.getElementById('settingsForm')?.addEventListener('submit',e=>{e.preventDefault();deny();},true);
 })();

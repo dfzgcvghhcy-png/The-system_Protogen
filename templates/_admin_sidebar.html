@@ -12,8 +12,11 @@
     <a class="{% if request.path.startswith('/admin/moderation') %}active{% endif %}" href="/admin/moderation"><span>♜</span><b>МОДЕРАЦИЯ</b><small>Действия и наказания</small></a>
     <a class="{% if request.path.startswith('/admin/cases') %}active{% endif %}" href="/admin/cases"><span>⚠</span><b>ЖАЛОБЫ</b><small>CASE-центр</small></a>
     <a class="{% if request.path.startswith('/admin/operations') %}active{% endif %}" href="/admin/operations"><span>◈</span><b>ОПЕРАЦИИ</b><small>Appeals · Support · Security</small></a>
-    {% if is_creator %}
+    {% if has_creator_operational_access %}
     <a class="{% if request.path.startswith('/admin/history') %}active{% endif %}" href="/admin/history"><span>▣</span><b>ИСТОРИЯ</b><small>Логи и события</small></a>
+    {% endif %}
+    {% if is_creator %}
+    <a class="{% if request.path.startswith('/admin/audit') %}active{% endif %}" href="/admin/audit"><span>◉</span><b>АУДИТ</b><small>Контроль заместителя</small></a>
     {% endif %}
     {% if is_admin_or_creator %}
     <a class="{% if request.path.startswith('/admin/statistics') %}active{% endif %}" href="/admin/statistics"><span>▥</span><b>СТАТИСТИКА</b><small>Аналитика системы</small></a>

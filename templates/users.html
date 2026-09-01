@@ -28,7 +28,7 @@
       <div data-account-row="{{ account.id }}" style="display:grid;grid-template-columns:1fr 170px 150px 120px;gap:12px;align-items:center;padding:12px 14px;border:1px solid rgba(255,255,255,.07);border-radius:12px;background:rgba(255,255,255,.018)">
         <div><b style="color:#eafcff">{{ account.username }}</b><small style="display:block;color:#667f8e;margin-top:3px">{{ account.last_login.strftime('%d.%m.%Y %H:%M') if account.last_login else 'ещё не входил' }}</small></div>
         <select class="account-role" data-id="{{ account.id }}" style="background:#0b1220;color:#dff;border:1px solid #243244;border-radius:8px;padding:8px" {% if account.username == session.get('admin_username') %}disabled{% endif %}>
-          {% for r,label in [('moderator','Модератор'),('admin','Администратор'),('creator','Создатель')] %}<option value="{{ r }}" {% if account.role == r %}selected{% endif %}>{{ label }}</option>{% endfor %}
+          {% for r,label in [('moderator','Модератор'),('admin','Администратор'),('deputy_creator','Заместитель создателя'),('creator','Создатель')] %}<option value="{{ r }}" {% if account.role == r %}selected{% endif %}>{{ label }}</option>{% endfor %}
         </select>
         <button type="button" class="account-password" data-id="{{ account.id }}" style="background:transparent;color:#b9c9d4;border:1px solid #263649;border-radius:8px;padding:8px;cursor:pointer">Сменить пароль</button>
         <button type="button" class="account-delete" data-id="{{ account.id }}" {% if account.username == session.get('admin_username') %}disabled{% endif %} style="background:rgba(255,70,120,.06);color:#ff7caa;border:1px solid rgba(255,70,120,.25);border-radius:8px;padding:8px;cursor:pointer">Удалить</button>
@@ -67,7 +67,7 @@
       <footer>THE SYSTEM_PROTOGEN · USER DATABASE · <span>SECURE SESSION</span></footer>
     </section>
 
-    {% if is_creator %}<aside class="quick-actions panel">
+    {% if has_creator_operational_access %}<aside class="quick-actions panel">
       <div class="quick-actions-head"><div><div class="panel-kicker">COMMAND CENTER</div><h2>Быстрые действия</h2></div><span class="quick-live"><i></i> LIVE</span></div>
       <div class="selected-user-box" id="selectedUserBox"><span class="selected-dot">●</span><div><small>ВЫБРАННЫЙ ПОЛЬЗОВАТЕЛЬ</small><b id="selectedUserName">Не выбран</b><em id="selectedUserId">Выберите пользователя в таблице</em></div></div>
       <button class="quick-action" data-action="role" type="button"><span>♙</span><div><b>Добавить роль</b><small>Назначить модератора или администратора</small></div></button>
@@ -86,7 +86,7 @@
     <div class="panel-kicker">NEW PANEL ACCOUNT</div><h2 style="margin:8px 0">Создать доступ</h2>
     <label style="display:block;margin:14px 0;color:#9eb2bf">Логин<input id="newAccountUsername" autocomplete="off" style="display:block;width:100%;margin-top:7px;padding:12px;border-radius:10px;border:1px solid #263649;background:#050a12;color:#fff"></label>
     <label style="display:block;margin:14px 0;color:#9eb2bf">Пароль<input id="newAccountPassword" type="password" autocomplete="new-password" style="display:block;width:100%;margin-top:7px;padding:12px;border-radius:10px;border:1px solid #263649;background:#050a12;color:#fff"></label>
-    <label style="display:block;margin:14px 0;color:#9eb2bf">Роль<select id="newAccountRole" style="display:block;width:100%;margin-top:7px;padding:12px;border-radius:10px;border:1px solid #263649;background:#050a12;color:#fff"><option value="moderator">Модератор</option><option value="admin">Администратор</option><option value="creator">Создатель</option></select></label>
+    <label style="display:block;margin:14px 0;color:#9eb2bf">Роль<select id="newAccountRole" style="display:block;width:100%;margin-top:7px;padding:12px;border-radius:10px;border:1px solid #263649;background:#050a12;color:#fff"><option value="moderator">Модератор</option><option value="admin">Администратор</option><option value="deputy_creator">Заместитель создателя</option><option value="creator">Создатель</option></select></label>
     <div id="accountCreateResult" style="min-height:22px;margin:8px 0;color:#ff7caa"></div>
     <div style="display:flex;gap:10px;justify-content:flex-end"><button type="button" id="closeAccountCreate" style="padding:10px 15px;border-radius:10px;border:1px solid #263649;background:transparent;color:#b9c9d4">Отмена</button><button type="button" id="createAccountBtn" style="padding:10px 15px;border-radius:10px;border:1px solid rgba(0,255,225,.35);background:rgba(0,255,225,.08);color:#dffffa;font-weight:700">Создать</button></div>
   </div>

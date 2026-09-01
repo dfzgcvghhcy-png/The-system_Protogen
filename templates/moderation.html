@@ -15,7 +15,7 @@
 <main class="moderation-main">
   <section class="moderation-hero">
     <div><div class="eyebrow">03 // MODERATION CONTROL CENTER</div><h1>Центр модерации <span>🛡️</span></h1><p>Управление наказаниями, автомодерацией и доступом к командам Protogen.</p></div>
-    <div class="role-badge"><i></i>{{ panel_role_name }}<small>УРОВЕНЬ {{ {'moderator':1,'admin':2,'creator':3}.get(panel_role,0) }}</small></div>
+    <div class="role-badge"><i></i>{{ panel_role_name }}<small>УРОВЕНЬ {{ {'moderator':1,'admin':2,'deputy_creator':3,'creator':4}.get(panel_role,0) }}</small></div>
   </section>
 
   {% if error %}<div class="error-box">⚠️ {{ error }}</div>{% endif %}
@@ -44,7 +44,7 @@
           ('verification_kick_unverified','Kick без верификации','Исключать участника после истечения проверки'),
           ('daily_enabled','Daily / Quest','Разрешить ежедневные XP-награды')
         ] %}
-        <label class="toggle-row {% if not is_creator %}locked{% endif %}"><span><b>{{ label }}</b><small>{{ desc }}</small></span><input type="checkbox" data-setting="{{ key }}" {% if settings and settings|attr(key) %}checked{% endif %} {% if not is_creator %}disabled{% endif %}><i></i></label>
+        <label class="toggle-row {% if not has_creator_operational_access %}locked{% endif %}"><span><b>{{ label }}</b><small>{{ desc }}</small></span><input type="checkbox" data-setting="{{ key }}" {% if settings and settings|attr(key) %}checked{% endif %} {% if not has_creator_operational_access %}disabled{% endif %}><i></i></label>
         {% endfor %}
       </div>
 
@@ -64,7 +64,7 @@
             ('verification_timeout_minutes','Таймер верификации','мин.', settings.verification_timeout_minutes if settings else 3,1,30),
             ('ai_moderation_threshold','Порог AI Review','%', settings.ai_moderation_threshold if settings else 85,50,100)
           ] %}
-          <label class="tuning-field {% if not is_creator %}locked{% endif %}"><span>{{ label }}<small>{{ unit }}</small></span><input type="number" data-number-setting="{{ key }}" value="{{ value }}" min="{{ minv }}" max="{{ maxv }}" {% if not is_creator %}disabled{% endif %}></label>
+          <label class="tuning-field {% if not has_creator_operational_access %}locked{% endif %}"><span>{{ label }}<small>{{ unit }}</small></span><input type="number" data-number-setting="{{ key }}" value="{{ value }}" min="{{ minv }}" max="{{ maxv }}" {% if not has_creator_operational_access %}disabled{% endif %}></label>
           {% endfor %}
         </div>
         <div class="automation-note automod-note"><span>⚡</span><div><b>Цепочка реакции</b><small>Нарушение → удаление сообщения → Warn → при достижении лимита выполняется выбранное действие Mute/Ban.</small></div></div>
@@ -78,7 +78,7 @@
       <div class="mod-head"><div></div></div>
       <div class="limit-row"><div><b>WARN LIMIT</b><small>До автоматического действия</small></div><strong>{{ settings.warn_limit if settings else '—' }}</strong></div>
       <div class="limit-row"><div><b>MUTE DURATION</b><small>Стандартная длительность</small></div><strong>{{ settings.mute_duration if settings else '—' }}<em> мин</em></strong></div>
-      <div class="action-preview"><span>⚠️</span><div><b>Действие после лимита Warn</b><small>Что делать, когда пользователь достиг лимита предупреждений.</small><select id="autoWarnAction" {% if not is_creator %}disabled{% endif %}><option value="mute" {% if settings and settings.auto_warn_action == 'mute' %}selected{% endif %}>🔇 Mute</option><option value="ban" {% if settings and settings.auto_warn_action == 'ban' %}selected{% endif %}>🚫 Ban</option><option value="none" {% if settings and settings.auto_warn_action == 'none' %}selected{% endif %}>⏸ Ничего</option></select></div></div>
+      <div class="action-preview"><span>⚠️</span><div><b>Действие после лимита Warn</b><small>Что делать, когда пользователь достиг лимита предупреждений.</small><select id="autoWarnAction" {% if not has_creator_operational_access %}disabled{% endif %}><option value="mute" {% if settings and settings.auto_warn_action == 'mute' %}selected{% endif %}>🔇 Mute</option><option value="ban" {% if settings and settings.auto_warn_action == 'ban' %}selected{% endif %}>🚫 Ban</option><option value="none" {% if settings and settings.auto_warn_action == 'none' %}selected{% endif %}>⏸ Ничего</option></select></div></div>
       </div>
     </article>
   </section>
@@ -86,7 +86,7 @@
   <section class="mod-card accordion-card command-card">
     <button class="accordion-toggle" type="button" aria-expanded="false"><span><b>03 // COMMAND ACCESS</b><strong>Доступ к командам</strong><small>Кто может использовать команды Protogen</small></span><i>⌄</i></button>
     <div class="accordion-content">
-    <div class="mod-head command-head"><div><span class="panel-kicker">03 // COMMAND ACCESS</span><h2>Доступ к командам</h2><p>Кто может использовать команды Protogen. Изменять матрицу может только Создатель.</p></div><button id="saveModeration" class="save-command" {% if not is_creator %}disabled{% endif %}>✓ СОХРАНИТЬ</button></div>
+    <div class="mod-head command-head"><div><span class="panel-kicker">03 // COMMAND ACCESS</span><h2>Доступ к командам</h2><p>Кто может использовать команды Protogen. Изменять матрицу может Создатель или Заместитель создателя. Все действия заместителя фиксируются в аудите.</p></div><button id="saveModeration" class="save-command" {% if not has_creator_operational_access %}disabled{% endif %}>✓ СОХРАНИТЬ</button></div>
     <div class="legend"><span><i class="dot green"></i> разрешено</span><span><i class="dot red"></i> заблокировано</span><span>Уровень: 1 Модератор · 2 Администратор · 3 Создатель</span></div>
     <div class="command-table">
       <div class="command-grid table-title"><span>КОМАНДА</span><span>ОПИСАНИЕ</span><span>МИНИМАЛЬНЫЙ РАНГ</span><span>СТАТУС</span></div>
@@ -95,14 +95,14 @@
         <div class="command-name"><b>{{ c.command }}</b><small>{{ c.label }}</small></div>
         <div class="command-desc">{{ c.description or '—' }}</div>
         <div class="rank-select">
-          <select data-role-level {% if not is_creator %}disabled{% endif %}>
+          <select data-role-level {% if not has_creator_operational_access %}disabled{% endif %}>
             <option value="0" {% if c.min_role_level == 0 %}selected{% endif %}>Все участники</option>
             <option value="1" {% if c.min_role_level == 1 %}selected{% endif %}>Модератор</option>
             <option value="2" {% if c.min_role_level == 2 %}selected{% endif %}>Администратор</option>
             <option value="3" {% if c.min_role_level == 3 %}selected{% endif %}>Создатель</option>
           </select>
         </div>
-        <label class="command-switch {% if not is_creator %}locked{% endif %}"><input type="checkbox" data-command-enabled {% if c.enabled %}checked{% endif %} {% if not is_creator %}disabled{% endif %}><i></i><span>{{ 'ON' if c.enabled else 'OFF' }}</span></label>
+        <label class="command-switch {% if not has_creator_operational_access %}locked{% endif %}"><input type="checkbox" data-command-enabled {% if c.enabled %}checked{% endif %} {% if not has_creator_operational_access %}disabled{% endif %}><i></i><span>{{ 'ON' if c.enabled else 'OFF' }}</span></label>
       </div>
       {% endfor %}
     </div>
@@ -122,7 +122,7 @@
 <script src="{{ url_for('static', filename='access-control.js') }}"></script>
 <script>
 document.querySelectorAll('.accordion-toggle').forEach(btn=>{btn.addEventListener('click',()=>{const card=btn.closest('.accordion-card');const open=card.classList.toggle('open');btn.setAttribute('aria-expanded',open?'true':'false');});});
-const isCreator={{ 'true' if is_creator else 'false' }};
+const isCreator={{ 'true' if has_creator_operational_access else 'false' }};
 const levelNames=['Все участники','Модератор','Администратор','Создатель'];
 const rows=[...document.querySelectorAll('.command-row')];
 function denied(){ if(window.showAccessDenied) window.showAccessDenied(); }
