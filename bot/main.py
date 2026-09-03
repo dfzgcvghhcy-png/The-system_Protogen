@@ -31,14 +31,21 @@ from community import (
     restore_community_jobs,
 )
 from ai_moderation import ai_review_callback
+from security import security_precheck, security_callback_precheck, setup_security_jobs, secure_error_handler
 
 
-async def error_handler(update: Update, context):
-    print(f"ERROR: {type(context.error).__name__}: {context.error}")
+async def post_init(application):
+    await restore_community_jobs(application)
+    setup_security_jobs(application)
 
 
 def main():
-    app = ApplicationBuilder().token(TOKEN).post_init(restore_community_jobs).build()
+    app = ApplicationBuilder().token(TOKEN).post_init(post_init).build()
+
+    # Security precheck executes before normal handlers and can stop abusive/locked-down actions.
+    app.add_handler(MessageHandler(tg_filters.ALL, security_precheck), group=-10)
+
+    app.add_handler(CallbackQueryHandler(security_callback_precheck, pattern=r".*"), group=-10)
 
     # Operations Center callbacks.
     app.add_handler(CallbackQueryHandler(appeal_callback, pattern=r"^appeal_"))
@@ -100,7 +107,7 @@ def main():
     app.add_handler(ChatMemberHandler(track_chat_member, ChatMemberHandler.CHAT_MEMBER))
     app.add_handler(ChatMemberHandler(track_my_chat_member, ChatMemberHandler.MY_CHAT_MEMBER))
 
-    app.add_error_handler(error_handler)
+    app.add_error_handler(secure_error_handler)
 
     print("🐾 The system_Protogen запущен")
 

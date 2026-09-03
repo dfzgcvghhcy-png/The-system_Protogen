@@ -17,6 +17,7 @@
     {% endif %}
     {% if is_creator %}
     <a class="{% if request.path.startswith('/admin/audit') %}active{% endif %}" href="/admin/audit"><span>◉</span><b>АУДИТ</b><small>Контроль заместителя</small></a>
+    <a class="{% if request.path.startswith('/admin/security') %}active{% endif %}" href="/admin/security"><span>◆</span><b>БЕЗОПАСНОСТЬ</b><small>2FA · Sessions · Lockdown</small></a>
     {% endif %}
     {% if is_admin_or_creator %}
     <a class="{% if request.path.startswith('/admin/statistics') %}active{% endif %}" href="/admin/statistics"><span>▥</span><b>СТАТИСТИКА</b><small>Аналитика системы</small></a>

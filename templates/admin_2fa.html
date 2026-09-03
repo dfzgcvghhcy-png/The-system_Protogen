@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Protogen — Security Verification</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='system-boot.css') }}">
+<style>
+body{min-height:100vh;margin:0;display:grid;place-items:center;background:#03070d;color:#eafcff;font-family:Inter,system-ui,sans-serif;overflow:hidden}.bg{position:fixed;inset:0;background:radial-gradient(circle at 50% 30%,rgba(93,45,180,.24),transparent 42%),linear-gradient(rgba(0,255,225,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(0,255,225,.025) 1px,transparent 1px);background-size:auto,42px 42px,42px 42px}.card{position:relative;width:min(470px,calc(100vw - 36px));padding:30px;border:1px solid rgba(0,255,225,.25);border-radius:20px;background:rgba(5,10,20,.93);box-shadow:0 30px 90px rgba(0,0,0,.58),0 0 55px rgba(117,54,255,.11)}.brand{display:flex;align-items:center;gap:13px;margin-bottom:26px}.brand img{width:52px;height:52px;border-radius:50%;border:1px solid #00ffe1}.brand b{display:block;font-size:18px}.brand small{color:#00ffe1;letter-spacing:.16em}.tag{color:#9b6cff;font-size:11px;letter-spacing:.18em;font-weight:800}.card h1{font-size:30px;margin:8px 0 10px}.card p{color:#8fa7b6;line-height:1.6}.field{margin:22px 0}.field label{display:block;font-size:11px;letter-spacing:.16em;color:#8fa7b6;margin-bottom:8px}.field input{width:100%;box-sizing:border-box;padding:16px 18px;text-align:center;letter-spacing:.35em;font-size:25px;border-radius:12px;border:1px solid rgba(0,255,225,.24);background:#07111d;color:white;outline:none}.field input:focus{border-color:#00ffe1;box-shadow:0 0 0 3px rgba(0,255,225,.08)}button{width:100%;padding:14px;border:1px solid rgba(0,255,225,.35);border-radius:11px;background:linear-gradient(90deg,rgba(0,255,225,.15),rgba(126,55,255,.15));color:#eaffff;font-weight:800;letter-spacing:.08em;cursor:pointer}.error{margin:14px 0;padding:11px 13px;border:1px solid rgba(255,72,117,.3);border-radius:10px;background:rgba(255,72,117,.08);color:#ff8cab}.foot{margin-top:18px;text-align:center;color:#637b89;font-size:12px}.back{display:block;margin-top:14px;text-align:center;color:#82a4b5;text-decoration:none}
+</style>
+</head>
+<body><div class="bg"></div>
+<main class="card">
+  <div class="brand"><img src="{{ url_for('static', filename='my_avatar.png') }}" alt="Protogen"><div><b>PROTOGEN SECURITY</b><small>SECOND FACTOR</small></div></div>
+  <div class="tag">SECURITY VERIFICATION // 2FA</div>
+  <h1>Подтверди вход</h1>
+  <p>Одноразовый шестизначный код отправлен через Protogen в Telegram. Он действует 3 минуты.</p>
+  {% if error %}<div class="error">⚠ {{ error }}</div>{% endif %}
+  <form method="post" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="field"><label for="code">КОД ПОДТВЕРЖДЕНИЯ</label><input id="code" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autofocus></div>
+    <button type="submit">ПОДТВЕРДИТЬ ВХОД →</button>
+  </form>
+  <div class="foot">5 неверных попыток аннулируют проверку.</div>
+  <a class="back" href="/admin/login">← Вернуться к авторизации</a>
+</main></body></html>

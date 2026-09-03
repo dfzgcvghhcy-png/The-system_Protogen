@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="csrf-token" content="{{ csrf_token }}">
+<title>Protogen Admin — Security Center</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='security.css') }}">
+</head>
+<body>
+<div class="admin-layout">
+{% include '_admin_sidebar.html' %}
+<main class="security-main">
+  <header class="security-hero">
+    <div><div class="eyebrow">PROTOGEN // SECURITY LAYER</div><h1>Security Center</h1><p>Сессии, 2FA, аварийная блокировка, события безопасности и состояние сервисов.</p></div>
+    <div class="shield">◈</div>
+  </header>
+
+  {% if error %}<div class="notice danger">{{ error }}</div>{% endif %}
+
+  <section class="health-grid">
+    {% for key,label in [('web','WEB'),('database','DATABASE'),('worker','BOT WORKER'),('ai','AI CORE'),('scheduler','SCHEDULER'),('two_factor','2FA')] %}
+    <article class="health-card {{ 'ok' if health.get(key) else 'bad' }}"><small>{{ label }}</small><b>{{ 'ONLINE' if health.get(key) else 'OFFLINE / NOT CONFIGURED' }}</b><i></i></article>
+    {% endfor %}
+  </section>
+
+  <section class="security-panel lockdown-panel {{ 'active' if lockdown and lockdown.enabled else '' }}">
+    <div><div class="eyebrow">EMERGENCY PROTOCOL</div><h2>Emergency Lockdown</h2><p>{% if lockdown and lockdown.enabled %}Система заблокирована. Не-Creator административные действия и опасные Telegram-команды ограничены.{% else %}Аварийная блокировка выключена. Используй только при подозрении на компрометацию.{% endif %}</p></div>
+    <button id="lockdownBtn" data-enabled="{{ '1' if lockdown and lockdown.enabled else '0' }}">{{ '🟢 СНЯТЬ LOCKDOWN' if lockdown and lockdown.enabled else '🔴 ВКЛЮЧИТЬ LOCKDOWN' }}</button>
+  </section>
+
+  <section class="security-panel">
+    <div class="panel-head"><div><div class="eyebrow">SECOND FACTOR</div><h2>Telegram 2FA</h2></div><span>Creator + Deputy Creator</span></div>
+    <p class="muted">Если Telegram ID конкретного аккаунта не указан, для защищённых ролей используется Telegram ID Создателя из <code>CREATOR_TELEGRAM_ID</code> или настройки Аудита.</p>
+    <div class="account-grid">
+      {% for account in accounts %}
+      <div class="account-card"><div><b>{{ account.username }}</b><small>{{ panel_role_name if account.username == session.get('admin_username') else account.role }}</small></div><input data-telegram-account="{{ account.id }}" value="{{ account.telegram_id or '' }}" placeholder="Telegram ID"><button data-save-telegram="{{ account.id }}">Сохранить</button></div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="security-panel">
+    <div class="panel-head"><div><div class="eyebrow">ACTIVE ACCESS</div><h2>Активные Web-сессии</h2></div><span>{{ sessions|length }} записей</span></div>
+    <div class="table-wrap"><table><thead><tr><th>Аккаунт</th><th>IP</th><th>Устройство</th><th>Последняя активность</th><th>Статус</th><th></th></tr></thead><tbody>
+    {% for item in sessions %}<tr><td><b>{{ item.username }}</b><small>{{ item.role }}</small></td><td>{{ item.ip_address or '—' }}</td><td class="ua">{{ (item.user_agent or '—')[:90] }}</td><td>{{ item.last_seen.strftime('%d.%m.%Y %H:%M:%S') if item.last_seen else '—' }}</td><td><span class="pill {{ 'off' if item.revoked_at else 'on' }}">{{ 'REVOKED' if item.revoked_at else 'ACTIVE' }}</span></td><td>{% if not item.revoked_at %}<button class="revoke" data-revoke="{{ item.id }}">Завершить</button>{% endif %}</td></tr>{% else %}<tr><td colspan="6">Сессий пока нет.</td></tr>{% endfor %}
+    </tbody></table></div>
+  </section>
+
+  <section class="security-panel">
+    <div class="panel-head"><div><div class="eyebrow">SECURITY AUDIT</div><h2>Последние события</h2></div><span>до 200</span></div>
+    <div class="event-list">
+      {% for e in events %}<article class="event severity-{{ e.severity|lower }}"><div class="event-mark"></div><div><b>{{ e.event_type }}</b><small>{{ e.severity }} · {{ e.username or 'SYSTEM' }} · {{ e.created_at.strftime('%d.%m.%Y %H:%M:%S') }}</small><p>{{ e.details or '—' }}</p></div></article>{% else %}<p class="muted">Событий пока нет.</p>{% endfor %}
+    </div>
+  </section>
+</main></div>
+<script>
+const csrf=document.querySelector('meta[name="csrf-token"]').content;
+async function api(url,body={}){const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify(body)});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||'Security operation failed');return d;}
+document.getElementById('lockdownBtn')?.addEventListener('click',async e=>{const enabled=e.currentTarget.dataset.enabled==='1';const next=!enabled;const reason=next?prompt('Причина аварийной блокировки:','Security incident / manual lockdown'): 'Creator released lockdown';if(next&&reason===null)return;if(!confirm(next?'Включить EMERGENCY LOCKDOWN?':'Снять LOCKDOWN?'))return;try{await api('/api/admin/security/lockdown',{enabled:next,reason:reason||'Manual action'});location.reload()}catch(err){alert(err.message)}});
+document.querySelectorAll('[data-revoke]').forEach(btn=>btn.addEventListener('click',async()=>{if(!confirm('Завершить эту Web-сессию?'))return;try{await api('/api/admin/security/sessions/'+btn.dataset.revoke+'/revoke');location.reload()}catch(e){alert(e.message)}}));
+document.querySelectorAll('[data-save-telegram]').forEach(btn=>btn.addEventListener('click',async()=>{const id=btn.dataset.saveTelegram;const input=document.querySelector('[data-telegram-account="'+id+'"]');try{await api('/api/admin/security/accounts/'+id+'/telegram',{telegram_id:input.value.trim()});btn.textContent='✓ Сохранено';setTimeout(()=>btn.textContent='Сохранить',1200)}catch(e){alert(e.message)}}));
+</script>
+</body></html>

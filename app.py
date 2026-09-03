@@ -2,20 +2,30 @@ import os
 import io
 import time
 import json
+import secrets
+import hashlib
+import traceback
 import requests
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session, send_file, g
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, send_file, g, abort
 from sqlalchemy import create_engine, Column, Integer, BigInteger, String, DateTime, Boolean, Text, func, desc, or_, text, UniqueConstraint
 from sqlalchemy.orm import declarative_base, sessionmaker
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.exceptions import HTTPException
 
 APP_STARTED_AT = datetime.utcnow()
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "CHANGE_ME_IN_RAILWAY")
-app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
+app.config.update(
+    MAX_CONTENT_LENGTH=5 * 1024 * 1024,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
+)
 
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "creator")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
@@ -24,7 +34,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if DATABASE_URL:
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
-    engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=1800)
+    engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=1800, pool_size=5, max_overflow=5, pool_timeout=15)
     print("🗄️ Web Database: PostgreSQL Railway")
 else:
     engine = None
@@ -253,6 +263,7 @@ class WebAccount(Base):
     username = Column(String(80), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
     role = Column(String(20), nullable=False, default="moderator")
+    telegram_id = Column(BigInteger, nullable=True)
     active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     last_login = Column(DateTime, nullable=True)
@@ -281,6 +292,70 @@ class AuditConfig(Base):
     creator_telegram_id = Column(BigInteger, nullable=True)
     notify_enabled = Column(Boolean, default=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class SecurityEvent(Base):
+    __tablename__ = "security_events"
+    id = Column(Integer, primary_key=True)
+    event_type = Column(String(60), nullable=False, index=True)
+    severity = Column(String(16), nullable=False, default="INFO", index=True)
+    username = Column(String(80), nullable=True, index=True)
+    role = Column(String(30), nullable=True)
+    ip_address = Column(String(80), nullable=True)
+    details = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class WebSecuritySession(Base):
+    __tablename__ = "web_security_sessions"
+    id = Column(Integer, primary_key=True)
+    session_id = Column(String(96), unique=True, nullable=False, index=True)
+    account_id = Column(Integer, nullable=False, index=True)
+    username = Column(String(80), nullable=False, index=True)
+    role = Column(String(30), nullable=False)
+    ip_address = Column(String(80), nullable=True)
+    user_agent = Column(String(500), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_seen = Column(DateTime, default=datetime.utcnow, index=True)
+    revoked_at = Column(DateTime, nullable=True, index=True)
+
+
+class LoginGuard(Base):
+    __tablename__ = "web_login_guards"
+    id = Column(Integer, primary_key=True)
+    guard_key = Column(String(220), unique=True, nullable=False, index=True)
+    failed_count = Column(Integer, default=0)
+    locked_until = Column(DateTime, nullable=True, index=True)
+    last_failed_at = Column(DateTime, nullable=True)
+
+
+class TwoFactorChallenge(Base):
+    __tablename__ = "web_2fa_challenges"
+    id = Column(Integer, primary_key=True)
+    challenge_id = Column(String(96), unique=True, nullable=False, index=True)
+    account_id = Column(Integer, nullable=False, index=True)
+    code_hash = Column(String(128), nullable=False)
+    attempts = Column(Integer, default=0)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    used_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SystemLockdown(Base):
+    __tablename__ = "system_lockdown"
+    id = Column(Integer, primary_key=True, default=1)
+    enabled = Column(Boolean, default=False, index=True)
+    enabled_by = Column(String(80), nullable=True)
+    reason = Column(String(255), nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class WorkerHeartbeat(Base):
+    __tablename__ = "worker_heartbeat"
+    id = Column(Integer, primary_key=True, default=1)
+    worker_name = Column(String(80), default="telegram-worker")
+    status = Column(String(20), default="online")
+    last_seen = Column(DateTime, default=datetime.utcnow, index=True)
 
 
 class CommandPermission(Base):
@@ -371,6 +446,9 @@ DEFAULT_COMMAND_PERMISSIONS = [
 # Create missing tables only after ALL SQLAlchemy models are registered.
 if engine:
     Base.metadata.create_all(engine)
+    # Safe security migrations: additive only; existing data is preserved.
+    with engine.begin() as connection:
+        connection.execute(text("ALTER TABLE web_accounts ADD COLUMN IF NOT EXISTS telegram_id BIGINT"))
     # Safe migration: add personality columns to an existing PostgreSQL table.
     with engine.begin() as connection:
         for column, default in (("personality_daring",75),("personality_sarcasm",70),("personality_aggression",45),("personality_humor",85),("personality_friendliness",60)):
@@ -690,6 +768,422 @@ def chat():
 
 
 # ============================================================
+# PROTOGEN SECURITY LAYER
+# ============================================================
+
+SECURITY_2FA_ROLES = {"creator", "deputy_creator"}
+SECURITY_DANGEROUS_PREFIXES = (
+    "/api/admin/accounts", "/api/admin/moderation", "/api/admin/users/",
+    "/api/admin/security", "/api/admin/schedules", "/admin/settings",
+)
+
+
+def _client_ip():
+    forwarded = (request.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+    return forwarded or request.remote_addr or "unknown"
+
+
+def _security_log(event_type, severity="INFO", details=None, username=None, role=None, ip=None):
+    if not SessionLocal:
+        return
+    db = SessionLocal()
+    try:
+        row = SecurityEvent(
+            event_type=(event_type or "EVENT")[:60], severity=(severity or "INFO")[:16],
+            username=(username or session.get("admin_username")), role=(role or session.get("admin_role")),
+            ip_address=(ip or _client_ip())[:80], details=(details or "")[:4000], created_at=datetime.utcnow(),
+        )
+        db.add(row); db.commit()
+    except Exception as e:
+        db.rollback(); print(f"SECURITY LOG ERROR: {type(e).__name__}: {e}")
+    finally:
+        db.close()
+
+
+def _security_notify(text_value):
+    if not SessionLocal:
+        return False
+    db = SessionLocal()
+    try:
+        chat_id = _creator_telegram_id(db)
+    finally:
+        db.close()
+    token = _telegram_token()
+    if not chat_id or not token:
+        return False
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": chat_id, "text": text_value[:3900]}, timeout=7,
+        ).raise_for_status()
+        return True
+    except Exception as e:
+        print(f"SECURITY TELEGRAM ERROR: {type(e).__name__}: {e}")
+        return False
+
+
+def _csrf_token():
+    token = session.get("csrf_token")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        session["csrf_token"] = token
+    return token
+
+
+@app.context_processor
+def inject_security_context():
+    return {"csrf_token": _csrf_token()}
+
+
+def _same_origin_ok():
+    expected = request.host_url.rstrip("/")
+    origin = (request.headers.get("Origin") or "").rstrip("/")
+    referer = request.headers.get("Referer") or ""
+    token = request.headers.get("X-CSRF-Token") or request.form.get("csrf_token")
+    if token and secrets.compare_digest(str(token), str(session.get("csrf_token") or "")):
+        return True
+    if origin:
+        return origin == expected
+    if referer:
+        return referer.startswith(expected + "/") or referer == expected
+    # Non-browser clients are denied for authenticated state-changing requests.
+    return False
+
+
+def _lockdown_state(db):
+    row = db.get(SystemLockdown, 1)
+    if not row:
+        row = SystemLockdown(id=1, enabled=False)
+        db.add(row); db.commit(); db.refresh(row)
+    return row
+
+
+def _login_guard_key(username):
+    return f"{(username or '').lower()}|{_client_ip()}"[:220]
+
+
+def _guard_status(db, username):
+    row = db.query(LoginGuard).filter(LoginGuard.guard_key == _login_guard_key(username)).first()
+    if row and row.locked_until and row.locked_until > datetime.utcnow():
+        return row, int((row.locked_until - datetime.utcnow()).total_seconds())
+    return row, 0
+
+
+def _register_login_failure(db, username):
+    key = _login_guard_key(username)
+    row = db.query(LoginGuard).filter(LoginGuard.guard_key == key).first()
+    if not row:
+        row = LoginGuard(guard_key=key, failed_count=0)
+        db.add(row)
+    row.failed_count = int(row.failed_count or 0) + 1
+    row.last_failed_at = datetime.utcnow()
+    if row.failed_count >= 10:
+        row.locked_until = datetime.utcnow() + timedelta(hours=1)
+    elif row.failed_count >= 5:
+        row.locked_until = datetime.utcnow() + timedelta(minutes=15)
+    db.commit()
+    severity = "CRITICAL" if row.failed_count >= 10 else ("HIGH" if row.failed_count >= 5 else "WARNING")
+    _security_log("LOGIN_FAILED", severity, f"username={username or '—'}; attempts={row.failed_count}", username=username)
+    if row.failed_count in {5, 10}:
+        _security_log("BRUTE_FORCE_DETECTED", "CRITICAL", f"username={username or '—'}; attempts={row.failed_count}", username=username)
+        _security_notify(
+            f"🚨 PROTOGEN SECURITY\nПодозрение на подбор пароля\nАккаунт: {username or '—'}\n"
+            f"IP: {_client_ip()}\nПопыток: {row.failed_count}\nБлокировка: {'1 час' if row.failed_count >= 10 else '15 минут'}"
+        )
+    return row
+
+
+def _clear_login_guard(db, username):
+    row = db.query(LoginGuard).filter(LoginGuard.guard_key == _login_guard_key(username)).first()
+    if row:
+        row.failed_count = 0; row.locked_until = None; db.commit()
+
+
+def _two_factor_recipient(db, account):
+    if account.telegram_id:
+        return int(account.telegram_id)
+    return _creator_telegram_id(db)
+
+
+def _two_factor_hash(challenge_id, code):
+    secret = app.secret_key or ""
+    return hashlib.sha256(f"{challenge_id}:{code}:{secret}".encode("utf-8")).hexdigest()
+
+
+def _send_2fa(db, account):
+    recipient = _two_factor_recipient(db, account)
+    if not recipient:
+        return None, "Для 2FA не задан Telegram ID. Добавь CREATOR_TELEGRAM_ID или укажи Telegram ID аккаунта в Security Center."
+    challenge_id = secrets.token_urlsafe(24)
+    code = f"{secrets.randbelow(1000000):06d}"
+    row = TwoFactorChallenge(
+        challenge_id=challenge_id, account_id=account.id, code_hash=_two_factor_hash(challenge_id, code),
+        expires_at=datetime.utcnow() + timedelta(minutes=3), attempts=0,
+    )
+    db.add(row); db.commit()
+    token = _telegram_token()
+    if not token:
+        return None, "BOT_TOKEN недоступен для отправки 2FA-кода."
+    try:
+        r = requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": recipient, "text": (
+                "🔐 PROTOGEN // SECURITY VERIFICATION\n\n"
+                f"Аккаунт: {account.username}\nКод входа: {code}\n\n"
+                "Код действует 3 минуты. Если это не ты — смени пароль и заверши активные сессии."
+            )}, timeout=7,
+        )
+        r.raise_for_status()
+    except Exception as e:
+        return None, f"Не удалось отправить 2FA-код: {type(e).__name__}"
+    return challenge_id, None
+
+
+def _finalize_web_login(db, account):
+    sid = secrets.token_urlsafe(36)
+    web_session = WebSecuritySession(
+        session_id=sid, account_id=account.id, username=account.username, role=account.role,
+        ip_address=_client_ip(), user_agent=(request.headers.get("User-Agent") or "")[:500],
+        created_at=datetime.utcnow(), last_seen=datetime.utcnow(),
+    )
+    account.last_login = datetime.utcnow()
+    db.add(web_session); db.commit()
+    session.clear(); session.permanent = True
+    session["admin_authenticated"] = True
+    session["admin_username"] = account.username
+    session["admin_role"] = account.role
+    session["security_sid"] = sid
+    _csrf_token()
+    _security_log("LOGIN_SUCCESS", "INFO", f"role={account.role}", username=account.username, role=account.role)
+    if account.role in SECURITY_2FA_ROLES:
+        _security_notify(f"✅ PROTOGEN SECURITY\nВход подтверждён\nАккаунт: {account.username}\nIP: {_client_ip()}")
+
+
+@app.before_request
+def _protogen_security_gate():
+    # Protect authenticated state-changing requests against cross-site submission.
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"} and session.get("admin_authenticated"):
+        if not _same_origin_ok():
+            _security_log("CSRF_BLOCKED", "HIGH", f"path={request.path}")
+            return jsonify({"ok": False, "error": "Security check failed (CSRF)."}), 403
+
+    if not request.path.startswith("/admin") and not request.path.startswith("/api/admin"):
+        return None
+    if request.path in {"/admin/login", "/admin/2fa", "/admin/logout", "/admin/access-denied"}:
+        return None
+    if not session.get("admin_authenticated"):
+        return None
+    if not SessionLocal:
+        return None
+
+    db = SessionLocal()
+    try:
+        sid = session.get("security_sid")
+        row = db.query(WebSecuritySession).filter(WebSecuritySession.session_id == sid).first() if sid else None
+        if not row or row.revoked_at is not None:
+            session.clear()
+            if request.path.startswith("/api/"):
+                return jsonify({"ok": False, "error": "Сессия завершена. Войди заново."}), 401
+            return redirect(url_for("admin_login"))
+        if not row.last_seen or (datetime.utcnow() - row.last_seen).total_seconds() > 45:
+            row.last_seen = datetime.utcnow(); db.commit()
+
+        lockdown = _lockdown_state(db)
+        if lockdown.enabled and current_role() != "creator":
+            allowed = request.path.startswith("/admin/security") or request.path.startswith("/api/admin/security/health")
+            if not allowed:
+                _security_log("LOCKDOWN_BLOCK", "HIGH", f"path={request.path}")
+                if request.path.startswith("/api/"):
+                    return jsonify({"ok": False, "error": "PROTOGEN LOCKDOWN активен. Доступ только Создателю."}), 423
+                return render_template("access_denied.html", required="creator"), 423
+    finally:
+        db.close()
+    return None
+
+
+@app.after_request
+def _security_headers(response):
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    response.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'; base-uri 'self'; object-src 'none'")
+    response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    response.headers.setdefault("Cache-Control", "no-store" if request.path.startswith("/admin") else "private")
+    return response
+
+
+@app.after_request
+def _security_action_audit(response):
+    if not session.get("admin_authenticated") or request.method not in {"POST", "PUT", "PATCH", "DELETE"}:
+        return response
+    if not (request.path.startswith("/admin") or request.path.startswith("/api/admin")):
+        return response
+    if response.status_code >= 400 or request.path == "/admin/2fa":
+        return response
+    path = request.path
+    event_type, severity = "ADMIN_ACTION", "INFO"
+    if "/password" in path:
+        event_type, severity = "PASSWORD_CHANGED", "HIGH"
+    elif "/role" in path:
+        event_type, severity = "ROLE_CHANGED", "HIGH"
+    elif path.startswith("/api/admin/accounts"):
+        event_type, severity = "ACCOUNT_CHANGED", "HIGH"
+    elif path.startswith("/admin/settings") or path.startswith("/api/admin/moderation"):
+        event_type, severity = "SETTINGS_CHANGED", "WARNING"
+    elif path.startswith("/api/admin/schedules"):
+        event_type, severity = "SCHEDULER_CHANGED", "WARNING"
+    elif path.startswith("/api/admin/security"):
+        return response  # Security routes write explicit, richer events.
+    _security_log(event_type, severity, f"method={request.method}; path={path}; status={response.status_code}")
+    return response
+
+
+@app.errorhandler(Exception)
+def _global_web_error(error):
+    if isinstance(error, HTTPException):
+        return error
+    error_id = "ERR-" + secrets.token_hex(4).upper()
+    safe = f"{type(error).__name__}: {str(error)[:500]}"
+    print(f"{error_id} WEB ERROR: {safe}\n{traceback.format_exc(limit=8)}")
+    try:
+        _security_log("ERROR", "CRITICAL", f"{error_id}; path={request.path}; {safe}")
+        _security_notify(f"🚨 PROTOGEN ERROR\nID: {error_id}\nModule: WEB\nPath: {request.path}\nType: {type(error).__name__}")
+    except Exception:
+        pass
+    if request.path.startswith("/api/"):
+        return jsonify({"ok": False, "error": "Внутренняя ошибка системы.", "error_id": error_id}), 500
+    return f"PROTOGEN SYSTEM ERROR // {error_id}", 500
+
+
+@app.route("/admin/2fa", methods=["GET", "POST"])
+def admin_two_factor():
+    challenge_id = session.get("pending_2fa")
+    if not challenge_id or not SessionLocal:
+        return redirect(url_for("admin_login"))
+    error = None
+    db = SessionLocal()
+    try:
+        row = db.query(TwoFactorChallenge).filter(TwoFactorChallenge.challenge_id == challenge_id).first()
+        if not row or row.used_at is not None or row.expires_at < datetime.utcnow():
+            session.pop("pending_2fa", None); session.pop("pending_account_id", None)
+            error = "Код истёк. Войди ещё раз, чтобы получить новый."
+            return render_template("admin_2fa.html", error=error), 401
+        if request.method == "POST":
+            code = (request.form.get("code") or "").strip()
+            row.attempts = int(row.attempts or 0) + 1
+            if row.attempts > 5:
+                db.commit(); session.clear()
+                _security_log("TWO_FACTOR_FAILED", "CRITICAL", "attempt_limit")
+                return redirect(url_for("admin_login"))
+            if len(code) == 6 and secrets.compare_digest(row.code_hash, _two_factor_hash(row.challenge_id, code)):
+                account = db.get(WebAccount, row.account_id)
+                if not account or not account.active:
+                    session.clear(); return redirect(url_for("admin_login"))
+                row.used_at = datetime.utcnow(); db.commit()
+                _finalize_web_login(db, account)
+                return redirect(url_for("admin_dashboard"))
+            db.commit()
+            _security_log("TWO_FACTOR_FAILED", "WARNING", f"challenge={row.challenge_id[:8]}")
+            error = "Неверный код подтверждения."
+        return render_template("admin_2fa.html", error=error)
+    finally:
+        db.close()
+
+
+@app.route("/admin/security")
+@creator_required
+def admin_security_center():
+    if not SessionLocal:
+        return render_template("security.html", sessions=[], events=[], lockdown=None, accounts=[], health={}, error="DATABASE_URL не настроен.")
+    db = SessionLocal()
+    try:
+        sessions = db.query(WebSecuritySession).order_by(WebSecuritySession.last_seen.desc()).limit(100).all()
+        events = db.query(SecurityEvent).order_by(SecurityEvent.created_at.desc()).limit(200).all()
+        lockdown = _lockdown_state(db)
+        accounts = db.query(WebAccount).order_by(WebAccount.created_at.asc()).all()
+        hb = db.get(WorkerHeartbeat, 1)
+        worker_online = bool(hb and hb.last_seen and (datetime.utcnow() - hb.last_seen).total_seconds() < 120)
+        db_ok = True
+        try: db.execute(text("SELECT 1"))
+        except Exception: db_ok = False
+        health = {
+            "web": True, "database": db_ok, "worker": worker_online,
+            "ai": bool(os.getenv("OPENROUTER_API_KEY")), "scheduler": worker_online,
+            "heartbeat": hb.last_seen if hb else None,
+            "two_factor": bool(_creator_telegram_id(db)),
+        }
+        return render_template("security.html", sessions=sessions, events=events, lockdown=lockdown, accounts=accounts, health=health, error=None)
+    finally:
+        db.close()
+
+
+@app.route("/api/admin/security/lockdown", methods=["POST"])
+@creator_required
+def security_lockdown_toggle():
+    data = request.get_json(silent=True) or {}
+    enabled = bool(data.get("enabled"))
+    reason = (data.get("reason") or "Manual security action")[:255]
+    db = SessionLocal()
+    try:
+        row = _lockdown_state(db); row.enabled = enabled; row.enabled_by = session.get("admin_username"); row.reason = reason; db.commit()
+    finally:
+        db.close()
+    _security_log("LOCKDOWN" if enabled else "LOCKDOWN_RELEASED", "CRITICAL" if enabled else "HIGH", reason)
+    _security_notify(f"{'🔴' if enabled else '🟢'} PROTOGEN // {'LOCKDOWN' if enabled else 'LOCKDOWN RELEASED'}\nСоздатель: {session.get('admin_username')}\nПричина: {reason}")
+    return jsonify({"ok": True, "enabled": enabled})
+
+
+@app.route("/api/admin/security/sessions/<int:session_id>/revoke", methods=["POST"])
+@creator_required
+def security_revoke_session(session_id):
+    db = SessionLocal()
+    try:
+        row = db.get(WebSecuritySession, session_id)
+        if not row: return jsonify({"ok": False, "error": "Сессия не найдена."}), 404
+        row.revoked_at = datetime.utcnow(); db.commit()
+        _security_log("SESSION_REVOKED", "HIGH", f"session={session_id}; username={row.username}")
+        if row.session_id == session.get("security_sid"):
+            session.clear()
+    finally:
+        db.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/security/accounts/<int:account_id>/telegram", methods=["POST"])
+@creator_required
+def security_account_telegram(account_id):
+    data = request.get_json(silent=True) or {}
+    raw = str(data.get("telegram_id") or "").strip()
+    if raw and (not raw.lstrip("-").isdigit() or len(raw) > 20):
+        return jsonify({"ok": False, "error": "Некорректный Telegram ID."}), 400
+    db = SessionLocal()
+    try:
+        account = db.get(WebAccount, account_id)
+        if not account: return jsonify({"ok": False, "error": "Аккаунт не найден."}), 404
+        account.telegram_id = int(raw) if raw else None; db.commit()
+        _security_log("ACCOUNT_2FA_UPDATED", "HIGH", f"account={account.username}; telegram_id={'set' if raw else 'removed'}")
+    finally:
+        db.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/security/health")
+@admin_required
+def security_health_api():
+    result = {"web": "online", "database": "unknown", "worker": "unknown", "ai": "configured" if os.getenv("OPENROUTER_API_KEY") else "disabled"}
+    if SessionLocal:
+        db = SessionLocal()
+        try:
+            db.execute(text("SELECT 1")); result["database"] = "online"
+            hb = db.get(WorkerHeartbeat, 1)
+            result["worker"] = "online" if hb and hb.last_seen and (datetime.utcnow()-hb.last_seen).total_seconds() < 120 else "offline"
+        except Exception: result["database"] = "offline"
+        finally: db.close()
+    return jsonify(result)
+
+
+# ============================================================
 # DEPUTY CREATOR AUDIT SYSTEM
 # ============================================================
 
@@ -822,16 +1316,34 @@ def admin_login():
         else:
             db = SessionLocal()
             try:
-                account = db.query(WebAccount).filter(WebAccount.username == username, WebAccount.active.is_(True)).first()
-                if account and check_password_hash(account.password_hash, password):
-                    account.last_login = datetime.utcnow()
-                    db.commit()
-                    session.clear()
-                    session["admin_authenticated"] = True
-                    session["admin_username"] = account.username
-                    session["admin_role"] = account.role
-                    return redirect(url_for("admin_dashboard"))
-                error = "Неверный логин или пароль."
+                guard, wait_seconds = _guard_status(db, username)
+                if wait_seconds > 0:
+                    error = f"Слишком много попыток входа. Повтори через {max(1, wait_seconds // 60)} мин."
+                    _security_log("LOGIN_BLOCKED", "HIGH", f"username={username}; wait={wait_seconds}s", username=username)
+                else:
+                    account = db.query(WebAccount).filter(WebAccount.username == username, WebAccount.active.is_(True)).first()
+                    if account and check_password_hash(account.password_hash, password):
+                        _clear_login_guard(db, username)
+                        if account.role in SECURITY_2FA_ROLES and _two_factor_recipient(db, account):
+                            challenge_id, err = _send_2fa(db, account)
+                            if err:
+                                error = err
+                                _security_log("TWO_FACTOR_SEND_FAILED", "CRITICAL", err, username=account.username, role=account.role)
+                            else:
+                                session.clear(); session.permanent = True
+                                session["pending_2fa"] = challenge_id
+                                session["pending_account_id"] = account.id
+                                _csrf_token()
+                                return redirect(url_for("admin_two_factor"))
+                        else:
+                            # Safe deploy fallback: don't lock Creator out before Telegram ID is configured.
+                            if account.role in SECURITY_2FA_ROLES:
+                                _security_log("TWO_FACTOR_NOT_CONFIGURED", "HIGH", "Login allowed until Telegram ID is configured.", username=account.username, role=account.role)
+                            _finalize_web_login(db, account)
+                            return redirect(url_for("admin_dashboard"))
+                    else:
+                        _register_login_failure(db, username)
+                        error = "Неверный логин или пароль."
             finally:
                 db.close()
     return render_template("admin_login.html", error=error)
@@ -2313,6 +2825,18 @@ def admin_account_role(account_id):
 
 @app.route("/admin/logout")
 def admin_logout():
+    sid = session.get("security_sid")
+    username = session.get("admin_username")
+    if sid and SessionLocal:
+        db = SessionLocal()
+        try:
+            row = db.query(WebSecuritySession).filter(WebSecuritySession.session_id == sid).first()
+            if row and not row.revoked_at:
+                row.revoked_at = datetime.utcnow(); db.commit()
+        finally:
+            db.close()
+    if username:
+        _security_log("LOGOUT", "INFO", f"username={username}", username=username)
     session.clear()
     return redirect(url_for("index"))
 
