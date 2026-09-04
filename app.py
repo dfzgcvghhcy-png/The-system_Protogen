@@ -99,6 +99,19 @@ class ReportCase(Base):
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     closed_at = Column(DateTime, nullable=True)
+    priority = Column(String(20), default="NORMAL", index=True)
+    signal_count = Column(Integer, default=1)
+
+
+class CommandUsageEvent(Base):
+    __tablename__ = "command_usage_events"
+    id = Column(Integer, primary_key=True)
+    command = Column(String(80), nullable=False, index=True)
+    user_id = Column(BigInteger, nullable=True, index=True)
+    chat_id = Column(BigInteger, nullable=True, index=True)
+    blocked = Column(Boolean, default=False)
+    block_reason = Column(String(40), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
 class BotSetting(Base):
@@ -495,6 +508,8 @@ if engine:
     # Safe security migrations: additive only; existing data is preserved.
     with engine.begin() as connection:
         connection.execute(text("ALTER TABLE web_accounts ADD COLUMN IF NOT EXISTS telegram_id BIGINT"))
+        connection.execute(text("ALTER TABLE report_cases ADD COLUMN IF NOT EXISTS priority VARCHAR(20) DEFAULT 'NORMAL'"))
+        connection.execute(text("ALTER TABLE report_cases ADD COLUMN IF NOT EXISTS signal_count INTEGER DEFAULT 1"))
     # Safe migration: add personality columns to an existing PostgreSQL table.
     with engine.begin() as connection:
         for column, default in (("personality_daring",75),("personality_sarcasm",70),("personality_aggression",45),("personality_humor",85),("personality_friendliness",60)):
@@ -1911,7 +1926,8 @@ def admin_cases():
                 ])
             q = q.filter(or_(*conditions))
 
-        cases = q.order_by(desc(ReportCase.created_at)).limit(200).all()
+        # Smart Reports: prioritize cases with multiple independent reporters.
+        cases = q.order_by(desc(ReportCase.signal_count), desc(ReportCase.created_at)).limit(200).all()
         all_ids = {x.reporter_id for x in cases} | {x.target_id for x in cases}
         user_names = {}
         if all_ids:
@@ -2322,7 +2338,15 @@ def admin_user_profile(user_id):
         mod_notes = db.query(ModeratorNote).filter(ModeratorNote.user_id == user_id).order_by(desc(ModeratorNote.created_at)).limit(30).all()
         appeals = db.query(Appeal).filter(Appeal.user_id == user_id).order_by(desc(Appeal.created_at)).limit(20).all()
         tickets = db.query(SupportTicket).filter(SupportTicket.user_id == user_id).order_by(desc(SupportTicket.created_at)).limit(20).all()
-        return render_template("user_profile.html", username=session.get("admin_username", ADMIN_USERNAME), user=user, punishments=punishments, activity=activity, mod_notes=mod_notes, appeals=appeals, tickets=tickets)
+        timeline = []
+        for p in punishments:
+            timeline.append({"at": p.created_at, "kind": "PUNISHMENT", "label": p.type, "detail": p.reason})
+        for a in appeals:
+            timeline.append({"at": a.created_at, "kind": "APPEAL", "label": a.status, "detail": a.reason})
+        for t in tickets:
+            timeline.append({"at": t.created_at, "kind": "TICKET", "label": t.status, "detail": t.subject or t.body})
+        timeline.sort(key=lambda item: item.get("at") or datetime.min, reverse=True)
+        return render_template("user_profile.html", username=session.get("admin_username", ADMIN_USERNAME), user=user, punishments=punishments, activity=activity, mod_notes=mod_notes, appeals=appeals, tickets=tickets, timeline=timeline[:100])
     finally:
         db.close()
 
