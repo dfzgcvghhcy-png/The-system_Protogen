@@ -20,16 +20,6 @@ from database import (
 SITE_URL = os.getenv("SITE_URL", "https://web-production-c2beb.up.railway.app")
 
 
-def _smart_report_priority(db, chat_id, target_id):
-    """Return priority and distinct reporter count over the last 24 hours."""
-    since = datetime.utcnow() - timedelta(hours=24)
-    count = (db.query(ReportCase.reporter_id)
-             .filter(ReportCase.chat_id == chat_id, ReportCase.target_id == target_id,
-                     ReportCase.created_at >= since)
-             .distinct().count())
-    return ("CRITICAL" if count >= 4 else "HIGH" if count >= 2 else "NORMAL"), max(1, count)
-
-
 def _short(value, limit=360):
     value = (value or "").strip().replace("\x00", "")
     if not value:
@@ -191,7 +181,6 @@ async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode=ParseMode.HTML,
             )
 
-        priority, signal_count = _smart_report_priority(db, chat.id, target.id)
         row = ReportCase(
             chat_id=chat.id,
             reporter_id=reporter.id,
@@ -202,19 +191,10 @@ async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
             status="open",
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
-            priority=priority,
-            signal_count=signal_count,
         )
         db.add(row)
         db.commit()
         db.refresh(row)
-        # Keep existing open cases for this target in sync with the strongest current signal.
-        if signal_count > 1:
-            db.query(ReportCase).filter(
-                ReportCase.chat_id == chat.id, ReportCase.target_id == target.id,
-                ReportCase.status == "open"
-            ).update({"priority": priority, "signal_count": signal_count}, synchronize_session=False)
-            db.commit()
         case_id = row.id
     except Exception:
         db.rollback()

@@ -49,7 +49,6 @@
       <header>
         <div class="case-id"><i></i><span>CASE</span><strong>#{{ '%04d'|format(c.id) }}</strong></div>
         <div class="case-state {{ c.status }}">{{ 'OPEN' if c.status == 'open' else 'CLOSED' }}</div>
-        <div class="case-priority priority-{{ (c.priority or 'NORMAL')|lower }}">{{ c.priority or 'NORMAL' }} · {{ c.signal_count or 1 }}</div>
       </header>
       <div class="case-grid">
         <div class="case-person">

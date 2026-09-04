@@ -342,19 +342,6 @@ class ReportCase(Base):
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     closed_at = Column(DateTime, nullable=True)
-    priority = Column(String(20), default="NORMAL", index=True)
-    signal_count = Column(Integer, default=1)
-
-
-class CommandUsageEvent(Base):
-    __tablename__ = "command_usage_events"
-    id = Column(Integer, primary_key=True)
-    command = Column(String(80), nullable=False, index=True)
-    user_id = Column(BigInteger, nullable=True, index=True)
-    chat_id = Column(BigInteger, nullable=True, index=True)
-    blocked = Column(Boolean, default=False)
-    block_reason = Column(String(40), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
 class Punishment(Base):
@@ -1015,3 +1002,4 @@ def migrate_protogen_extra_columns():
                 connection.execute(text(f"ALTER TABLE bot_settings ADD COLUMN {name} {definition}"))
 
 migrate_protogen_extra_columns()
+
