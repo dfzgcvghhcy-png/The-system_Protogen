@@ -44,6 +44,17 @@ class WorkerHeartbeat(BaseSecurity):
     last_seen = Column(DateTime, default=datetime.utcnow, index=True)
 
 
+class FeatureFlag(BaseSecurity):
+    __tablename__ = "feature_flags"
+    key = Column(String(80), primary_key=True)
+    label = Column(String(120), nullable=False)
+    category = Column(String(60), default="Core")
+    description = Column(String(500), nullable=True)
+    enabled = Column(Boolean, default=True, index=True)
+    updated_by = Column(String(80), nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 BaseSecurity.metadata.create_all(engine)
 
 # In-memory limits are intentionally lightweight. Telegram itself remains the ingress layer;
@@ -59,6 +70,36 @@ DANGEROUS_COMMANDS = {
     "cancelschedule", "raidmode", "modnote", "delmodnote", "reward", "removereward",
 }
 HEAVY_COMMANDS = {"level", "levels", "stats", "top", "weather", "panel"}
+
+FEATURE_COMMANDS = {
+    "cases": {"report"},
+    "progression": {"level", "levels", "achievements", "streak"},
+    "appeals": {"appeal"},
+    "support": {"ticket", "mytickets"},
+    "scheduler": {"schedule", "schedules", "cancelschedule"},
+    "daily": {"daily", "dailyquest"},
+}
+_FEATURE_CACHE = {}
+_FEATURE_CACHE_TTL = 20.0
+
+def feature_enabled(key):
+    now=time.monotonic(); cached=_FEATURE_CACHE.get(key)
+    if cached and now-cached[0] < _FEATURE_CACHE_TTL:
+        return cached[1]
+    db=Session()
+    try:
+        try:
+            row=db.get(FeatureFlag,key); value=True if row is None else bool(row.enabled)
+        except Exception:
+            value=True
+    finally:
+        db.close()
+    _FEATURE_CACHE[key]=(now,value); return value
+
+def command_feature(command):
+    for key, commands in FEATURE_COMMANDS.items():
+        if command in commands: return key
+    return None
 
 
 def _trim(window, now, seconds):
@@ -150,6 +191,13 @@ async def security_precheck(update, context: ContextTypes.DEFAULT_TYPE):
 
     text_value = (message.text or "").strip()
     if not text_value.startswith("/"):
+        # Feature Flag controls AI traffic before external API usage.
+        if "///" in text_value and not feature_enabled("ai_moderation"):
+            try:
+                await message.reply_text("🧠 AI CORE временно отключён Создателем.")
+            except Exception:
+                pass
+            raise ApplicationHandlerStop
         # AI trigger receives a stricter cooldown because it calls an external model.
         if "///" in text_value and _too_many(_HEAVY_WINDOWS, (key, "ai"), 1, 12):
             if now - _LAST_NOTICE.get((key, "ai"), 0) > 8:
@@ -162,6 +210,13 @@ async def security_precheck(update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     command = text_value[1:].split()[0].split("@")[0].lower()
+    feature = command_feature(command)
+    if feature and not feature_enabled(feature):
+        try:
+            await message.reply_text("⚙️ Этот модуль Protogen временно отключён Создателем.")
+        except Exception:
+            pass
+        raise ApplicationHandlerStop
     if _too_many(_COMMAND_WINDOWS, key, 10, 20):
         if now - _LAST_NOTICE.get((key, "cmd"), 0) > 10:
             _LAST_NOTICE[(key, "cmd")] = now

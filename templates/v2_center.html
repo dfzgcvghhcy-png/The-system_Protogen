@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Protogen v2 Foundation</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='v2.css') }}">
+</head>
+<body class="admin-page">
+{% include '_admin_sidebar.html' %}
+<main class="v2-shell">
+  <header class="v2-hero">
+    <div><span class="eyebrow">PROTOGEN // V2 FOUNDATION</span><h1>Системное ядро v2</h1><p>Функции, права, снимки конфигурации, резервные выгрузки и ошибки — в одном защищённом центре.</p></div>
+    <div class="v2-status"><i></i> STABLE CORE</div>
+  </header>
+
+  <nav class="v2-tabs" aria-label="V2 sections">
+    <button class="active" data-tab="features">Feature Flags</button>
+    <button data-tab="permissions">Permissions 2.0</button>
+    <button data-tab="snapshots">Snapshots</button>
+    <button data-tab="backups">Backup Center</button>
+    <button data-tab="errors">Error Center</button>
+  </nav>
+
+  <section class="v2-panel active" id="features">
+    <div class="panel-head"><div><small>MODULE CONTROL</small><h2>Feature Flags</h2></div><p>Выключай отдельный модуль без redeploy. Команды отключённого модуля worker остановит до выполнения.</p></div>
+    <div class="feature-grid">
+      {% for f in features %}
+      <article class="feature-card" data-feature="{{ f.key }}">
+        <div><span class="tag">{{ f.category }}</span><h3>{{ f.label }}</h3><p>{{ f.description }}</p><code>{{ f.key }}</code></div>
+        <label class="switch"><input type="checkbox" {% if f.enabled %}checked{% endif %} onchange="toggleFeature('{{ f.key }}',this)"><span></span></label>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="v2-panel" id="permissions">
+    <div class="panel-head"><div><small>ACCESS MATRIX</small><h2>Granular Permissions</h2></div><p>Роль больше не означает «всё или ничего». Создатель всегда защищён и не ограничивается этой матрицей.</p></div>
+    <div class="perm-table-wrap"><table class="perm-table"><thead><tr><th>Разрешение</th><th>Модератор</th><th>Администратор</th><th>Заместитель</th><th>Создатель</th></tr></thead><tbody>
+      {% for key,label in permission_labels.items() %}<tr><td><b>{{ label }}</b><code>{{ key }}</code></td>
+        {% for role in ['moderator','admin','deputy_creator'] %}{% set row = permission_rows.get(role,{}).get(key) %}<td><label class="switch mini"><input type="checkbox" {% if row and row.allowed %}checked{% endif %} onchange="setPermission('{{ role }}','{{ key }}',this)"><span></span></label></td>{% endfor %}
+        <td><span class="locked">LOCKED ✓</span></td></tr>{% endfor %}
+    </tbody></table></div>
+  </section>
+
+  <section class="v2-panel" id="snapshots">
+    <div class="panel-head"><div><small>SAFE CONFIG</small><h2>Config Snapshots</h2></div><p>Снимок сохраняет настройки, команды, feature flags и матрицу прав. Восстановление не трогает пользователей, XP и историю.</p></div>
+    <div class="action-row"><input id="snapshotName" maxlength="140" placeholder="Например: Перед изменением AutoMod"><button class="primary" onclick="createSnapshot()">＋ Создать snapshot</button></div>
+    <div class="list">
+      {% for s in snapshots %}<article><div><b>#{{ s.id }} · {{ s.name }}</b><small>{{ s.created_at.strftime('%d.%m.%Y %H:%M') if s.created_at else '—' }} · {{ s.created_by or 'system' }}</small></div><button class="danger-outline" onclick="restoreSnapshot({{ s.id }}, '{{ s.name|e }}')">Восстановить</button></article>{% else %}<p class="empty">Снимков пока нет.</p>{% endfor %}
+    </div>
+  </section>
+
+  <section class="v2-panel" id="backups">
+    <div class="panel-head"><div><small>DATABASE EXPORT</small><h2>Backup Center</h2></div><p>Создаёт логическую выгрузку PostgreSQL в JSON.GZ. Храни скачанный файл вне Railway — это важно, потому что локальный диск контейнера не является резервной копией.</p></div>
+    <button class="primary" onclick="exportBackup()">⇩ Создать и скачать backup</button>
+    <div class="list backups">
+      {% for b in backups %}<article><div><b>{{ b.backup_id }}</b><small>{{ b.created_at.strftime('%d.%m.%Y %H:%M') if b.created_at else '—' }} · {{ b.table_count }} таблиц · {{ (b.size_bytes/1024/1024)|round(2) }} MB</small></div><span class="ok">{{ b.status|upper }}</span></article>{% else %}<p class="empty">Backup ещё не создавался.</p>{% endfor %}
+    </div>
+  </section>
+
+  <section class="v2-panel" id="errors">
+    <div class="panel-head"><div><small>DIAGNOSTICS</small><h2>Error Center</h2></div><p>Последние системные ошибки из Security Audit. Error ID можно использовать для поиска причины в Railway logs.</p></div>
+    <div class="error-list">
+      {% for e in errors %}<article><div class="error-meta"><span>{{ e.severity }}</span><b>#{{ e.id }}</b><small>{{ e.created_at.strftime('%d.%m.%Y %H:%M:%S') if e.created_at else '—' }}</small></div><pre>{{ e.details or 'Без деталей' }}</pre><button onclick="ackError({{ e.id }},this)">Отметить просмотренной</button></article>{% else %}<div class="good-state">✓ Ошибок в журнале сейчас нет.</div>{% endfor %}
+    </div>
+  </section>
+</main>
+<div id="toast" class="toast"></div>
+<script>
+const CSRF={{ csrf_token|tojson }};
+const api=(url,opts={})=>fetch(url,{...opts,headers:{'Content-Type':'application/json','X-CSRF-Token':CSRF,...(opts.headers||{})}});
+const toast=(m,bad=false)=>{const t=document.getElementById('toast');t.textContent=m;t.className='toast show'+(bad?' bad':'');setTimeout(()=>t.className='toast',2600)};
+document.querySelectorAll('.v2-tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.v2-tabs button,.v2-panel').forEach(x=>x.classList.remove('active'));b.classList.add('active');document.getElementById(b.dataset.tab).classList.add('active')});
+async function toggleFeature(key,el){const r=await api('/api/admin/v2/features/'+key,{method:'POST',body:JSON.stringify({enabled:el.checked})});const j=await r.json();if(!r.ok){el.checked=!el.checked;toast(j.error||'Ошибка',true)}else toast('Feature flag обновлён');}
+async function setPermission(role,permission,el){const r=await api('/api/admin/v2/permissions',{method:'POST',body:JSON.stringify({role,permission,allowed:el.checked})});const j=await r.json();if(!r.ok){el.checked=!el.checked;toast(j.error||'Ошибка',true)}else toast('Право обновлено');}
+async function createSnapshot(){const name=document.getElementById('snapshotName').value.trim();const r=await api('/api/admin/v2/snapshots',{method:'POST',body:JSON.stringify({name})});const j=await r.json();if(!r.ok)return toast(j.error||'Ошибка',true);toast('Snapshot создан');setTimeout(()=>location.reload(),700)}
+async function restoreSnapshot(id,name){if(!confirm('Восстановить snapshot «'+name+'»? Текущие настройки будут заменены.'))return;const r=await api('/api/admin/v2/snapshots/'+id+'/restore',{method:'POST',body:'{}'});const j=await r.json();if(!r.ok)return toast(j.error||'Ошибка',true);toast('Конфигурация восстановлена');}
+async function exportBackup(){toast('Создаю backup…');const r=await fetch('/api/admin/v2/backups/export',{method:'POST',headers:{'X-CSRF-Token':CSRF}});if(!r.ok){let j={};try{j=await r.json()}catch{};return toast(j.error||'Backup failed',true)}const blob=await r.blob(),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=(r.headers.get('content-disposition')||'').match(/filename=([^;]+)/)?.[1]?.replaceAll('"','')||'protogen-backup.json.gz';a.click();URL.revokeObjectURL(url);toast('Backup готов');setTimeout(()=>location.reload(),900)}
+async function ackError(id,btn){const r=await api('/api/admin/v2/errors/'+id+'/ack',{method:'POST',body:'{}'});if(r.ok){btn.disabled=true;btn.textContent='Просмотрено ✓'}else toast('Не удалось отметить',true)}
+</script>
+</body></html>

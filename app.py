@@ -5,12 +5,14 @@ import json
 import secrets
 import hashlib
 import traceback
+import gzip
+import uuid
 import requests
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, send_file, g, abort
-from sqlalchemy import create_engine, Column, Integer, BigInteger, String, DateTime, Boolean, Text, func, desc, or_, text, UniqueConstraint
+from sqlalchemy import create_engine, Column, Integer, BigInteger, String, DateTime, Boolean, Text, func, desc, or_, text, UniqueConstraint, inspect
 from sqlalchemy.orm import declarative_base, sessionmaker
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.exceptions import HTTPException
@@ -358,6 +360,50 @@ class WorkerHeartbeat(Base):
     last_seen = Column(DateTime, default=datetime.utcnow, index=True)
 
 
+class FeatureFlag(Base):
+    __tablename__ = "feature_flags"
+    key = Column(String(80), primary_key=True)
+    label = Column(String(120), nullable=False)
+    category = Column(String(60), default="Core")
+    description = Column(String(500), nullable=True)
+    enabled = Column(Boolean, default=True, index=True)
+    updated_by = Column(String(80), nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class RolePermission(Base):
+    __tablename__ = "role_permissions"
+    __table_args__ = (UniqueConstraint("role", "permission", name="uq_role_permission"),)
+    id = Column(Integer, primary_key=True)
+    role = Column(String(30), nullable=False, index=True)
+    permission = Column(String(100), nullable=False, index=True)
+    allowed = Column(Boolean, default=False)
+    updated_by = Column(String(80), nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ConfigSnapshot(Base):
+    __tablename__ = "config_snapshots"
+    id = Column(Integer, primary_key=True)
+    name = Column(String(140), nullable=False)
+    payload = Column(Text, nullable=False)
+    created_by = Column(String(80), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class BackupRun(Base):
+    __tablename__ = "backup_runs"
+    id = Column(Integer, primary_key=True)
+    backup_id = Column(String(64), unique=True, nullable=False, index=True)
+    status = Column(String(20), default="ok", index=True)
+    size_bytes = Column(BigInteger, default=0)
+    checksum = Column(String(80), nullable=True)
+    table_count = Column(Integer, default=0)
+    created_by = Column(String(80), nullable=True)
+    details = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
 class CommandPermission(Base):
     __tablename__ = "command_permissions"
     id = Column(Integer, primary_key=True)
@@ -501,6 +547,39 @@ if engine:
                 seed_db.add(CommandPermission(command=command, label=label, category=category, min_role_level=level, enabled=enabled, description=description))
         seed_db.commit()
 
+    # Protogen v2 foundation defaults. Existing choices are never overwritten.
+    V2_FEATURE_DEFAULTS = [
+        ("automod", "AutoMod 2.0", "Moderation", "Автоматическая защита чата", True),
+        ("cases", "CASE Center", "Moderation", "Жалобы /report и CASE-центр", True),
+        ("progression", "XP & Achievements", "Community", "Уровни, XP, достижения и streak", True),
+        ("appeals", "Appeals", "Operations", "Апелляции наказаний", True),
+        ("support", "Support Tickets", "Operations", "Тикеты поддержки", True),
+        ("scheduler", "Scheduler", "Automation", "Запланированные публикации", True),
+        ("daily", "Daily System", "Community", "Ежедневные награды и задания", True),
+        ("ai_moderation", "AI Moderation", "AI", "AI Review и AI-модерация", True),
+    ]
+    V2_PERMISSION_KEYS = [
+        "users.view", "users.manage", "moderation.view", "moderation.manage",
+        "cases.manage", "operations.manage", "history.view", "statistics.view",
+        "settings.manage", "accounts.manage", "audit.view", "security.manage",
+    ]
+    V2_PERMISSION_DEFAULTS = {
+        "moderator": {"users.view", "moderation.view", "moderation.manage", "cases.manage", "operations.manage"},
+        "admin": {"users.view", "users.manage", "moderation.view", "moderation.manage", "cases.manage", "operations.manage", "history.view", "statistics.view", "settings.manage"},
+        "deputy_creator": {"users.view", "users.manage", "moderation.view", "moderation.manage", "cases.manage", "operations.manage", "history.view", "statistics.view", "settings.manage", "accounts.manage"},
+        "creator": set(V2_PERMISSION_KEYS),
+    }
+    with SessionLocal() as seed_db:
+        for key, label, category, description, enabled in V2_FEATURE_DEFAULTS:
+            if not seed_db.get(FeatureFlag, key):
+                seed_db.add(FeatureFlag(key=key, label=label, category=category, description=description, enabled=enabled))
+        for role, allowed_set in V2_PERMISSION_DEFAULTS.items():
+            for permission in V2_PERMISSION_KEYS:
+                exists = seed_db.query(RolePermission).filter(RolePermission.role==role, RolePermission.permission==permission).first()
+                if not exists:
+                    seed_db.add(RolePermission(role=role, permission=permission, allowed=permission in allowed_set))
+        seed_db.commit()
+
     print("🗄️ Database tables checked/created; personality columns synced")
 
 ROLE_NAMES = {
@@ -574,6 +653,85 @@ def inject_panel_user():
         "has_creator_operational_access": has_creator_operational_access(),
         "is_admin_or_creator": has_role("admin"),
     }
+
+
+
+V2_PERMISSION_LABELS = {
+    "users.view": "Просмотр пользователей", "users.manage": "Управление пользователями",
+    "moderation.view": "Просмотр модерации", "moderation.manage": "Изменение модерации",
+    "cases.manage": "CASE Center", "operations.manage": "Operations Center",
+    "history.view": "История", "statistics.view": "Статистика",
+    "settings.manage": "Настройки системы", "accounts.manage": "Web-аккаунты",
+    "audit.view": "Аудит", "security.manage": "Security Center",
+}
+
+def _has_v2_permission(permission):
+    if current_role() == "creator":
+        return True
+    if not SessionLocal:
+        return False
+    db = SessionLocal()
+    try:
+        row = db.query(RolePermission).filter(RolePermission.role==current_role(), RolePermission.permission==permission).first()
+        return bool(row and row.allowed)
+    finally:
+        db.close()
+
+def _feature_enabled(key):
+    if not SessionLocal:
+        return True
+    db = SessionLocal()
+    try:
+        row = db.get(FeatureFlag, key)
+        return True if row is None else bool(row.enabled)
+    finally:
+        db.close()
+
+def _jsonable_value(value):
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return value
+
+def _row_dict(row, skip=()):
+    return {c.name: _jsonable_value(getattr(row, c.name)) for c in row.__table__.columns if c.name not in set(skip)}
+
+def _snapshot_payload(db):
+    bot = db.get(BotSetting, 1)
+    site = db.get(SiteSetting, 1)
+    return {
+        "version": 2, "created_at": datetime.utcnow().isoformat(),
+        "bot_setting": _row_dict(bot, {"id", "updated_at"}) if bot else {},
+        "site_setting": _row_dict(site, {"id", "updated_at"}) if site else {},
+        "command_permissions": [_row_dict(x, {"id", "updated_at"}) for x in db.query(CommandPermission).order_by(CommandPermission.id).all()],
+        "feature_flags": [_row_dict(x, {"updated_at"}) for x in db.query(FeatureFlag).order_by(FeatureFlag.key).all()],
+        "role_permissions": [_row_dict(x, {"id", "updated_at"}) for x in db.query(RolePermission).order_by(RolePermission.role, RolePermission.permission).all()],
+    }
+
+def _restore_snapshot(db, payload):
+    bot = db.get(BotSetting, 1)
+    if not bot:
+        bot = BotSetting(id=1); db.add(bot)
+    for k,v in (payload.get("bot_setting") or {}).items():
+        if hasattr(bot,k): setattr(bot,k,v)
+    site = db.get(SiteSetting, 1)
+    if not site:
+        site = SiteSetting(id=1); db.add(site)
+    for k,v in (payload.get("site_setting") or {}).items():
+        if hasattr(site,k): setattr(site,k,v)
+    for item in payload.get("command_permissions") or []:
+        row = db.query(CommandPermission).filter(CommandPermission.command==item.get("command")).first()
+        if row:
+            for k,v in item.items():
+                if hasattr(row,k) and k not in {"command"}: setattr(row,k,v)
+    for item in payload.get("feature_flags") or []:
+        row = db.get(FeatureFlag, item.get("key"))
+        if row:
+            for k,v in item.items():
+                if hasattr(row,k) and k != "key": setattr(row,k,v)
+    for item in payload.get("role_permissions") or []:
+        row = db.query(RolePermission).filter(RolePermission.role==item.get("role"), RolePermission.permission==item.get("permission")).first()
+        if row: row.allowed = bool(item.get("allowed"))
+    db.commit()
 
 
 def dashboard_data():
@@ -998,6 +1156,38 @@ def _protogen_security_gate():
                 return render_template("access_denied.html", required="creator"), 423
     finally:
         db.close()
+    return None
+
+
+
+V2_PATH_PERMISSIONS = [
+    ("/api/admin/accounts", "accounts.manage"),
+    ("/api/admin/users", "users.manage"),
+    ("/admin/users", "users.view"),
+    ("/api/admin/moderation", "moderation.manage"),
+    ("/admin/moderation", "moderation.view"),
+    ("/api/admin/cases", "cases.manage"), ("/admin/cases", "cases.manage"),
+    ("/api/admin/appeals", "operations.manage"), ("/api/admin/tickets", "operations.manage"),
+    ("/api/admin/schedules", "operations.manage"), ("/admin/operations", "operations.manage"),
+    ("/admin/history", "history.view"), ("/api/admin/history", "history.view"),
+    ("/admin/statistics", "statistics.view"),
+    ("/admin/settings", "settings.manage"),
+    ("/admin/audit", "audit.view"), ("/admin/security", "security.manage"),
+]
+
+@app.before_request
+def _v2_granular_permission_gate():
+    if not session.get("admin_authenticated") or current_role()=="creator":
+        return None
+    path = request.path
+    if path.startswith("/admin/v2") or path.startswith("/api/admin/v2"):
+        return None
+    for prefix, permission in V2_PATH_PERMISSIONS:
+        if path.startswith(prefix) and not _has_v2_permission(permission):
+            _security_log("PERMISSION_BLOCKED", "WARNING", f"permission={permission}; path={path}")
+            if path.startswith("/api/"):
+                return jsonify({"ok": False, "error": "Недостаточно прав: " + permission}), 403
+            return redirect(url_for("access_denied", required=permission))
     return None
 
 
@@ -2822,6 +3012,170 @@ def admin_account_role(account_id):
     finally:
         db.close()
 
+
+@app.route("/admin/v2")
+@creator_required
+def admin_v2_center():
+    db = SessionLocal()
+    try:
+        features = db.query(FeatureFlag).order_by(FeatureFlag.category, FeatureFlag.label).all()
+        permissions = db.query(RolePermission).order_by(RolePermission.role, RolePermission.permission).all()
+        snapshots = db.query(ConfigSnapshot).order_by(ConfigSnapshot.created_at.desc()).limit(30).all()
+        backups = db.query(BackupRun).order_by(BackupRun.created_at.desc()).limit(30).all()
+        errors = db.query(SecurityEvent).filter(SecurityEvent.event_type == "ERROR").order_by(SecurityEvent.created_at.desc()).limit(100).all()
+        by_role = {}
+        for row in permissions:
+            by_role.setdefault(row.role, {})[row.permission] = row
+        return render_template(
+            "v2_center.html", features=features, permission_rows=by_role,
+            permission_labels=V2_PERMISSION_LABELS, snapshots=snapshots,
+            backups=backups, errors=errors, role_names=ROLE_NAMES,
+        )
+    finally:
+        db.close()
+
+
+@app.route("/api/admin/v2/features/<string:key>", methods=["POST"])
+@creator_required
+def v2_feature_toggle(key):
+    data = request.get_json(silent=True) or {}
+    db = SessionLocal()
+    try:
+        row = db.get(FeatureFlag, key)
+        if not row:
+            return jsonify({"ok": False, "error": "Feature flag не найден."}), 404
+        old = bool(row.enabled)
+        row.enabled = bool(data.get("enabled"))
+        row.updated_by = session.get("admin_username")
+        db.commit()
+        _security_log("FEATURE_FLAG_CHANGED", "HIGH", f"{key}: {old} -> {row.enabled}")
+        return jsonify({"ok": True, "enabled": row.enabled})
+    finally:
+        db.close()
+
+
+@app.route("/api/admin/v2/permissions", methods=["POST"])
+@creator_required
+def v2_permission_update():
+    data = request.get_json(silent=True) or {}
+    role = (data.get("role") or "").strip()
+    permission = (data.get("permission") or "").strip()
+    if role == "creator":
+        return jsonify({"ok": False, "error": "Права Создателя защищены."}), 400
+    if role not in ROLE_LEVELS or permission not in V2_PERMISSION_LABELS:
+        return jsonify({"ok": False, "error": "Некорректная роль или permission."}), 400
+    db = SessionLocal()
+    try:
+        row = db.query(RolePermission).filter(RolePermission.role == role, RolePermission.permission == permission).first()
+        if not row:
+            row = RolePermission(role=role, permission=permission)
+            db.add(row)
+        old = bool(row.allowed)
+        row.allowed = bool(data.get("allowed"))
+        row.updated_by = session.get("admin_username")
+        db.commit()
+        _security_log("GRANULAR_PERMISSION_CHANGED", "HIGH", f"role={role}; permission={permission}; {old}->{row.allowed}")
+        return jsonify({"ok": True, "allowed": row.allowed})
+    finally:
+        db.close()
+
+
+@app.route("/api/admin/v2/snapshots", methods=["POST"])
+@creator_required
+def v2_snapshot_create():
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or f"Snapshot {datetime.utcnow().strftime('%d.%m.%Y %H:%M')}").strip()[:140]
+    db = SessionLocal()
+    try:
+        payload = _snapshot_payload(db)
+        row = ConfigSnapshot(name=name, payload=json.dumps(payload, ensure_ascii=False), created_by=session.get("admin_username"))
+        db.add(row)
+        db.commit()
+        _security_log("CONFIG_SNAPSHOT_CREATED", "INFO", f"snapshot={row.id}; name={name}")
+        return jsonify({"ok": True, "id": row.id, "name": row.name})
+    finally:
+        db.close()
+
+
+@app.route("/api/admin/v2/snapshots/<int:snapshot_id>/restore", methods=["POST"])
+@creator_required
+def v2_snapshot_restore(snapshot_id):
+    db = SessionLocal()
+    try:
+        row = db.get(ConfigSnapshot, snapshot_id)
+        if not row:
+            return jsonify({"ok": False, "error": "Snapshot не найден."}), 404
+        try:
+            payload = json.loads(row.payload)
+        except Exception:
+            return jsonify({"ok": False, "error": "Snapshot повреждён."}), 400
+        _restore_snapshot(db, payload)
+        _security_log("CONFIG_SNAPSHOT_RESTORED", "CRITICAL", f"snapshot={row.id}; name={row.name}")
+        return jsonify({"ok": True})
+    finally:
+        db.close()
+
+
+@app.route("/api/admin/v2/backups/export", methods=["POST"])
+@creator_required
+def v2_backup_export():
+    if not engine:
+        return jsonify({"ok": False, "error": "DATABASE_URL не настроен."}), 500
+    db = SessionLocal()
+    backup_id = "BKP-" + uuid.uuid4().hex[:12].upper()
+    try:
+        inspector = inspect(engine)
+        payload = {"backup_id": backup_id, "created_at": datetime.utcnow().isoformat() + "Z", "schema": "protogen-logical-v1", "tables": {}}
+        skip = {"backup_runs"}
+        with engine.connect() as conn:
+            for table_name in inspector.get_table_names():
+                if table_name in skip:
+                    continue
+                cols = [c["name"] for c in inspector.get_columns(table_name)]
+                rows = []
+                for raw_row in conn.execute(text(f'SELECT * FROM "{table_name}"')):
+                    item = {}
+                    for k, v in zip(cols, raw_row):
+                        if isinstance(v, datetime):
+                            v = v.isoformat()
+                        elif isinstance(v, (bytes, bytearray)):
+                            v = "<binary omitted>"
+                        item[k] = v
+                    rows.append(item)
+                payload["tables"][table_name] = rows
+        raw = json.dumps(payload, ensure_ascii=False, default=str, separators=(",", ":")).encode("utf-8")
+        blob = gzip.compress(raw, compresslevel=6)
+        checksum = hashlib.sha256(blob).hexdigest()
+        run = BackupRun(
+            backup_id=backup_id, status="ok", size_bytes=len(blob), checksum=checksum,
+            table_count=len(payload["tables"]), created_by=session.get("admin_username"),
+            details="Logical JSON+GZIP export; backup_runs excluded",
+        )
+        db.add(run)
+        db.commit()
+        _security_log("BACKUP_EXPORTED", "HIGH", f"backup={backup_id}; size={len(blob)}; tables={len(payload['tables'])}")
+        return send_file(io.BytesIO(blob), mimetype="application/gzip", as_attachment=True, download_name=f"protogen-{backup_id}.json.gz")
+    except Exception as e:
+        db.rollback()
+        _security_log("BACKUP_FAILED", "CRITICAL", f"{backup_id}; {type(e).__name__}: {str(e)[:300]}")
+        return jsonify({"ok": False, "error": "Не удалось создать backup."}), 500
+    finally:
+        db.close()
+
+
+@app.route("/api/admin/v2/errors/<int:event_id>/ack", methods=["POST"])
+@creator_required
+def v2_error_ack(event_id):
+    db = SessionLocal()
+    try:
+        row = db.get(SecurityEvent, event_id)
+        if not row or row.event_type != "ERROR":
+            return jsonify({"ok": False, "error": "Ошибка не найдена."}), 404
+        row.details = ((row.details or "") + f"\nACK by {session.get('admin_username')} at {datetime.utcnow().isoformat()}")[:4000]
+        db.commit()
+        return jsonify({"ok": True})
+    finally:
+        db.close()
 
 @app.route("/admin/logout")
 def admin_logout():
