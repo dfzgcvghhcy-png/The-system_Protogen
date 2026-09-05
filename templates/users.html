@@ -108,6 +108,8 @@
 </div>
 
 <script>
+const CSRF_TOKEN={{ csrf_token|tojson }};
+function secureHeaders(extra={}){return Object.assign({'X-CSRF-Token':CSRF_TOKEN},extra);}
 const selected={id:null,name:null};
 const modal=document.getElementById('quickModal');
 const fields=document.getElementById('modalFields');
@@ -149,7 +151,7 @@ document.getElementById('modalSubmit').addEventListener('click',async()=>{
   if(currentAction==='message')payload.message=document.getElementById('messageField').value.trim();
   const button=document.getElementById('modalSubmit'); button.disabled=true; button.textContent='Выполняю…';
   try{
-    const r=await fetch(`/api/admin/users/${selected.id}/quick-action`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const r=await fetch(`/api/admin/users/${selected.id}/quick-action`,{method:'POST',headers:secureHeaders({'Content-Type':'application/json'}),body:JSON.stringify(payload)});
     const d=await r.json();
     if(!r.ok||!d.ok)throw new Error(d.error||'Не удалось выполнить действие');
     result.textContent='✓ '+d.message; result.className='quick-result success';
@@ -167,10 +169,10 @@ document.getElementById('createAccountBtn')?.addEventListener('click',async()=>{
   const username=document.getElementById('newAccountUsername').value.trim();
   const password=document.getElementById('newAccountPassword').value;
   const role=document.getElementById('newAccountRole').value;
-  try{const r=await fetch('/api/admin/accounts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password,role})});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||'Не удалось создать аккаунт');location.reload();}catch(e){accountResult.textContent='✕ '+e.message;}
+  try{const r=await fetch('/api/admin/accounts',{method:'POST',headers:secureHeaders({'Content-Type':'application/json'}),body:JSON.stringify({username,password,role})});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||'Не удалось создать аккаунт');location.reload();}catch(e){accountResult.textContent='✕ '+e.message;}
 });
-document.querySelectorAll('.account-delete').forEach(btn=>btn.addEventListener('click',async()=>{if(!confirm('Удалить этот доступ?'))return;const r=await fetch('/api/admin/accounts/'+btn.dataset.id,{method:'DELETE'});const d=await r.json();if(!r.ok||!d.ok){alert(d.error||'Не удалось удалить');return;}document.querySelector('[data-account-row="'+btn.dataset.id+'"]')?.remove();}));
-document.querySelectorAll('.account-password').forEach(btn=>btn.addEventListener('click',async()=>{const password=prompt('Новый пароль (минимум 6 символов):');if(password===null)return;const r=await fetch('/api/admin/accounts/'+btn.dataset.id+'/password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password})});const d=await r.json();alert(d.message||d.error||'Готово');}));
+document.querySelectorAll('.account-delete').forEach(btn=>btn.addEventListener('click',async()=>{if(!confirm('Удалить этот доступ?'))return;const r=await fetch('/api/admin/accounts/'+btn.dataset.id,{method:'DELETE',headers:secureHeaders()});const d=await r.json();if(!r.ok||!d.ok){alert(d.error||'Не удалось удалить');return;}document.querySelector('[data-account-row="'+btn.dataset.id+'"]')?.remove();}));
+document.querySelectorAll('.account-password').forEach(btn=>btn.addEventListener('click',async()=>{const password=prompt('Новый пароль (минимум 6 символов):');if(password===null)return;const r=await fetch('/api/admin/accounts/'+btn.dataset.id+'/password',{method:'POST',headers:secureHeaders({'Content-Type':'application/json'}),body:JSON.stringify({password})});const d=await r.json();alert(d.message||d.error||'Готово');}));
 document.querySelectorAll('.account-access').forEach(btn=>btn.addEventListener('click',async()=>{
   const isBlocked=btn.dataset.blocked==='1';
   const nextBlocked=!isBlocked;
@@ -178,13 +180,13 @@ document.querySelectorAll('.account-access').forEach(btn=>btn.addEventListener('
   if(!confirm(question))return;
   btn.disabled=true;
   try{
-    const r=await fetch('/api/admin/accounts/'+btn.dataset.id+'/access',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({blocked:nextBlocked})});
+    const r=await fetch('/api/admin/accounts/'+btn.dataset.id+'/access',{method:'POST',headers:secureHeaders({'Content-Type':'application/json'}),body:JSON.stringify({blocked:nextBlocked})});
     const d=await r.json();
     if(!r.ok||!d.ok)throw new Error(d.error||'Не удалось изменить доступ');
     location.reload();
   }catch(e){alert(e.message);btn.disabled=false;}
 }));
-document.querySelectorAll('.account-role').forEach(sel=>sel.addEventListener('change',async()=>{const r=await fetch('/api/admin/accounts/'+sel.dataset.id+'/role',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role:sel.value})});const d=await r.json();if(!r.ok||!d.ok){alert(d.error||'Не удалось изменить роль');location.reload();}else{location.reload();}}));
+document.querySelectorAll('.account-role').forEach(sel=>sel.addEventListener('change',async()=>{const r=await fetch('/api/admin/accounts/'+sel.dataset.id+'/role',{method:'POST',headers:secureHeaders({'Content-Type':'application/json'}),body:JSON.stringify({role:sel.value})});const d=await r.json();if(!r.ok||!d.ok){alert(d.error||'Не удалось изменить роль');location.reload();}else{location.reload();}}));
 {% endif %}
 </script>
 </body></html>
