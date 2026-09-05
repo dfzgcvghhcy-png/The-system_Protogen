@@ -79,7 +79,7 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(
-        Integer,
+        BigInteger,
         primary_key=True,
     )
 
@@ -157,7 +157,7 @@ class Activity(Base):
     )
 
     user_id = Column(
-        Integer,
+        BigInteger,
         nullable=False,
         index=True,
     )
@@ -353,7 +353,7 @@ class Punishment(Base):
     )
 
     user_id = Column(
-        Integer,
+        BigInteger,
     )
 
     type = Column(
@@ -366,7 +366,7 @@ class Punishment(Base):
     )
 
     moderator_id = Column(
-        Integer,
+        BigInteger,
         nullable=True,
     )
 
@@ -809,6 +809,94 @@ Base.metadata.create_all(engine)
 
 
 # ============================================================
+# TELEGRAM ID -> BIGINT SAFE MIGRATION
+# ============================================================
+
+# Telegram user/chat IDs are not guaranteed to fit into PostgreSQL INTEGER
+# (signed 32-bit). Older Protogen installations may still have INTEGER
+# columns even though newer SQLAlchemy models already use BigInteger.
+# Convert only Telegram entity identifiers and keep local counters/PKs intact.
+TELEGRAM_BIGINT_COLUMNS = {
+    "users": {"id"},
+    "user_activity": {"user_id"},
+    "punishments": {"user_id", "moderator_id"},
+}
+
+# Also include every explicitly BigInteger Telegram identifier declared in
+# current metadata. This catches older Railway schemas created before those
+# model fields were upgraded to BigInteger.
+TELEGRAM_ID_NAMES = {
+    "chat_id",
+    "user_id",
+    "telegram_id",
+    "creator_telegram_id",
+    "moderator_id",
+    "creator_id",
+    "reporter_id",
+    "target_id",
+    "voter_id",
+    "admin_id",
+    "owner_id",
+}
+
+
+def migrate_telegram_ids_to_bigint():
+    # SQLite stores INTEGER as a dynamic 64-bit integer already, so no schema
+    # rewrite is needed locally. This migration is specifically for Railway
+    # PostgreSQL where INTEGER is signed 32-bit.
+    if engine.dialect.name != "postgresql":
+        return
+
+    inspector = inspect(engine)
+    table_names = set(inspector.get_table_names())
+
+    targets = {table: set(columns) for table, columns in TELEGRAM_BIGINT_COLUMNS.items()}
+
+    for table_name, table in Base.metadata.tables.items():
+        for column in table.columns:
+            if column.name in TELEGRAM_ID_NAMES and isinstance(column.type, BigInteger):
+                targets.setdefault(table_name, set()).add(column.name)
+
+    preparer = engine.dialect.identifier_preparer
+
+    with engine.begin() as connection:
+        for table_name, column_names in sorted(targets.items()):
+            if table_name not in table_names:
+                continue
+
+            existing = {col["name"]: col for col in inspector.get_columns(table_name)}
+            quoted_table = preparer.quote(table_name)
+
+            for column_name in sorted(column_names):
+                column = existing.get(column_name)
+                if not column:
+                    continue
+
+                db_type = str(column["type"]).upper().replace(" ", "")
+                if "BIGINT" in db_type:
+                    continue
+
+                # Only widen integer-like columns. Never rewrite unrelated types.
+                if "INT" not in db_type:
+                    continue
+
+                quoted_column = preparer.quote(column_name)
+                connection.execute(
+                    text(
+                        f"ALTER TABLE {quoted_table} "
+                        f"ALTER COLUMN {quoted_column} TYPE BIGINT "
+                        f"USING {quoted_column}::BIGINT"
+                    )
+                )
+                print(f"🗄️ BIGINT migration: {table_name}.{column_name}")
+
+
+# Run before the rest of the additive migrations so queries with large
+# Telegram IDs are safe immediately after service startup.
+migrate_telegram_ids_to_bigint()
+
+
+# ============================================================
 # SAFE MIGRATION
 # ============================================================
 
@@ -882,7 +970,7 @@ def migrate_database():
         "reason": (
             "VARCHAR DEFAULT 'Не указана'"
         ),
-        "moderator_id": "INTEGER",
+        "moderator_id": "BIGINT",
         "created_at": datetime_type,
     }
 

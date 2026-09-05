@@ -49,7 +49,7 @@ SessionLocal = sessionmaker(bind=engine, expire_on_commit=False) if engine else 
 
 class User(Base):
     __tablename__ = "users"
-    id = Column(Integer, primary_key=True)
+    id = Column(BigInteger, primary_key=True)
     warns = Column(Integer, default=0)
     username = Column(String, nullable=True)
     first_name = Column(String, nullable=True)
@@ -67,7 +67,7 @@ class User(Base):
 class Activity(Base):
     __tablename__ = "user_activity"
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, nullable=False, index=True)
+    user_id = Column(BigInteger, nullable=False, index=True)
     day = Column(DateTime, nullable=False, index=True)
     messages_count = Column(Integer, default=0)
 
@@ -75,10 +75,10 @@ class Activity(Base):
 class Punishment(Base):
     __tablename__ = "punishments"
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer)
+    user_id = Column(BigInteger)
     type = Column(String)
     reason = Column(String, default="Не указана")
-    moderator_id = Column(Integer, nullable=True)
+    moderator_id = Column(BigInteger, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -492,6 +492,56 @@ DEFAULT_COMMAND_PERMISSIONS = [
 # Create missing tables only after ALL SQLAlchemy models are registered.
 if engine:
     Base.metadata.create_all(engine)
+
+    # --------------------------------------------------------
+    # Telegram IDs -> BIGINT (PostgreSQL / Railway)
+    # --------------------------------------------------------
+    # The Web service can start before the Telegram worker. Widen the legacy
+    # ID columns here as well so Web queries never depend on worker startup.
+    if engine.dialect.name == "postgresql":
+        telegram_bigint_columns = {
+            "users": {"id"},
+            "user_activity": {"user_id"},
+            "punishments": {"user_id", "moderator_id"},
+        }
+        telegram_id_names = {
+            "chat_id", "user_id", "telegram_id", "creator_telegram_id",
+            "moderator_id", "creator_id", "reporter_id", "target_id",
+            "voter_id", "admin_id", "owner_id",
+        }
+
+        for table_name, table in Base.metadata.tables.items():
+            for column in table.columns:
+                if column.name in telegram_id_names and isinstance(column.type, BigInteger):
+                    telegram_bigint_columns.setdefault(table_name, set()).add(column.name)
+
+        db_inspector = inspect(engine)
+        existing_tables = set(db_inspector.get_table_names())
+        preparer = engine.dialect.identifier_preparer
+
+        with engine.begin() as connection:
+            for table_name, column_names in sorted(telegram_bigint_columns.items()):
+                if table_name not in existing_tables:
+                    continue
+                existing_columns = {
+                    col["name"]: col for col in db_inspector.get_columns(table_name)
+                }
+                quoted_table = preparer.quote(table_name)
+                for column_name in sorted(column_names):
+                    column = existing_columns.get(column_name)
+                    if not column:
+                        continue
+                    db_type = str(column["type"]).upper().replace(" ", "")
+                    if "BIGINT" in db_type or "INT" not in db_type:
+                        continue
+                    quoted_column = preparer.quote(column_name)
+                    connection.execute(text(
+                        f"ALTER TABLE {quoted_table} "
+                        f"ALTER COLUMN {quoted_column} TYPE BIGINT "
+                        f"USING {quoted_column}::BIGINT"
+                    ))
+                    print(f"🗄️ Web BIGINT migration: {table_name}.{column_name}")
+
     # Safe security migrations: additive only; existing data is preserved.
     with engine.begin() as connection:
         connection.execute(text("ALTER TABLE web_accounts ADD COLUMN IF NOT EXISTS telegram_id BIGINT"))
