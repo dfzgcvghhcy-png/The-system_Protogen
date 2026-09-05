@@ -1,6 +1,7 @@
 from telegram import Update, ChatPermissions, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
+from telegram.error import BadRequest
 from database import Session, User, Punishment, Activity, BotSetting, Chat, ChatUser, ChatActivity, ChatPunishment, UserProgress, UserAchievement, SecurityState
 from filters import is_admin, bot_can_restrict
 from progression import record_message_progress
@@ -1277,6 +1278,26 @@ async def track_my_chat_member(update: Update, context: ContextTypes.DEFAULT_TYP
 # ПАНЕЛЬ PROTOGEN
 # =========================================================
 
+async def _safe_panel_edit(query, text, reply_markup=None, parse_mode=ParseMode.HTML):
+    """Edit a panel message without treating Telegram's no-op edit as an error.
+
+    Telegram raises BadRequest("Message is not modified") when the requested
+    text and inline keyboard are already exactly the same as the current
+    message. Repeated taps on panel buttons are normal user behavior, so this
+    specific response must be ignored while all other Telegram errors still
+    propagate normally.
+    """
+    try:
+        return await query.edit_message_text(
+            text=text,
+            reply_markup=reply_markup,
+            parse_mode=parse_mode,
+        )
+    except BadRequest as exc:
+        if "message is not modified" in str(exc).lower():
+            return None
+        raise
+
 async def panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context):
         return await update.message.reply_text("❌ У тебя нет прав администратора.")
@@ -1299,7 +1320,7 @@ async def show_main_panel(obj):
         "Выбери раздел:"
     )
     if getattr(obj, "callback_query", None) is not None:
-        await obj.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        await _safe_panel_edit(obj.callback_query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
     else:
         await obj.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
 
@@ -1311,7 +1332,8 @@ async def show_moderation_panel(query):
         [InlineKeyboardButton("🔊 Снять мут", callback_data="mod_unmute"), InlineKeyboardButton("🔓 Разбан", callback_data="mod_unban")],
         [InlineKeyboardButton("◀️ Назад", callback_data="panel_main")],
     ]
-    await query.edit_message_text(
+    await _safe_panel_edit(
+        query,
         "⚔️ <b>МОДЕРАЦИЯ</b>\n\nВыбери действие. Пользователя можно выбрать из списка.",
         reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML,
     )
@@ -1359,7 +1381,8 @@ async def show_users_panel(query):
             )
             return
 
-        await query.edit_message_text(
+        await _safe_panel_edit(
+            query,
             text,
             reply_markup=markup,
             parse_mode=ParseMode.HTML,
@@ -1391,7 +1414,8 @@ async def show_users_panel(query):
                     parse_mode=ParseMode.HTML,
                 )
             else:
-                await query.edit_message_text(
+                await _safe_panel_edit(
+                    query,
                     error_text,
                     reply_markup=error_markup,
                     parse_mode=ParseMode.HTML,
@@ -1570,7 +1594,8 @@ async def show_user_history(query, context, user_id):
                 parse_mode=ParseMode.HTML,
             )
         else:
-            await query.edit_message_text(
+            await _safe_panel_edit(
+                query,
                 text,
                 reply_markup=keyboard,
                 parse_mode=ParseMode.HTML,
@@ -1647,7 +1672,8 @@ async def show_activity(query, context, user_id):
                 parse_mode=ParseMode.HTML,
             )
         else:
-            await query.edit_message_text(
+            await _safe_panel_edit(
+                query,
                 text,
                 reply_markup=keyboard,
                 parse_mode=ParseMode.HTML,
@@ -1669,7 +1695,7 @@ async def show_history_panel(query):
                 icon = {"warn":"⚠️","unwarn":"🧹","mute":"🔇","ban":"🚫","kick":"👢"}.get(p.type, "📌")
                 reason = _safe_text(p.reason, "Не указана")
                 text += f"{icon} <b>{p.type}</b> — <code>{p.user_id}</code>\n📝 {reason}\n\n"
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data="panel_main")]]), parse_mode=ParseMode.HTML)
+        await _safe_panel_edit(query, text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data="panel_main")]]), parse_mode=ParseMode.HTML)
     finally:
         session.close()
 
@@ -1694,7 +1720,7 @@ async def show_stats_panel(query):
             f"👢 Киков: <b>{counts['kick']}</b>\n"
             f"📜 Всего действий: <b>{len(punishments)}</b>"
         )
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data="panel_main")]]), parse_mode=ParseMode.HTML)
+        await _safe_panel_edit(query, text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data="panel_main")]]), parse_mode=ParseMode.HTML)
     finally:
         session.close()
 
