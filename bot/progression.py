@@ -281,6 +281,34 @@ def _display_name(row, fallback_id):
     return str(fallback_id)
 
 
+def _telegram_identity(target, db_user=None):
+    """Prefer fresh Telegram User data, then fall back to the local chat profile.
+
+    Some old chat_users rows can exist with only user_id populated.  In that case
+    using the DB row first made /level render the numeric ID as the display name
+    even though the Update contained the real Telegram name/username.
+    """
+    name = ""
+    username = ""
+
+    if target is not None:
+        name = (getattr(target, "full_name", None) or "").strip()
+        username = (getattr(target, "username", None) or "").strip().lstrip("@")
+
+    if not name and db_user is not None:
+        first = (getattr(db_user, "first_name", None) or "").strip()
+        last = (getattr(db_user, "last_name", None) or "").strip()
+        name = (first + " " + last).strip()
+
+    if not username and db_user is not None:
+        username = (getattr(db_user, "username", None) or "").strip().lstrip("@")
+
+    if not name:
+        name = f"Пользователь {getattr(target, 'id', '')}".strip()
+
+    return name, (f"@{username}" if username else "@username не указан")
+
+
 def _font(size: int, bold: bool = False):
     base = Path(__file__).resolve().parent / "fonts"
     name = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
@@ -327,7 +355,13 @@ def _draw_level_card(name: str, username: str, user_id: int, progress: dict, ach
         draw.ellipse((58, 158, 242, 342), outline=cyan, width=4)
     else:
         draw.ellipse((58, 158, 242, 342), outline=cyan, width=4)
-        draw.text((116, 206), "?", font=_font(72, True), fill=cyan)
+        # A readable fallback is nicer than a generic question mark when Telegram
+        # does not expose a profile photo for this user.
+        parts = [part for part in (name or "").replace("_", " ").split() if part]
+        initials = "".join(part[0].upper() for part in parts[:2]) or "P"
+        bbox = draw.textbbox((0, 0), initials, font=_font(58, True))
+        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        draw.text((150 - tw / 2, 250 - th / 2 - 8), initials, font=_font(58, True), fill=cyan)
 
     safe_name = (name or "Пользователь")[:28]
     safe_user = (username or "@username не указан")[:34]
@@ -366,17 +400,29 @@ def _draw_level_card(name: str, username: str, user_id: int, progress: dict, ach
 
 
 async def _download_avatar(bot, user_id):
+    """Download the freshest Telegram profile photo, with a v21-compatible fallback."""
     try:
         photos = await bot.get_user_profile_photos(user_id=user_id, limit=1)
         if not photos.photos:
             return None
         photo = photos.photos[0][-1]
-        file = await bot.get_file(photo.file_id)
+        tg_file = await bot.get_file(photo.file_id)
+
+        # python-telegram-bot 21.x supports download_as_bytearray(); using it first
+        # avoids file-like pointer issues seen on some deployments.
+        try:
+            raw = await tg_file.download_as_bytearray()
+            if raw:
+                return Image.open(io.BytesIO(bytes(raw))).convert("RGB")
+        except Exception:
+            pass
+
         data = io.BytesIO()
-        await file.download_to_memory(data)
+        await tg_file.download_to_memory(out=data)
         data.seek(0)
         return Image.open(data).convert("RGB")
     except Exception:
+        # A missing/hidden Telegram avatar must never break /level.
         return None
 
 
@@ -410,8 +456,9 @@ async def level_command(update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         session.close()
 
-    name = _display_name(db_user, target.id) if db_user else (target.full_name or str(target.id))
-    username = f"@{target.username}" if getattr(target, "username", None) else "@username не указан"
+    # Always prefer the live Telegram User object.  The DB row is only a fallback
+    # because older rows may contain an ID but no first_name/username.
+    name, username = _telegram_identity(target, db_user)
     avatar = await _download_avatar(context.bot, target.id)
     card = _draw_level_card(name, username, target.id, progress, achievements_count, rank, avatar)
     buf = io.BytesIO()
