@@ -22,6 +22,10 @@ from commands_extra import (
     delete_message, clear_messages, purge_messages,
 )
 from config import TOKEN
+from database import engine
+from sqlalchemy import text
+import hashlib
+import time
 from cases import report, report_case_callback
 from progression import level_command, levels_command, achievements_command, streak_command
 from appeals import appeal_command, appeal_callback
@@ -34,12 +38,59 @@ from ai_moderation import ai_review_callback
 from security import security_precheck, security_callback_precheck, setup_security_jobs, secure_error_handler
 
 
+
+
+def _worker_lock_key():
+    """Stable signed 64-bit advisory-lock key derived from this bot token."""
+    digest = hashlib.sha256((TOKEN or "protogen").encode("utf-8")).digest()[:8]
+    value = int.from_bytes(digest, "big", signed=False)
+    if value >= 2**63:
+        value -= 2**64
+    return value
+
+
+def _acquire_worker_lock():
+    """Hold one PostgreSQL advisory lock for the lifetime of the polling worker.
+
+    Railway may briefly overlap old/new deployments. This lock makes the second
+    worker wait instead of starting a second getUpdates loop. SQLite/local runs
+    skip the distributed lock.
+    """
+    if engine.dialect.name != "postgresql":
+        return None
+    key = _worker_lock_key()
+    while True:
+        conn = engine.connect()
+        try:
+            acquired = bool(conn.execute(text("SELECT pg_try_advisory_lock(:key)"), {"key": key}).scalar())
+            if acquired:
+                print("🔒 Protogen worker lock acquired")
+                return conn
+        except Exception:
+            conn.close()
+            raise
+        conn.close()
+        print("⏳ Другой Protogen worker ещё активен — ждём освобождения lock...")
+        time.sleep(5)
+
+
+def _release_worker_lock(conn):
+    if conn is None:
+        return
+    try:
+        conn.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": _worker_lock_key()})
+    except Exception as exc:
+        print(f"⚠️ Worker lock release: {type(exc).__name__}: {exc}")
+    finally:
+        conn.close()
+
 async def post_init(application):
     await restore_community_jobs(application)
     setup_security_jobs(application)
 
 
 def main():
+    worker_lock = _acquire_worker_lock()
     app = ApplicationBuilder().token(TOKEN).post_init(post_init).build()
 
     # Security precheck executes before normal handlers and can stop abusive/locked-down actions.
@@ -111,12 +162,15 @@ def main():
 
     print("🐾 The system_Protogen запущен")
 
-    app.run_polling(allowed_updates=[
-        "message",
-        "callback_query",
-        "chat_member",
-        "my_chat_member",
-    ])
+    try:
+        app.run_polling(allowed_updates=[
+            "message",
+            "callback_query",
+            "chat_member",
+            "my_chat_member",
+        ])
+    finally:
+        _release_worker_lock(worker_lock)
 
 
 if __name__ == "__main__":

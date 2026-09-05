@@ -1119,15 +1119,23 @@ def _finalize_web_login(db, account):
 
 @app.before_request
 def _protogen_security_gate():
-    # Protect authenticated state-changing requests against cross-site submission.
-    if request.method in {"POST", "PUT", "PATCH", "DELETE"} and session.get("admin_authenticated"):
+    # Login and 2FA validate CSRF inside their own routes so a stale authenticated
+    # browser session cannot be stopped here with a raw JSON response.
+    public_security_paths = {"/admin/login", "/admin/2fa", "/admin/logout", "/admin/access-denied"}
+
+    # Protect authenticated state-changing admin requests against cross-site submission.
+    if (
+        request.path not in public_security_paths
+        and request.method in {"POST", "PUT", "PATCH", "DELETE"}
+        and session.get("admin_authenticated")
+    ):
         if not _same_origin_ok():
             _security_log("CSRF_BLOCKED", "HIGH", f"path={request.path}")
             return jsonify({"ok": False, "error": "Security check failed (CSRF)."}), 403
 
     if not request.path.startswith("/admin") and not request.path.startswith("/api/admin"):
         return None
-    if request.path in {"/admin/login", "/admin/2fa", "/admin/logout", "/admin/access-denied"}:
+    if request.path in public_security_paths:
         return None
     if not session.get("admin_authenticated"):
         return None
@@ -1248,6 +1256,9 @@ def _global_web_error(error):
 
 @app.route("/admin/2fa", methods=["GET", "POST"])
 def admin_two_factor():
+    if request.method == "POST" and not _same_origin_ok():
+        _security_log("CSRF_BLOCKED", "HIGH", "path=/admin/2fa")
+        return render_template("admin_2fa.html", error="Сессия формы устарела. Обнови страницу и попробуй снова."), 403
     challenge_id = session.get("pending_2fa")
     if not challenge_id or not SessionLocal:
         return redirect(url_for("admin_login"))
@@ -1498,6 +1509,10 @@ def _capture_deputy_audit_after(response):
 @app.route("/admin/login", methods=["GET", "POST"])
 def admin_login():
     error = None
+    if request.method == "POST" and not _same_origin_ok():
+        _security_log("CSRF_BLOCKED", "HIGH", "path=/admin/login")
+        error = "Сессия формы устарела. Обнови страницу и попробуй снова."
+        return render_template("admin_login.html", error=error), 403
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")

@@ -103,6 +103,7 @@
     {% endif %}
 
     <form method="post" autocomplete="on">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <div class="field">
         <label for="username">ЛОГИН</label>
         <input id="username" name="username" type="text" autocomplete="username" required autofocus>
