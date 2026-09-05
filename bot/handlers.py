@@ -1366,19 +1366,24 @@ async def show_users_panel(query):
 
         # Профиль пользователя отправляется отдельным PHOTO-сообщением.
         # Такое сообщение нельзя превратить через edit_message_text() в текст.
-        # Поэтому при возврате из профиля удаляем фото и создаём обычное
-        # текстовое сообщение со списком пользователей.
+        # Важно: reply_text() после удаления фото может попытаться ответить на
+        # уже удалённое сообщение, из-за чего список пользователей исчезает.
+        # Поэтому сначала создаём НОВОЕ обычное сообщение напрямую через bot,
+        # а уже затем удаляем старую фото-карточку.
         if query.message and query.message.photo:
+            chat_id = query.message.chat_id
+
+            await query.get_bot().send_message(
+                chat_id=chat_id,
+                text=text,
+                reply_markup=markup,
+                parse_mode=ParseMode.HTML,
+            )
+
             try:
                 await query.message.delete()
             except Exception as delete_error:
                 print(f"PANEL USERS PHOTO DELETE ERROR: {type(delete_error).__name__}: {delete_error}")
-
-            await query.message.reply_text(
-                text,
-                reply_markup=markup,
-                parse_mode=ParseMode.HTML,
-            )
             return
 
         await _safe_panel_edit(
@@ -1403,16 +1408,17 @@ async def show_users_panel(query):
         # тоже невозможен. Сначала удаляем фото, затем отправляем текст.
         try:
             if query.message and query.message.photo:
+                chat_id = query.message.chat_id
+                await query.get_bot().send_message(
+                    chat_id=chat_id,
+                    text=error_text,
+                    reply_markup=error_markup,
+                    parse_mode=ParseMode.HTML,
+                )
                 try:
                     await query.message.delete()
                 except Exception:
                     pass
-
-                await query.message.reply_text(
-                    error_text,
-                    reply_markup=error_markup,
-                    parse_mode=ParseMode.HTML,
-                )
             else:
                 await _safe_panel_edit(
                     query,
