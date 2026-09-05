@@ -8,7 +8,7 @@
 </style>
 </head>
 <body><div class="bg"></div><div class="grid"></div>
-<div class="card"><div class="icon">◈</div><div class="kicker">SECURITY CORE // ACCESS CONTROL</div><h1>Доступ запрещён</h1><p>У вашей роли <span class="role">{{ {'moderator':'Модератор','admin':'Администратор','deputy_creator':'Заместитель создателя','creator':'Создатель'}.get(role, role) }}</span> нет разрешения на этот раздел или действие.</p><div class="actions"><a class="btn" href="/admin">Вернуться на главную</a><button class="btn secondary" id="soundBtn" type="button">▶ Воспроизвести звук</button></div><div class="hint">Система безопасности Protogen зафиксировала попытку доступа.</div></div>
+<div class="card"><div class="icon">◈</div><div class="kicker">SECURITY CORE // ACCESS CONTROL</div><h1>Доступ запрещён</h1><p>У вашей роли <span class="role">{{ {'trainee':'Стажёр','moderator':'Модератор','admin':'Администратор','deputy_creator':'Заместитель создателя','creator':'Создатель'}.get(role, role) }}</span> нет разрешения на этот раздел или действие.</p><div class="actions"><a class="btn" href="/admin">Вернуться на главную</a><button class="btn secondary" id="soundBtn" type="button">▶ Воспроизвести звук</button></div><div class="hint">Система безопасности Protogen зафиксировала попытку доступа.</div></div>
 <audio id="deniedSound" preload="auto" autoplay><source src="{{ url_for('static', filename='access-denied.mp3') }}" type="audio/mpeg"></audio>
 <script>const a=document.getElementById('deniedSound');const b=document.getElementById('soundBtn');b.addEventListener('click',()=>{a.currentTime=0;a.play().catch(()=>{});});window.addEventListener('load',()=>{a.play().catch(()=>{});});</script>
 </body></html>

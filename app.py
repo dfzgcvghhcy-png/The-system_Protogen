@@ -267,6 +267,11 @@ class WebAccount(Base):
     role = Column(String(20), nullable=False, default="moderator")
     telegram_id = Column(BigInteger, nullable=True)
     active = Column(Boolean, default=True)
+    # Creator-controlled Web access lock.  The trainee role is also denied at login
+    # even when this flag is false, so promotion immediately restores normal access.
+    web_access_blocked = Column(Boolean, nullable=False, default=False)
+    web_access_blocked_at = Column(DateTime, nullable=True)
+    web_access_blocked_by = Column(String(80), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     last_login = Column(DateTime, nullable=True)
 
@@ -545,6 +550,9 @@ if engine:
     # Safe security migrations: additive only; existing data is preserved.
     with engine.begin() as connection:
         connection.execute(text("ALTER TABLE web_accounts ADD COLUMN IF NOT EXISTS telegram_id BIGINT"))
+        connection.execute(text("ALTER TABLE web_accounts ADD COLUMN IF NOT EXISTS web_access_blocked BOOLEAN NOT NULL DEFAULT FALSE"))
+        connection.execute(text("ALTER TABLE web_accounts ADD COLUMN IF NOT EXISTS web_access_blocked_at TIMESTAMP NULL"))
+        connection.execute(text("ALTER TABLE web_accounts ADD COLUMN IF NOT EXISTS web_access_blocked_by VARCHAR(80) NULL"))
     # Safe migration: add personality columns to an existing PostgreSQL table.
     with engine.begin() as connection:
         for column, default in (("personality_daring",75),("personality_sarcasm",70),("personality_aggression",45),("personality_humor",85),("personality_friendliness",60)):
@@ -614,6 +622,7 @@ if engine:
         "settings.manage", "accounts.manage", "audit.view", "security.manage",
     ]
     V2_PERMISSION_DEFAULTS = {
+        "trainee": set(),
         "moderator": {"users.view", "moderation.view", "moderation.manage", "cases.manage", "operations.manage"},
         "admin": {"users.view", "users.manage", "moderation.view", "moderation.manage", "cases.manage", "operations.manage", "history.view", "statistics.view", "settings.manage"},
         "deputy_creator": {"users.view", "users.manage", "moderation.view", "moderation.manage", "cases.manage", "operations.manage", "history.view", "statistics.view", "settings.manage", "accounts.manage"},
@@ -633,14 +642,16 @@ if engine:
     print("🗄️ Database tables checked/created; personality columns synced")
 
 ROLE_NAMES = {
+    "trainee": "СТАЖЁР",
     "moderator": "МОДЕРАТОР",
     "admin": "АДМИНИСТРАТОР",
     "deputy_creator": "ЗАМЕСТИТЕЛЬ СОЗДАТЕЛЯ",
     "creator": "СОЗДАТЕЛЬ",
 }
 
+# Trainee credentials are valid but Web access is intentionally denied.
 # Creator stays one level above the deputy so creator-only security zones remain protected.
-ROLE_LEVELS = {"moderator": 1, "admin": 2, "deputy_creator": 3, "creator": 4}
+ROLE_LEVELS = {"trainee": 0, "moderator": 1, "admin": 2, "deputy_creator": 3, "creator": 4}
 
 
 def current_role():
@@ -698,6 +709,7 @@ def inject_panel_user():
     return {
         "panel_role": role,
         "panel_role_name": ROLE_NAMES.get(role, "ПОЛЬЗОВАТЕЛЬ"),
+        "is_trainee": role == "trainee",
         "is_creator": role == "creator",
         "is_deputy_creator": role == "deputy_creator",
         "has_creator_operational_access": has_creator_operational_access(),
@@ -1171,7 +1183,7 @@ def _finalize_web_login(db, account):
 def _protogen_security_gate():
     # Login and 2FA validate CSRF inside their own routes so a stale authenticated
     # browser session cannot be stopped here with a raw JSON response.
-    public_security_paths = {"/admin/login", "/admin/2fa", "/admin/logout", "/admin/access-denied"}
+    public_security_paths = {"/admin/login", "/admin/2fa", "/admin/logout", "/admin/access-denied", "/admin/blocked"}
 
     # Protect authenticated state-changing admin requests against cross-site submission.
     if (
@@ -1201,6 +1213,26 @@ def _protogen_security_gate():
             if request.path.startswith("/api/"):
                 return jsonify({"ok": False, "error": "Сессия завершена. Войди заново."}), 401
             return redirect(url_for("admin_login"))
+
+        # A Creator can revoke Web access at any moment.  Trainee accounts are
+        # always denied until their role is promoted.  Existing sessions are
+        # stopped on their very next request, not just on the next login.
+        account = db.get(WebAccount, row.account_id)
+        if account and (account.role == "trainee" or bool(account.web_access_blocked)):
+            row.revoked_at = datetime.utcnow()
+            db.commit()
+            username = account.username
+            reason = "trainee" if account.role == "trainee" else "creator_block"
+            _security_log("WEB_ACCESS_BLOCKED", "HIGH", f"reason={reason}; path={request.path}", username=username, role=account.role)
+            session.clear()
+            session["blocked_notice"] = True
+            session["blocked_username"] = username
+            session["blocked_reason"] = reason
+            _csrf_token()
+            if request.path.startswith("/api/"):
+                return jsonify({"ok": False, "error": "Доступ к панели заблокирован Создателем."}), 403
+            return redirect(url_for("admin_web_access_blocked"))
+
         if not row.last_seen or (datetime.utcnow() - row.last_seen).total_seconds() > 45:
             row.last_seen = datetime.utcnow(); db.commit()
 
@@ -1331,6 +1363,16 @@ def admin_two_factor():
                 account = db.get(WebAccount, row.account_id)
                 if not account or not account.active:
                     session.clear(); return redirect(url_for("admin_login"))
+                if account.role == "trainee" or bool(account.web_access_blocked):
+                    reason = "trainee" if account.role == "trainee" else "creator_block"
+                    row.used_at = datetime.utcnow(); db.commit()
+                    _security_log("WEB_ACCESS_BLOCKED", "HIGH", f"reason={reason}; after_2fa", username=account.username, role=account.role)
+                    session.clear(); session.permanent = True
+                    session["blocked_notice"] = True
+                    session["blocked_username"] = account.username
+                    session["blocked_reason"] = reason
+                    _csrf_token()
+                    return redirect(url_for("admin_web_access_blocked"))
                 row.used_at = datetime.utcnow(); db.commit()
                 _finalize_web_login(db, account)
                 return redirect(url_for("admin_dashboard"))
@@ -1579,6 +1621,21 @@ def admin_login():
                     account = db.query(WebAccount).filter(WebAccount.username == username, WebAccount.active.is_(True)).first()
                     if account and check_password_hash(account.password_hash, password):
                         _clear_login_guard(db, username)
+
+                        # Valid credentials, but this account is intentionally not
+                        # allowed into the Web panel.  Do not create an authenticated
+                        # session and do not run 2FA; show the dedicated animated
+                        # Protogen denial screen instead.
+                        if account.role == "trainee" or bool(account.web_access_blocked):
+                            reason = "trainee" if account.role == "trainee" else "creator_block"
+                            _security_log("WEB_ACCESS_BLOCKED", "HIGH", f"reason={reason}; login", username=account.username, role=account.role)
+                            session.clear(); session.permanent = True
+                            session["blocked_notice"] = True
+                            session["blocked_username"] = account.username
+                            session["blocked_reason"] = reason
+                            _csrf_token()
+                            return redirect(url_for("admin_web_access_blocked"))
+
                         if account.role in SECURITY_2FA_ROLES and _two_factor_recipient(db, account):
                             challenge_id, err = _send_2fa(db, account)
                             if err:
@@ -1602,6 +1659,17 @@ def admin_login():
             finally:
                 db.close()
     return render_template("admin_login.html", error=error)
+
+
+@app.route("/admin/blocked")
+def admin_web_access_blocked():
+    if not session.get("blocked_notice"):
+        return redirect(url_for("admin_login"))
+    return render_template(
+        "web_access_blocked.html",
+        username=session.get("blocked_username"),
+        reason=session.get("blocked_reason") or "creator_block",
+    )
 
 
 @app.route("/admin/access-denied")
@@ -3032,6 +3100,55 @@ def admin_account_delete(account_id):
         db.close()
 
 
+@app.route("/api/admin/accounts/<int:account_id>/access", methods=["POST"])
+@creator_required
+def admin_account_access(account_id):
+    if not SessionLocal:
+        return jsonify({"ok": False, "error": "DATABASE_URL не настроен."}), 500
+    data = request.get_json(silent=True) or {}
+    blocked = bool(data.get("blocked"))
+    db = SessionLocal()
+    try:
+        account = db.get(WebAccount, account_id)
+        if not account:
+            return jsonify({"ok": False, "error": "Аккаунт не найден."}), 404
+        if account.role == "creator":
+            return jsonify({"ok": False, "error": "Доступ Создателя нельзя заблокировать."}), 403
+        if account.username == session.get("admin_username"):
+            return jsonify({"ok": False, "error": "Нельзя заблокировать свой текущий аккаунт."}), 400
+        if account.role == "trainee" and not blocked:
+            return jsonify({"ok": False, "error": "Стажёр всегда заблокирован. Сначала измени его роль."}), 400
+
+        old = bool(account.web_access_blocked)
+        account.web_access_blocked = blocked
+        account.web_access_blocked_at = datetime.utcnow() if blocked else None
+        account.web_access_blocked_by = session.get("admin_username") if blocked else None
+
+        # End all active sessions immediately when Creator blocks the account.
+        if blocked:
+            now = datetime.utcnow()
+            db.query(WebSecuritySession).filter(
+                WebSecuritySession.account_id == account.id,
+                WebSecuritySession.revoked_at.is_(None),
+            ).update({WebSecuritySession.revoked_at: now}, synchronize_session=False)
+
+        db.commit()
+        _security_log(
+            "WEB_ACCESS_CHANGED", "HIGH",
+            f"account={account.username}; blocked={old}->{blocked}; by={session.get('admin_username')}",
+        )
+        return jsonify({
+            "ok": True,
+            "blocked": blocked,
+            "message": ("Доступ к Web-панели заблокирован." if blocked else "Доступ к Web-панели восстановлен."),
+        })
+    except Exception as e:
+        db.rollback()
+        return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        db.close()
+
+
 @app.route("/api/admin/accounts/<int:account_id>/password", methods=["POST"])
 @creator_required
 def admin_account_password(account_id):
@@ -3072,7 +3189,14 @@ def admin_account_role(account_id):
         if account.username == session.get("admin_username") and role != "creator":
             return jsonify({"ok": False, "error": "Нельзя понизить роль своего текущего аккаунта."}), 400
         account.role = role
+        if role == "trainee":
+            now = datetime.utcnow()
+            db.query(WebSecuritySession).filter(
+                WebSecuritySession.account_id == account.id,
+                WebSecuritySession.revoked_at.is_(None),
+            ).update({WebSecuritySession.revoked_at: now}, synchronize_session=False)
         db.commit()
+        _security_log("ROLE_CHANGED", "HIGH", f"account={account.username}; role={role}")
         return jsonify({"ok": True})
     finally:
         db.close()
