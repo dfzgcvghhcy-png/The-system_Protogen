@@ -1661,14 +1661,102 @@ def admin_login():
     return render_template("admin_login.html", error=error)
 
 
-@app.route("/admin/blocked")
+@app.route("/admin/blocked", methods=["GET", "POST"])
 def admin_web_access_blocked():
     if not session.get("blocked_notice"):
         return redirect(url_for("admin_login"))
+
+    username = session.get("blocked_username") or "unknown"
+    reason = session.get("blocked_reason") or "creator_block"
+    account = None
+    request_cooldown = 0
+    request_sent = False
+    request_error = None
+    terminated_sessions = 0
+    blocked_at = None
+    blocked_by = None
+    last_login = None
+    telegram_id = None
+    role_key = "trainee" if reason == "trainee" else "moderator"
+
+    db = SessionLocal() if SessionLocal else None
+    try:
+        if db:
+            account = db.query(WebAccount).filter(WebAccount.username == username).first()
+            if account:
+                role_key = account.role or role_key
+                blocked_at = account.web_access_blocked_at
+                blocked_by = account.web_access_blocked_by
+                last_login = account.last_login
+                telegram_id = account.telegram_id
+                if blocked_at:
+                    terminated_sessions = db.query(WebSecuritySession).filter(
+                        WebSecuritySession.account_id == account.id,
+                        WebSecuritySession.revoked_at.isnot(None),
+                        WebSecuritySession.revoked_at >= blocked_at,
+                    ).count()
+                else:
+                    terminated_sessions = db.query(WebSecuritySession).filter(
+                        WebSecuritySession.account_id == account.id,
+                        WebSecuritySession.revoked_at.isnot(None),
+                    ).count()
+
+            latest_request = db.query(SecurityEvent).filter(
+                SecurityEvent.event_type == "WEB_ACCESS_REQUEST",
+                SecurityEvent.username == username,
+            ).order_by(SecurityEvent.created_at.desc()).first()
+            if latest_request and latest_request.created_at:
+                elapsed = (datetime.utcnow() - latest_request.created_at).total_seconds()
+                request_cooldown = max(0, int(1800 - elapsed))
+
+        if request.method == "POST":
+            token = request.form.get("csrf_token") or request.headers.get("X-CSRF-Token")
+            if not token or not secrets.compare_digest(str(token), str(session.get("csrf_token") or "")):
+                request_error = "Security check failed (CSRF)."
+            elif request_cooldown > 0:
+                request_error = "Запрос уже отправлен. Дождись окончания таймера."
+            else:
+                details = f"reason={reason}; telegram_id={telegram_id or 'none'}"
+                _security_log("WEB_ACCESS_REQUEST", "WARNING", details, username=username, role=role_key)
+                notified = _security_notify(
+                    "📩 PROTOGEN // ACCESS REQUEST\n"
+                    f"Аккаунт: {username}\n"
+                    f"Роль: {ROLE_NAMES.get(role_key, role_key)}\n"
+                    f"Причина блокировки: {'Испытательный срок' if reason == 'trainee' else 'Ограничение Создателя'}\n"
+                    f"IP: {_client_ip()}\n"
+                    "Пользователь просит восстановить доступ к Web-панели."
+                )
+                request_sent = True
+                request_cooldown = 1800
+                if not notified:
+                    request_error = "Запрос сохранён в журнале, но Telegram-уведомление Создателю не отправилось."
+    finally:
+        if db:
+            db.close()
+
+    if not blocked_at:
+        blocked_at = datetime.utcnow()
+
+    role_name = ROLE_NAMES.get(role_key, role_key)
+    block_reason_text = "Испытательный срок" if reason == "trainee" else "Ограничение Создателя"
+    block_type = "До рассмотрения"
+    blocked_by = blocked_by or "Creator"
+
     return render_template(
         "web_access_blocked.html",
-        username=session.get("blocked_username"),
-        reason=session.get("blocked_reason") or "creator_block",
+        username=username,
+        reason=reason,
+        role_name=role_name,
+        telegram_id=telegram_id,
+        blocked_at=blocked_at,
+        blocked_by=blocked_by,
+        last_login=last_login,
+        terminated_sessions=terminated_sessions,
+        block_reason_text=block_reason_text,
+        block_type=block_type,
+        request_cooldown=request_cooldown,
+        request_sent=request_sent,
+        request_error=request_error,
     )
 
 
