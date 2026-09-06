@@ -35,7 +35,7 @@ from community import (
     restore_community_jobs,
 )
 from ai_moderation import ai_review_callback
-from security import security_precheck, security_callback_precheck, setup_security_jobs, secure_error_handler
+from security import security_precheck, security_callback_precheck, web_access_request_callback, setup_security_jobs, secure_error_handler
 
 
 
@@ -102,6 +102,7 @@ def main():
     app.add_handler(CallbackQueryHandler(appeal_callback, pattern=r"^appeal_"))
     app.add_handler(CallbackQueryHandler(ai_review_callback, pattern=r"^aireview_"))
     app.add_handler(CallbackQueryHandler(verification_callback, pattern=r"^verify_"))
+    app.add_handler(CallbackQueryHandler(web_access_request_callback, pattern=r"^webaccess_(allow|deny)_\d+$"))
 
     # CASE-кнопки жалоб обрабатываются отдельно от панели профиля.
     app.add_handler(CallbackQueryHandler(report_case_callback, pattern=r"^case_"))

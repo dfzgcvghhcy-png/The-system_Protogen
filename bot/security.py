@@ -270,6 +270,118 @@ async def security_callback_precheck(update, context: ContextTypes.DEFAULT_TYPE)
             raise ApplicationHandlerStop
 
 
+async def web_access_request_callback(update, context: ContextTypes.DEFAULT_TYPE):
+    """Creator-only decision buttons for Web access requests sent by the Web service."""
+    query = update.callback_query
+    user = update.effective_user
+    if not query or not user:
+        return
+
+    owner = _creator_id()
+    if not owner or int(user.id) != int(owner):
+        try:
+            await query.answer("Только Создатель может принимать это решение.", show_alert=True)
+        except Exception:
+            pass
+        log_security(
+            "WEB_ACCESS_DECISION_DENIED", "HIGH",
+            f"callback={query.data}; clicked_by={user.id}", username=str(user.id),
+        )
+        return
+
+    data = query.data or ""
+    parts = data.split("_")
+    if len(parts) != 3 or parts[0] != "webaccess" or parts[1] not in {"allow", "deny"}:
+        await query.answer("Некорректный запрос.", show_alert=True)
+        return
+
+    action = parts[1]
+    try:
+        account_id = int(parts[2])
+    except (TypeError, ValueError):
+        await query.answer("Некорректный ID аккаунта.", show_alert=True)
+        return
+
+    db = Session()
+    try:
+        row = db.execute(
+            text("SELECT id, username, role, web_access_blocked FROM web_accounts WHERE id=:id"),
+            {"id": account_id},
+        ).mappings().first()
+        if not row:
+            await query.answer("Аккаунт больше не существует.", show_alert=True)
+            return
+
+        username = row["username"]
+        role = row["role"] or "unknown"
+
+        if action == "allow":
+            if role == "creator":
+                await query.answer("Аккаунт Создателя не может быть заблокирован.", show_alert=True)
+                return
+            if role == "trainee":
+                await query.answer(
+                    "Стажёр заблокирован самой ролью. Сначала смените его роль в Web-панели.",
+                    show_alert=True,
+                )
+                log_security(
+                    "WEB_ACCESS_REQUEST_APPROVE_BLOCKED", "WARNING",
+                    f"account={username}; role=trainee; by={user.id}", username=username, role=role,
+                )
+                return
+
+            db.execute(
+                text(
+                    "UPDATE web_accounts "
+                    "SET web_access_blocked=FALSE, web_access_blocked_at=NULL, web_access_blocked_by=NULL "
+                    "WHERE id=:id"
+                ),
+                {"id": account_id},
+            )
+            db.add(SecurityEvent(
+                event_type="WEB_ACCESS_REQUEST_APPROVED", severity="HIGH",
+                username=username, role=role, ip_address="telegram",
+                details=f"approved_by_creator_telegram_id={user.id}", created_at=datetime.utcnow(),
+            ))
+            db.commit()
+            decision = "✅ РЕШЕНИЕ СОЗДАТЕЛЯ: ДОСТУП ВОССТАНОВЛЕН"
+            answer_text = "Доступ восстановлен."
+        else:
+            db.add(SecurityEvent(
+                event_type="WEB_ACCESS_REQUEST_DENIED", severity="WARNING",
+                username=username, role=role, ip_address="telegram",
+                details=f"denied_by_creator_telegram_id={user.id}", created_at=datetime.utcnow(),
+            ))
+            db.commit()
+            decision = "❌ РЕШЕНИЕ СОЗДАТЕЛЯ: В ДОСТУПЕ ОТКАЗАНО"
+            answer_text = "Запрос отклонён."
+
+        try:
+            original = (query.message.text or "").rstrip() if query.message else ""
+            if "РЕШЕНИЕ СОЗДАТЕЛЯ:" not in original:
+                updated = f"{original}\n\n{decision}" if original else decision
+            else:
+                updated = original
+            await query.edit_message_text(updated, reply_markup=None)
+        except Exception as exc:
+            print(f"WEB ACCESS DECISION EDIT ERROR: {type(exc).__name__}: {exc}")
+
+        await query.answer(answer_text, show_alert=True)
+    except Exception as exc:
+        db.rollback()
+        log_security(
+            "WEB_ACCESS_DECISION_ERROR", "CRITICAL",
+            f"account_id={account_id}; action={action}; {type(exc).__name__}: {str(exc)[:500]}",
+            username=str(user.id),
+        )
+        try:
+            await query.answer("Не удалось обработать запрос. Проверь логи worker.", show_alert=True)
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
 async def heartbeat_job(context: ContextTypes.DEFAULT_TYPE):
     db = Session()
     try:

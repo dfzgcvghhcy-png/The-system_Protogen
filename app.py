@@ -1020,7 +1020,7 @@ def _security_log(event_type, severity="INFO", details=None, username=None, role
         db.close()
 
 
-def _security_notify(text_value):
+def _security_notify(text_value, reply_markup=None):
     if not SessionLocal:
         return False
     db = SessionLocal()
@@ -1032,9 +1032,12 @@ def _security_notify(text_value):
     if not chat_id or not token:
         return False
     try:
+        payload = {"chat_id": chat_id, "text": text_value[:3900]}
+        if reply_markup:
+            payload["reply_markup"] = reply_markup
         requests.post(
             f"https://api.telegram.org/bot{token}/sendMessage",
-            json={"chat_id": chat_id, "text": text_value[:3900]}, timeout=7,
+            json=payload, timeout=7,
         ).raise_for_status()
         return True
     except Exception as e:
@@ -1739,13 +1742,20 @@ def admin_web_access_blocked():
             else:
                 details = f"reason={reason}; telegram_id={telegram_id or 'none'}"
                 _security_log("WEB_ACCESS_REQUEST_ATTEMPT", "INFO", details, username=username, role=role_key)
+                request_account_id = account.id if account else 0
                 notified = _security_notify(
                     "📩 PROTOGEN // ACCESS REQUEST\n"
                     f"Аккаунт: {username}\n"
                     f"Роль: {ROLE_NAMES.get(role_key, role_key)}\n"
                     f"Причина блокировки: {'Испытательный срок' if reason == 'trainee' else 'Ограничение Создателя'}\n"
                     f"IP: {_client_ip()}\n"
-                    "Пользователь просит восстановить доступ к Web-панели."
+                    "Пользователь просит восстановить доступ к Web-панели.",
+                    reply_markup={
+                        "inline_keyboard": [[
+                            {"text": "✅ Разблокировать", "callback_data": f"webaccess_allow_{request_account_id}"},
+                            {"text": "❌ Отказать", "callback_data": f"webaccess_deny_{request_account_id}"},
+                        ]]
+                    } if request_account_id else None,
                 )
                 if notified:
                     _security_log("WEB_ACCESS_REQUEST", "WARNING", details + "; telegram=sent", username=username, role=role_key)
