@@ -1503,14 +1503,35 @@ def _audit_section(path):
     return path.replace("/api/admin/", "").replace("/admin/", "").strip("/") or "Панель"
 
 def _creator_telegram_id(db):
+    # 1) Explicit Railway variables have top priority.
     for key in ("CREATOR_TELEGRAM_ID", "OWNER_TELEGRAM_ID", "ADMIN_TELEGRAM_ID", "BOT_OWNER_ID"):
         value = os.getenv(key)
         if value:
-            try: return int(value)
-            except ValueError: pass
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                pass
+
+    # 2) Audit notification settings (legacy/current control panel setting).
     cfg = db.get(AuditConfig, 1)
     if cfg and cfg.notify_enabled and cfg.creator_telegram_id:
-        return int(cfg.creator_telegram_id)
+        try:
+            return int(cfg.creator_telegram_id)
+        except (TypeError, ValueError):
+            pass
+
+    # 3) Security Center stores 2FA Telegram IDs on WebAccount.
+    #    Use the Creator account as a reliable fallback for security notices
+    #    such as a blocked user's access request.
+    try:
+        creator = db.query(WebAccount).filter(
+            WebAccount.role == "creator",
+            WebAccount.telegram_id.isnot(None),
+        ).order_by(WebAccount.id.asc()).first()
+        if creator and creator.telegram_id:
+            return int(creator.telegram_id)
+    except Exception as exc:
+        print(f"CREATOR TELEGRAM LOOKUP ERROR: {type(exc).__name__}: {exc}")
     return None
 
 def _send_audit_notification(log_id):
@@ -1717,7 +1738,7 @@ def admin_web_access_blocked():
                 request_error = "Запрос уже отправлен. Дождись окончания таймера."
             else:
                 details = f"reason={reason}; telegram_id={telegram_id or 'none'}"
-                _security_log("WEB_ACCESS_REQUEST", "WARNING", details, username=username, role=role_key)
+                _security_log("WEB_ACCESS_REQUEST_ATTEMPT", "INFO", details, username=username, role=role_key)
                 notified = _security_notify(
                     "📩 PROTOGEN // ACCESS REQUEST\n"
                     f"Аккаунт: {username}\n"
@@ -1726,10 +1747,18 @@ def admin_web_access_blocked():
                     f"IP: {_client_ip()}\n"
                     "Пользователь просит восстановить доступ к Web-панели."
                 )
-                request_sent = True
-                request_cooldown = 1800
-                if not notified:
-                    request_error = "Запрос сохранён в журнале, но Telegram-уведомление Создателю не отправилось."
+                if notified:
+                    _security_log("WEB_ACCESS_REQUEST", "WARNING", details + "; telegram=sent", username=username, role=role_key)
+                    request_sent = True
+                    request_cooldown = 1800
+                else:
+                    _security_log("WEB_ACCESS_REQUEST_DELIVERY_FAILED", "HIGH", details + "; telegram=failed", username=username, role=role_key)
+                    request_sent = False
+                    request_cooldown = 0
+                    request_error = (
+                        "Запрос записан в Security Audit, но Telegram-уведомление Создателю не отправилось. "
+                        "Проверь Telegram ID Создателя в Security Center и BOT_TOKEN у сервиса web."
+                    )
     finally:
         if db:
             db.close()
@@ -1757,6 +1786,7 @@ def admin_web_access_blocked():
         request_cooldown=request_cooldown,
         request_sent=request_sent,
         request_error=request_error,
+        play_block_sound=(request.method == "GET"),
     )
 
 

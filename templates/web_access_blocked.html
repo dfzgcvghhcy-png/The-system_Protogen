@@ -22,9 +22,9 @@ radial-gradient(circle at 70% 30%,rgba(255,26,68,.12),transparent 36%)}
 .brand{display:flex;align-items:center;gap:13px}.brand-mark{width:40px;height:40px;border:1px solid var(--red);border-radius:12px;display:grid;place-items:center;color:var(--red);font-size:21px;box-shadow:0 0 20px rgba(255,56,83,.15)}
 .brand-title{font-weight:900;letter-spacing:2px;font-size:16px}.brand-sub{color:#788997;font-size:10px;letter-spacing:2px;margin-top:3px}
 .navline{color:#7f8c99;font-size:10px;letter-spacing:2.4px}.online{display:flex;align-items:center;gap:10px;color:#dfe8ef;font-size:10px;letter-spacing:1.4px}.dot{width:9px;height:9px;border-radius:50%;background:var(--red);box-shadow:0 0 18px var(--red)}
-.main{flex:1;display:grid;grid-template-columns:minmax(470px,560px) minmax(0,1fr);gap:16px;min-height:0;align-items:stretch}
+.main{flex:1;display:grid;grid-template-columns:minmax(470px,560px) minmax(0,1fr);gap:16px;min-height:0;align-items:start}
 .left-panel,.art-panel{border:1px solid var(--line);border-radius:18px;overflow:hidden;position:relative}
-.left-panel{padding:18px;display:flex;flex-direction:column;min-height:660px}
+.left-panel{padding:18px;display:flex;flex-direction:column;min-height:0}
 .left-panel:before,.art-panel:before{content:"";position:absolute;inset:0;pointer-events:none;border:1px solid rgba(255,56,83,.07);border-radius:18px;box-shadow:inset 0 0 60px rgba(255,36,71,.025)}
 .account-card{border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;align-items:center;gap:14px;background:linear-gradient(135deg,rgba(255,255,255,.035),rgba(255,56,83,.025));position:relative}
 .avatar{width:74px;height:74px;border-radius:50%;border:2px solid var(--red);display:grid;place-items:center;background:radial-gradient(circle at 40% 35%,#33204d,#0a1020 58%,#05080d 100%);box-shadow:0 0 24px rgba(255,56,83,.18);overflow:hidden}
@@ -36,11 +36,11 @@ radial-gradient(circle at 70% 30%,rgba(255,26,68,.12),transparent 36%)}
 .request-row{display:grid;grid-template-columns:1.4fr .8fr;gap:10px;margin-top:14px}.request-card,.timer-card{border:1px solid var(--line);border-radius:12px;padding:12px;background:rgba(255,33,68,.055)}
 .request-card form{margin:0}.request-btn{width:100%;border:0;background:transparent;color:#fff;text-align:left;padding:0;cursor:pointer;font:inherit}.request-title{font-size:15px;font-weight:900}.request-sub{font-size:10px;color:#c58a93;margin-top:5px}.request-btn[disabled]{opacity:.55;cursor:not-allowed}.timer-card{border-color:var(--line2);background:rgba(255,255,255,.018);display:flex;flex-direction:column;justify-content:center;align-items:center}.timer-label{font-size:10px;color:#87939d}.timer{font-size:24px;font-weight:900;color:#ff8c9c;margin-top:5px;letter-spacing:1px}.flash{margin-top:10px;padding:10px 12px;border-radius:10px;font-size:11px}.flash.ok{background:rgba(24,245,223,.08);border:1px solid rgba(24,245,223,.24);color:#8fffeF}.flash.err{background:rgba(255,56,83,.08);border:1px solid rgba(255,56,83,.24);color:#ff9aab}
 .left-footer{margin-top:auto;padding-top:14px;border-top:1px solid var(--line2);font-size:9px;letter-spacing:1.2px;color:#5f6f7c;display:flex;align-items:center;justify-content:space-between}.version{color:#71808c}
-.art-panel{min-height:660px;background:#05070c}.art-panel img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center top;filter:saturate(1.03) contrast(1.02)}.art-panel:after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,rgba(2,5,9,.08),transparent 28%),repeating-linear-gradient(180deg,transparent 0 3px,rgba(255,255,255,.018) 3px 4px)}
+.art-panel{min-height:0;aspect-ratio:990/780;background:#05070c;align-self:start}.art-panel img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:center;filter:saturate(1.03) contrast(1.02);background:#05070c}.art-panel:after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,rgba(2,5,9,.05),transparent 28%),repeating-linear-gradient(180deg,transparent 0 3px,rgba(255,255,255,.014) 3px 4px)}
 .statusbar{min-height:58px;border:1px solid rgba(255,56,83,.18);border-radius:16px;display:flex;align-items:center;justify-content:space-between;padding:0 22px}.status-items{display:flex;align-items:center;gap:26px}.status-item{display:flex;align-items:center;gap:9px;font-size:11px;letter-spacing:1.1px;color:#b8c4cc}.status-item strong{color:#fff}.status-item.notify{color:#70ffe8}.status-item.denied{color:#ff6d80}.module{font-size:9px;color:#5f6d78;letter-spacing:1.4px}
 .actions-mobile{display:none}
-@media(max-width:1050px){.main{grid-template-columns:1fr}.art-panel{min-height:520px;order:1}.left-panel{order:2;min-height:auto}.navline{display:none}}
-@media(max-width:700px){.shell{padding:10px}.topbar{height:auto;min-height:58px;padding:10px 14px}.online .date{display:none}.main{gap:10px}.art-panel{min-height:0;aspect-ratio:1.1/1}.left-panel{padding:12px}.account-card{padding:11px}.avatar{width:58px;height:58px}.account-name{font-size:18px}.role-badge{font-size:10px;padding:6px 9px}.headline-row{align-items:flex-start}.warn-icon{font-size:44px}.headline{font-size:36px}.desc{font-size:14px}.detail-row{grid-template-columns:1fr;gap:3px;padding:8px 10px}.request-row{grid-template-columns:1fr}.timer-card{min-height:74px}.statusbar{padding:12px 14px;align-items:flex-start;gap:10px}.status-items{flex-wrap:wrap;gap:12px}.module{display:none}}
+@media(max-width:1050px){.main{grid-template-columns:1fr}.art-panel{min-height:0;aspect-ratio:990/780;order:1}.left-panel{order:2;min-height:auto}.navline{display:none}}
+@media(max-width:700px){.shell{padding:10px}.topbar{height:auto;min-height:58px;padding:10px 14px}.online .date{display:none}.main{gap:10px}.art-panel{min-height:0;aspect-ratio:990/780}.left-panel{padding:12px}.account-card{padding:11px}.avatar{width:58px;height:58px}.account-name{font-size:18px}.role-badge{font-size:10px;padding:6px 9px}.headline-row{align-items:flex-start}.warn-icon{font-size:44px}.headline{font-size:36px}.desc{font-size:14px}.detail-row{grid-template-columns:1fr;gap:3px;padding:8px 10px}.request-row{grid-template-columns:1fr}.timer-card{min-height:74px}.statusbar{padding:12px 14px;align-items:flex-start;gap:10px}.status-items{flex-wrap:wrap;gap:12px}.module{display:none}}
 @media(max-width:430px){.brand-title{font-size:14px}.brand-sub{font-size:8px}.account-card{align-items:flex-start}.role-badge{position:absolute;right:10px;top:10px}.account-main{padding-right:82px}.headline{font-size:31px}.statusbar{font-size:9px}}
 </style>
 <link rel="stylesheet" href="{{ url_for('static', filename='mobile.css') }}">
@@ -109,18 +109,23 @@ radial-gradient(circle at 70% 30%,rgba(255,26,68,.12),transparent 36%)}
   <footer class="statusbar">
     <div class="status-items">
       <div class="status-item"><span>▣</span><strong>EVENT LOGGED</strong></div>
+      {% if request_sent %}
       <div class="status-item notify"><span>●</span><strong>CREATOR NOTIFIED</strong></div>
+      {% elif request_error %}
+      <div class="status-item denied"><span>●</span><strong>NOTIFY FAILED</strong></div>
+      {% else %}
+      <div class="status-item notify"><span>●</span><strong>CREATOR STANDBY</strong></div>
+      {% endif %}
       <div class="status-item denied"><span>●</span><strong>ACCESS DENIED</strong></div>
     </div>
     <div class="module">THE SYSTEM_PROTOGEN &nbsp;//&nbsp; SECURITY MODULE &nbsp; v2.8.1</div>
   </footer>
 </div>
-<audio id="blockedSound" preload="auto" autoplay><source src="{{ url_for('static', filename='stager-denied.mp3') }}" type="audio/mpeg"></audio>
+<audio id="blockedSound" preload="auto" data-autoplay="{{ '1' if play_block_sound else '0' }}" {% if play_block_sound %}autoplay{% endif %}><source src="{{ url_for('static', filename='stager-denied.mp3') }}" type="audio/mpeg"></audio>
 <script>
 const audio=document.getElementById('blockedSound');
 function playSound(){try{audio.currentTime=0;audio.play().catch(()=>{});}catch(e){}}
-window.addEventListener('load',playSound,{once:true});
-['pointerdown','keydown','touchstart'].forEach(ev=>window.addEventListener(ev,()=>{if(audio.paused)playSound();},{once:true,passive:true}));
+if(audio && audio.dataset.autoplay==='1'){window.addEventListener('load',playSound,{once:true});}
 function pad(n){return String(n).padStart(2,'0')}
 function updateClock(){const d=new Date();const el=document.getElementById('clock');if(el)el.textContent=`${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()}  ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`}
 function parseUtc(value){
