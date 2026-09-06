@@ -1,4 +1,7 @@
+<button class="mobile-nav-toggle" type="button" aria-label="Открыть меню" aria-expanded="false">☰</button>
+<div class="mobile-nav-backdrop" aria-hidden="true"></div>
 <aside class="admin-sidebar">
+  <button class="mobile-nav-close" type="button" aria-label="Закрыть меню">×</button>
   <div class="sidebar-identity">
     <div class="sidebar-avatar"><img src="{{ url_for('static', filename='my_avatar.png') }}" alt="Protogen"></div>
     <div class="sidebar-name">PROTOGEN</div>
@@ -33,3 +36,15 @@
     <span>↪</span><div><b>ВЫЙТИ</b><small>Завершить сессию</small></div>
   </a>
 </aside>
+<script>
+(()=>{
+  const body=document.body,toggle=document.querySelector('.mobile-nav-toggle'),close=document.querySelector('.mobile-nav-close'),backdrop=document.querySelector('.mobile-nav-backdrop');
+  if(!toggle)return;
+  const setOpen=(open)=>{body.classList.toggle('mobile-nav-open',open);toggle.setAttribute('aria-expanded',open?'true':'false');document.documentElement.style.overflow=open?'hidden':'';};
+  toggle.addEventListener('click',()=>setOpen(!body.classList.contains('mobile-nav-open')));
+  close?.addEventListener('click',()=>setOpen(false));backdrop?.addEventListener('click',()=>setOpen(false));
+  document.querySelectorAll('.admin-sidebar a').forEach(a=>a.addEventListener('click',()=>setOpen(false)));
+  addEventListener('keydown',e=>{if(e.key==='Escape')setOpen(false)});
+  addEventListener('resize',()=>{if(innerWidth>900)setOpen(false)});
+})();
+</script>
