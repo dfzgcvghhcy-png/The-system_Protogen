@@ -910,6 +910,13 @@ def index():
     return render_template("index.html", command_catalog=_public_command_catalog())
 
 
+@app.route("/assistant")
+def assistant_announcement():
+    # ISO-8601 timestamp. Railway can override it with ASSISTANT_LAUNCH_AT.
+    launch_at = os.getenv("ASSISTANT_LAUNCH_AT", "2026-10-11T20:00:00+03:00")
+    return render_template("assistant_announcement.html", launch_at=launch_at)
+
+
 @app.route("/commands")
 def public_commands():
     return render_template("commands.html", command_catalog=_public_command_catalog())

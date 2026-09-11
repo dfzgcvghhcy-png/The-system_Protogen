@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#020711">
+  <title>Protogen Assistant — Скоро</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='assistant-announcement.css') }}">
+</head>
+<body data-launch-at="{{ launch_at|e }}">
+  <div class="ambient-grid"></div>
+  <div class="scanline"></div>
+
+  <header class="assistant-topbar">
+    <a class="assistant-brand" href="/">
+      <span class="brand-mark">◈</span>
+      <span><strong>PROTOGEN</strong><small>ASSISTANT</small></span>
+    </a>
+    <nav>
+      <a href="#home">Главная</a>
+      <a href="#features">Возможности</a>
+      <a href="#ecosystem">Экосистема</a>
+      <a href="/commands">Команды</a>
+    </nav>
+    <a class="back-link" href="/">← PROTOGEN BOT</a>
+  </header>
+
+  <main id="home">
+    <section class="assistant-hero">
+      <div class="hero-art" aria-hidden="true"></div>
+      <div class="hero-shade"></div>
+
+      <div class="hero-content">
+        <div class="system-line"><i></i> SOMETHING BIG IS COMING...</div>
+        <h1>СКОРО НАШ<br><span>ПОМОЩНИК</span><br>БУДЕТ С ТОБОЙ</h1>
+        <p class="lead">Голосовой помощник нового поколения. Управляй. Настраивай. Контролируй. Всё в одном приложении — в одной экосистеме Protogen.</p>
+
+        <div class="countdown" id="assistantCountdown" aria-label="Обратный отсчёт до запуска">
+          <div><strong data-days>00</strong><span>ДНЕЙ</span></div>
+          <div><strong data-hours>00</strong><span>ЧАСОВ</span></div>
+          <div><strong data-minutes>00</strong><span>МИНУТ</span></div>
+          <div><strong data-seconds>00</strong><span>СЕКУНД</span></div>
+        </div>
+
+        <div class="hero-actions">
+          <button class="notify-button" id="assistantNotifyBtn" type="button">🔔 УВЕДОМИТЬ МЕНЯ</button>
+          <a class="ghost-button" href="#features">УЗНАТЬ БОЛЬШЕ ↓</a>
+        </div>
+        <div class="notify-status" id="assistantNotifyStatus" aria-live="polite"></div>
+
+        <div class="launch-meta">
+          <span><i class="online"></i> VOICE CORE // PRE-LAUNCH</span>
+          <span>WEB + BOT + APP</span>
+          <span>SECURE SYNC</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="feature-section" id="features">
+      <div class="section-kicker">PROTOGEN ASSISTANT // CAPABILITIES</div>
+      <h2>Не просто голос. <span>Целая система.</span></h2>
+      <div class="feature-cards">
+        <article><div class="icon">◉</div><h3>Голосовое управление</h3><p>Разговор с помощником естественным голосом, быстрые команды и живой Voice Core.</p></article>
+        <article><div class="icon">⌁</div><h3>Связь с Protogen</h3><p>Приложение, Telegram-бот и Web-панель работают как одна экосистема.</p></article>
+        <article><div class="icon">⬡</div><h3>Security Center</h3><p>Состояние системы, уведомления, события безопасности и быстрые действия.</p></article>
+        <article><div class="icon">✦</div><h3>Умные команды</h3><p>Модерация, поиск, расписание, отчёты, заметки и персональные сценарии.</p></article>
+      </div>
+    </section>
+
+    <section class="ecosystem-section" id="ecosystem">
+      <div class="ecosystem-panel">
+        <div>
+          <div class="section-kicker">ONE CORE // EVERYWHERE</div>
+          <h2>Один помощник.<br><span>Все твои устройства.</span></h2>
+          <p>Protogen Assistant задуман как единый интерфейс для телефона, компьютера, Web и Telegram. История, настройки и состояние системы остаются синхронизированными.</p>
+        </div>
+        <div class="ecosystem-grid">
+          <div><b>APP</b><small>Voice & mobile</small></div>
+          <div><b>WEB</b><small>Control center</small></div>
+          <div><b>BOT</b><small>Telegram link</small></div>
+          <div><b>AI</b><small>Assistant core</small></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>THE SYSTEM_PROTOGEN // ASSISTANT PREVIEW</span>
+    <span>BUILDING A BRIGHTER TOMORROW</span>
+  </footer>
+
+  <script src="{{ url_for('static', filename='assistant-announcement.js') }}"></script>
+</body>
+</html>

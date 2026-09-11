@@ -712,3 +712,7 @@ body.intro-lock{overflow:hidden}
   .intro-terminal{padding:14px}
 }
 /* === /PROTOGEN STARTUP INTRO === */
+
+/* === PROTOGEN ASSISTANT ANNOUNCEMENT CTA === */
+.assistant-cta{position:relative;display:inline-flex;align-items:center;gap:7px;min-height:48px;padding:0 18px;border:1px solid rgba(70,210,255,.38);border-radius:11px;background:linear-gradient(135deg,rgba(30,89,136,.26),rgba(83,51,154,.19));color:#dff9ff;text-decoration:none;font-size:11px;font-weight:900;letter-spacing:.8px;box-shadow:inset 0 0 22px rgba(46,211,255,.035);transition:.2s}.assistant-cta:hover{border-color:#58e8ff;transform:translateY(-1px);box-shadow:0 0 26px rgba(46,211,255,.10),inset 0 0 22px rgba(46,211,255,.045)}.assistant-cta span{padding:4px 7px;border-radius:999px;background:rgba(92,69,255,.16);border:1px solid rgba(150,111,255,.24);color:#b9a8ff;font-size:8px;letter-spacing:1.3px}.assistant-cta b{margin-left:auto;color:#62eaff}
+/* === /PROTOGEN ASSISTANT ANNOUNCEMENT CTA === */
