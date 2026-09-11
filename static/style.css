@@ -716,3 +716,48 @@ body.intro-lock{overflow:hidden}
 /* === PROTOGEN ASSISTANT ANNOUNCEMENT CTA === */
 .assistant-cta{position:relative;display:inline-flex;align-items:center;gap:7px;min-height:48px;padding:0 18px;border:1px solid rgba(70,210,255,.38);border-radius:11px;background:linear-gradient(135deg,rgba(30,89,136,.26),rgba(83,51,154,.19));color:#dff9ff;text-decoration:none;font-size:11px;font-weight:900;letter-spacing:.8px;box-shadow:inset 0 0 22px rgba(46,211,255,.035);transition:.2s}.assistant-cta:hover{border-color:#58e8ff;transform:translateY(-1px);box-shadow:0 0 26px rgba(46,211,255,.10),inset 0 0 22px rgba(46,211,255,.045)}.assistant-cta span{padding:4px 7px;border-radius:999px;background:rgba(92,69,255,.16);border:1px solid rgba(150,111,255,.24);color:#b9a8ff;font-size:8px;letter-spacing:1.3px}.assistant-cta b{margin-left:auto;color:#62eaff}
 /* === /PROTOGEN ASSISTANT ANNOUNCEMENT CTA === */
+
+
+/* =========================================================
+   PROTOGEN ASSISTANT — SHORT HOME TEASER
+   ========================================================= */
+.assistant-teaser{
+  position:fixed; inset:0; z-index:99990; display:grid; place-items:center;
+  padding:clamp(14px,3vw,36px); opacity:0; visibility:hidden; pointer-events:none;
+  transition:opacity .45s ease,visibility .45s ease;
+}
+.assistant-teaser.is-visible{opacity:1;visibility:visible;pointer-events:auto}
+.assistant-teaser__backdrop{position:absolute;inset:0;background:rgba(0,3,10,.76);backdrop-filter:blur(13px) saturate(1.15)}
+.assistant-teaser__panel{
+  position:relative;width:min(1180px,94vw);height:min(650px,82vh);overflow:hidden;
+  border:1px solid rgba(89,188,255,.42);border-radius:24px;background:#02060d;
+  box-shadow:0 0 0 1px rgba(151,77,255,.12),0 35px 120px rgba(0,0,0,.62),0 0 70px rgba(42,117,255,.15);
+  transform:translateY(24px) scale(.985);transition:transform .55s cubic-bezier(.2,.8,.2,1);
+}
+.assistant-teaser.is-visible .assistant-teaser__panel{transform:none}
+.assistant-teaser__image{position:absolute;inset:0;background:url('/static/assistant-teaser.png') center/cover no-repeat;filter:saturate(1.04) contrast(1.04)}
+.assistant-teaser__scrim{position:absolute;inset:0;background:linear-gradient(90deg,rgba(1,5,13,.95) 0%,rgba(1,5,13,.78) 35%,rgba(1,5,13,.24) 63%,rgba(1,5,13,.08) 100%),linear-gradient(0deg,rgba(1,4,10,.74),transparent 40%)}
+.assistant-teaser__content{position:absolute;left:clamp(28px,5vw,72px);bottom:clamp(42px,8vh,86px);z-index:3;max-width:560px}
+.assistant-teaser__eyebrow{display:block;margin-bottom:14px;color:#77ddff;font-size:12px;letter-spacing:.32em;font-weight:700}
+.assistant-teaser h2{margin:0;color:#f7fbff;font-size:clamp(42px,6.4vw,88px);line-height:.9;letter-spacing:.03em;text-shadow:0 0 30px rgba(90,184,255,.25)}
+.assistant-teaser h2 span{display:block;color:#8c6cff;text-shadow:0 0 32px rgba(126,83,255,.5)}
+.assistant-teaser p{margin:20px 0 12px;color:#d7e7ff;font-size:clamp(16px,1.7vw,22px)}
+.assistant-teaser__status{display:inline-flex;align-items:center;gap:9px;color:#7bdfff;font:700 11px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.18em}
+.assistant-teaser__status i{width:8px;height:8px;border-radius:50%;background:#5cf2ff;box-shadow:0 0 16px #5cf2ff;animation:assistantTeaserPulse 1.15s ease-in-out infinite}
+.assistant-teaser__actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:24px}
+.assistant-teaser__cta,.assistant-teaser__actions button{height:48px;padding:0 24px;border-radius:12px;border:1px solid rgba(97,192,255,.5);display:inline-flex;align-items:center;justify-content:center;gap:14px;text-decoration:none;font-weight:800;letter-spacing:.08em}
+.assistant-teaser__cta{color:#031019;background:linear-gradient(135deg,#6ef0ff,#8b74ff);box-shadow:0 0 28px rgba(85,198,255,.25)}
+.assistant-teaser__actions button{color:#d8e9ff;background:rgba(3,10,21,.62);cursor:pointer}
+.assistant-teaser__close{position:absolute;right:18px;top:16px;z-index:5;width:42px;height:42px;border:1px solid rgba(141,199,255,.36);border-radius:12px;background:rgba(2,7,15,.68);color:white;font-size:27px;cursor:pointer}
+.assistant-teaser__progress{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(255,255,255,.08);z-index:4;overflow:hidden}
+.assistant-teaser__progress span{display:block;height:100%;width:100%;transform-origin:left center;background:linear-gradient(90deg,#55dfff,#816cff);box-shadow:0 0 12px rgba(79,215,255,.8)}
+.assistant-teaser.is-visible .assistant-teaser__progress span{animation:assistantTeaserProgress 5.2s linear forwards}
+body.assistant-teaser-lock{overflow:hidden}
+@keyframes assistantTeaserPulse{50%{opacity:.35;transform:scale(.72)}}
+@keyframes assistantTeaserProgress{to{transform:scaleX(0)}}
+@media (max-width:760px){
+  .assistant-teaser{padding:10px}.assistant-teaser__panel{width:96vw;height:min(76vh,650px);border-radius:18px}
+  .assistant-teaser__image{background-position:64% center}.assistant-teaser__scrim{background:linear-gradient(0deg,rgba(1,5,13,.98) 0%,rgba(1,5,13,.78) 42%,rgba(1,5,13,.15) 78%)}
+  .assistant-teaser__content{left:24px;right:24px;bottom:36px}.assistant-teaser h2{font-size:clamp(38px,14vw,62px)}
+  .assistant-teaser__eyebrow{letter-spacing:.18em}.assistant-teaser__actions{gap:8px}.assistant-teaser__cta,.assistant-teaser__actions button{height:44px;padding:0 16px;font-size:12px}
+}

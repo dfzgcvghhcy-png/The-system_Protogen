@@ -352,3 +352,58 @@
     }, 15000);
   })();
 })();
+
+
+// ---------------------------------------------------------
+// PROTOGEN ASSISTANT SHORT TEASER
+// Appears once per session shortly after the home page opens.
+// It deliberately waits for the startup intro to finish first.
+// ---------------------------------------------------------
+(() => {
+  const teaser = document.querySelector('#assistantTeaser');
+  const closeBtn = document.querySelector('#assistantTeaserClose');
+  const laterBtn = document.querySelector('#assistantTeaserLater');
+  const intro = document.querySelector('#protogenIntro');
+  if (!teaser) return;
+
+  const SESSION_KEY = 'protogen_assistant_teaser_seen_v1';
+  const AUTO_CLOSE_MS = 5200;
+  let autoCloseTimer = null;
+  let showTimer = null;
+
+  function hideTeaser(markSeen = true) {
+    if (markSeen) sessionStorage.setItem(SESSION_KEY, '1');
+    if (autoCloseTimer) clearTimeout(autoCloseTimer);
+    if (showTimer) clearTimeout(showTimer);
+    teaser.classList.remove('is-visible');
+    teaser.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('assistant-teaser-lock');
+  }
+
+  function showTeaser() {
+    if (sessionStorage.getItem(SESSION_KEY)) return;
+    teaser.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('assistant-teaser-lock');
+    requestAnimationFrame(() => teaser.classList.add('is-visible'));
+    autoCloseTimer = setTimeout(() => hideTeaser(true), AUTO_CLOSE_MS);
+  }
+
+  function scheduleTeaser() {
+    if (sessionStorage.getItem(SESSION_KEY)) return;
+    if (intro && intro.getAttribute('aria-hidden') !== 'true') {
+      showTimer = setTimeout(scheduleTeaser, 650);
+      return;
+    }
+    showTimer = setTimeout(showTeaser, 1200);
+  }
+
+  window.setTimeout(scheduleTeaser, 3000);
+  closeBtn?.addEventListener('click', () => hideTeaser(true));
+  laterBtn?.addEventListener('click', () => hideTeaser(true));
+  teaser.addEventListener('click', (event) => {
+    if (event.target === teaser || event.target.classList.contains('assistant-teaser__backdrop')) hideTeaser(true);
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && teaser.classList.contains('is-visible')) hideTeaser(true);
+  });
+})();
