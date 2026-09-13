@@ -31,6 +31,9 @@ app.config.update(
 
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "creator")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
+# Emergency recovery switch. Keep disabled normally. When enabled, the creator
+# password stored in PostgreSQL is replaced with ADMIN_PASSWORD on startup.
+ADMIN_PASSWORD_RESET = os.getenv("ADMIN_PASSWORD_RESET", "").strip().lower() in {"1", "true", "yes", "on"}
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 if DATABASE_URL:
@@ -583,7 +586,9 @@ if engine:
         ):
             connection.execute(text(f"ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS {column} {definition}"))
     # Seed the first creator account from Railway Variables only once.
-    # After that, all additional panel users live in PostgreSQL.
+    # Existing passwords normally stay in PostgreSQL and are not overwritten.
+    # For emergency recovery, temporarily set ADMIN_PASSWORD_RESET=true in
+    # Railway; on startup the creator password will be replaced by ADMIN_PASSWORD.
     if ADMIN_PASSWORD:
         with SessionLocal() as seed_db:
             creator = seed_db.query(WebAccount).filter(WebAccount.username == ADMIN_USERNAME).first()
@@ -596,6 +601,14 @@ if engine:
                 ))
                 seed_db.commit()
                 print(f"🔐 Creator account seeded: {ADMIN_USERNAME}")
+            elif ADMIN_PASSWORD_RESET:
+                creator.password_hash = generate_password_hash(ADMIN_PASSWORD)
+                creator.active = True
+                creator.web_access_blocked = False
+                creator.web_access_blocked_at = None
+                creator.web_access_blocked_by = None
+                seed_db.commit()
+                print(f"🔐 Creator password reset from Railway Variables: {ADMIN_USERNAME}")
 
     # Seed the moderation command matrix without overwriting creator changes.
     with SessionLocal() as seed_db:
