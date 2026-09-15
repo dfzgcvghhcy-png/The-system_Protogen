@@ -1,4 +1,5 @@
 import os
+import sys
 from datetime import datetime
 
 from sqlalchemy import (
@@ -17,8 +18,22 @@ from sqlalchemy import (
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 
+
 # ============================================================
+
+def _configure_utf8_console():
+    """Keep Windows consoles from crashing on emoji/Russian log output."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
+_configure_utf8_console()
+
 # DATABASE URL
+
 # ============================================================
 
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -71,8 +86,10 @@ Session = sessionmaker(
 Base = declarative_base()
 
 
+
 # ============================================================
 # USERS
+
 # ============================================================
 
 class User(Base):
@@ -144,8 +161,10 @@ class User(Base):
     )
 
 
+
 # ============================================================
 # ACTIVITY
+
 # ============================================================
 
 class Activity(Base):
@@ -174,8 +193,10 @@ class Activity(Base):
     )
 
 
+
 # ============================================================
 # PUNISHMENTS
+
 # ============================================================
 
 
@@ -376,8 +397,10 @@ class Punishment(Base):
     )
 
 
+
 # ============================================================
 # AI CHAT HISTORY
+
 # ============================================================
 
 class AIMessage(Base):
@@ -413,8 +436,10 @@ class AIMessage(Base):
     )
 
 
+
 # ============================================================
 # AI LONG-TERM MEMORY
+
 # ============================================================
 
 class UserMemory(Base):
@@ -463,8 +488,10 @@ class UserMemory(Base):
     )
 
 
+
 # ============================================================
 # BOT SETTINGS
+
 # ============================================================
 
 class BotSetting(Base):
@@ -584,8 +611,10 @@ class BotSetting(Base):
     )
 
 
+
 # ============================================================
 # MULTI-SERVER STATISTICS
+
 # ============================================================
 
 class Chat(Base):
@@ -642,8 +671,10 @@ class ChatPunishment(Base):
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
+
 # ============================================================
 # PROGRESSION // XP, LEVELS, STREAKS, ACHIEVEMENTS
+
 # ============================================================
 
 class UserProgress(Base):
@@ -684,8 +715,10 @@ class UserAchievement(Base):
 
 
 
+
 # ============================================================
 # OPERATIONS CENTER // NOTES, APPEALS, TICKETS, SCHEDULER
+
 # ============================================================
 
 class ModeratorNote(Base):
@@ -799,8 +832,10 @@ class SecurityState(Base):
     last_trigger = Column(String(120), nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+
 # ============================================================
 # CREATE TABLES
+
 # ============================================================
 
 # Ничего существующего не удаляет.
@@ -808,8 +843,10 @@ class SecurityState(Base):
 Base.metadata.create_all(engine)
 
 
+
 # ============================================================
 # TELEGRAM ID -> BIGINT SAFE MIGRATION
+
 # ============================================================
 
 # Telegram user/chat IDs are not guaranteed to fit into PostgreSQL INTEGER
@@ -896,8 +933,10 @@ def migrate_telegram_ids_to_bigint():
 migrate_telegram_ids_to_bigint()
 
 
+
 # ============================================================
 # SAFE MIGRATION
+
 # ============================================================
 
 def migrate_database():
@@ -1090,4 +1129,5 @@ def migrate_protogen_extra_columns():
                 connection.execute(text(f"ALTER TABLE bot_settings ADD COLUMN {name} {definition}"))
 
 migrate_protogen_extra_columns()
+
 

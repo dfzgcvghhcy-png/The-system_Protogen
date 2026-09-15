@@ -1,3 +1,17 @@
+import sys
+
+
+def _configure_utf8_console():
+    """Keep Windows consoles from crashing on emoji/Russian log output."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
+_configure_utf8_console()
+
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -56,7 +70,7 @@ def _acquire_worker_lock():
     worker wait instead of starting a second getUpdates loop. SQLite/local runs
     skip the distributed lock.
     """
-    if engine.dialect.name != "postgresql":
+    if not engine or engine.dialect.name != "postgresql":
         return None
     key = _worker_lock_key()
     while True:
@@ -90,6 +104,9 @@ async def post_init(application):
 
 
 def main():
+    if not TOKEN:
+        raise RuntimeError("BOT_TOKEN не настроен. Добавь BOT_TOKEN в переменные окружения перед запуском бота.")
+
     worker_lock = _acquire_worker_lock()
     app = ApplicationBuilder().token(TOKEN).post_init(post_init).build()
 
@@ -176,3 +193,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+

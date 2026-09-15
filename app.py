@@ -1,4 +1,5 @@
 import os
+import sys
 import io
 import time
 import json
@@ -17,14 +18,40 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.exceptions import HTTPException
 
+
+
+def _configure_utf8_console():
+    """Keep Windows consoles from crashing on emoji/Russian log output."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
+_configure_utf8_console()
+
 APP_STARTED_AT = datetime.utcnow()
 
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "CHANGE_ME_IN_RAILWAY")
+
+# Railway/production should provide SECRET_KEY. For local development we create
+# an ephemeral secret so the web panel can start without shipping a hardcoded key.
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    SECRET_KEY = secrets.token_hex(32)
+    print("⚠️ Web: SECRET_KEY не найден — используется временный локальный ключ")
+
+SESSION_COOKIE_SECURE = os.getenv(
+    "SESSION_COOKIE_SECURE",
+    "1" if os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_SERVICE_NAME") else "0",
+).strip().lower() in {"1", "true", "yes", "on"}
+
+app.secret_key = SECRET_KEY
 app.config.update(
     MAX_CONTENT_LENGTH=5 * 1024 * 1024,
     SESSION_COOKIE_HTTPONLY=True,
-    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_SECURE=SESSION_COOKIE_SECURE,
     SESSION_COOKIE_SAMESITE="Lax",
     PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
 )
@@ -42,11 +69,15 @@ if DATABASE_URL:
     engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=1800, pool_size=5, max_overflow=5, pool_timeout=15)
     print("🗄️ Web Database: PostgreSQL Railway")
 else:
-    engine = None
-    print("⚠️ Web: DATABASE_URL не найден")
+    engine = create_engine(
+        "sqlite:///database.db",
+        connect_args={"check_same_thread": False},
+        pool_pre_ping=True,
+    )
+    print("⚠️ Web: DATABASE_URL не найден — используется локальный SQLite")
 
 Base = declarative_base()
-SessionLocal = sessionmaker(bind=engine, expire_on_commit=False) if engine else None
+SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 
 
@@ -550,16 +581,28 @@ if engine:
                     ))
                     print(f"🗄️ Web BIGINT migration: {table_name}.{column_name}")
 
+    def _add_column_if_missing(connection, table_name, column_name, definition):
+        inspector = inspect(engine)
+        existing_columns = {col["name"] for col in inspector.get_columns(table_name)}
+        if column_name in existing_columns:
+            return
+        preparer = engine.dialect.identifier_preparer
+        connection.execute(text(
+            f"ALTER TABLE {preparer.quote(table_name)} "
+            f"ADD COLUMN {preparer.quote(column_name)} {definition}"
+        ))
+
     # Safe security migrations: additive only; existing data is preserved.
     with engine.begin() as connection:
-        connection.execute(text("ALTER TABLE web_accounts ADD COLUMN IF NOT EXISTS telegram_id BIGINT"))
-        connection.execute(text("ALTER TABLE web_accounts ADD COLUMN IF NOT EXISTS web_access_blocked BOOLEAN NOT NULL DEFAULT FALSE"))
-        connection.execute(text("ALTER TABLE web_accounts ADD COLUMN IF NOT EXISTS web_access_blocked_at TIMESTAMP NULL"))
-        connection.execute(text("ALTER TABLE web_accounts ADD COLUMN IF NOT EXISTS web_access_blocked_by VARCHAR(80) NULL"))
-    # Safe migration: add personality columns to an existing PostgreSQL table.
+        _add_column_if_missing(connection, "web_accounts", "telegram_id", "BIGINT")
+        _add_column_if_missing(connection, "web_accounts", "web_access_blocked", "BOOLEAN NOT NULL DEFAULT FALSE")
+        _add_column_if_missing(connection, "web_accounts", "web_access_blocked_at", "TIMESTAMP NULL")
+        _add_column_if_missing(connection, "web_accounts", "web_access_blocked_by", "VARCHAR(80) NULL")
+
+    # Safe migration: add personality and automod columns to an existing table.
     with engine.begin() as connection:
         for column, default in (("personality_daring",75),("personality_sarcasm",70),("personality_aggression",45),("personality_humor",85),("personality_friendliness",60)):
-            connection.execute(text(f"ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS {column} INTEGER DEFAULT {default}"))
+            _add_column_if_missing(connection, "bot_settings", column, f"INTEGER DEFAULT {default}")
         connection.execute(text("""UPDATE bot_settings SET personality_daring=COALESCE(personality_daring,75), personality_sarcasm=COALESCE(personality_sarcasm,70), personality_aggression=COALESCE(personality_aggression,45), personality_humor=COALESCE(personality_humor,85), personality_friendliness=COALESCE(personality_friendliness,60) WHERE id=1"""))
         for column, definition in (
             ("anti_flood_enabled","BOOLEAN DEFAULT TRUE"),
@@ -584,7 +627,7 @@ if engine:
             ("ai_moderation_threshold","INTEGER DEFAULT 85"),
             ("daily_enabled","BOOLEAN DEFAULT TRUE"),
         ):
-            connection.execute(text(f"ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS {column} {definition}"))
+            _add_column_if_missing(connection, "bot_settings", column, definition)
     # Seed the first creator account from Railway Variables only once.
     # Existing passwords normally stay in PostgreSQL and are not overwritten.
     # For emergency recovery, temporarily set ADMIN_PASSWORD_RESET=true in
@@ -3534,3 +3577,5 @@ def admin_logout():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")))
+
+
