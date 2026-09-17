@@ -12,7 +12,7 @@ def _configure_utf8_console():
 
 _configure_utf8_console()
 
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -102,6 +102,33 @@ async def post_init(application):
     await restore_community_jobs(application)
     setup_security_jobs(application)
 
+import os
+
+
+async def menu(update: Update, context):
+    web_url = os.getenv("MINIAPP_URL", "").strip()
+
+    if not web_url:
+        await update.message.reply_text(
+            "⚠️ Панель управления пока не настроена."
+        )
+        return
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "🎛 Панель управления",
+                web_app=WebAppInfo(url=web_url)
+            )
+        ]
+    ]
+
+    await update.message.reply_text(
+        "🤖 PROTOGEN // CONTROL CENTER\n\n"
+        "Открой панель управления:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
 
 def main():
     if not TOKEN:
@@ -140,6 +167,7 @@ def main():
     app.add_handler(CommandHandler("panel", panel))
     app.add_handler(CommandHandler("report", report))
     app.add_handler(CommandHandler("appeal", appeal_command))
+    app.add_handler(CommandHandler("menu", menu))
 
     # Дополнительные команды Protogen.
     extra_commands = {
