@@ -1,0 +1,447 @@
+/* ============================================================
+   PROTOGEN // TELEGRAM MINI APP UI
+   Loaded after admin.css / page CSS / mobile.css.
+   Desktop browser layout stays untouched unless Telegram WebApp is detected.
+   ============================================================ */
+
+.tg-bottom-nav {
+  display: none;
+}
+
+html.tg-miniapp,
+html.tg-miniapp body {
+  min-height: 100%;
+  background: #02050b;
+  overscroll-behavior-y: contain;
+}
+
+html.tg-miniapp body {
+  overflow-x: hidden;
+  touch-action: manipulation;
+}
+
+/* Keep the Mini App focused on content instead of desktop chrome. */
+html.tg-miniapp .admin-sidebar,
+html.tg-miniapp .admin-topbar {
+  display: none !important;
+}
+
+html.tg-miniapp .system-entry-sequence {
+  display: none !important;
+}
+
+html.tg-miniapp .scanlines {
+  opacity: .35;
+}
+
+html.tg-miniapp .admin-main-wrap {
+  margin-left: 0 !important;
+  min-height: 100vh;
+}
+
+html.tg-miniapp .admin-main,
+html.tg-miniapp .users-main {
+  width: 100% !important;
+  max-width: 760px !important;
+  margin: 0 auto !important;
+  padding:
+    max(12px, env(safe-area-inset-top))
+    12px
+    calc(94px + env(safe-area-inset-bottom))
+    !important;
+}
+
+/* ---------- Dashboard ---------- */
+
+html.tg-miniapp .dashboard-hero {
+  min-height: auto !important;
+  margin: 0 0 12px !important;
+  padding: 20px 18px !important;
+  align-items: flex-start !important;
+  border-radius: 16px !important;
+  background:
+    linear-gradient(135deg, rgba(4, 14, 26, .94), rgba(7, 6, 23, .88)),
+    url("/static/bg.png") center 42% / cover !important;
+}
+
+html.tg-miniapp .dashboard-hero .hero-copy {
+  padding: 0 !important;
+}
+
+html.tg-miniapp .dashboard-hero h1 {
+  margin: 7px 0 8px !important;
+  font-size: clamp(24px, 7vw, 32px) !important;
+  line-height: 1.05 !important;
+  letter-spacing: -.7px !important;
+}
+
+html.tg-miniapp .dashboard-hero p {
+  max-width: 100% !important;
+  font-size: 12px !important;
+  line-height: 1.45 !important;
+}
+
+html.tg-miniapp .hero-signal {
+  display: none !important;
+}
+
+html.tg-miniapp .cards {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+  margin-bottom: 10px !important;
+}
+
+html.tg-miniapp .stat-card {
+  min-width: 0 !important;
+  min-height: 98px !important;
+  padding: 13px !important;
+  border-radius: 14px !important;
+}
+
+html.tg-miniapp .stat-card strong {
+  font-size: 24px !important;
+}
+
+html.tg-miniapp .dashboard-grid-v2,
+html.tg-miniapp .dashboard-grid {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  gap: 10px !important;
+}
+
+html.tg-miniapp .dashboard-grid-v2 > *,
+html.tg-miniapp .dashboard-grid > *,
+html.tg-miniapp .ai-panel,
+html.tg-miniapp .recent-panel,
+html.tg-miniapp .top-users-panel,
+html.tg-miniapp .quick-panel {
+  grid-column: auto !important;
+  min-width: 0 !important;
+}
+
+html.tg-miniapp .panel {
+  padding: 15px !important;
+  border-radius: 15px !important;
+}
+
+html.tg-miniapp .panel-head {
+  gap: 10px !important;
+  align-items: flex-start !important;
+}
+
+html.tg-miniapp .panel h2 {
+  font-size: 17px !important;
+}
+
+html.tg-miniapp .period,
+html.tg-miniapp .small-link,
+html.tg-miniapp .ghost {
+  min-height: 38px;
+  padding: 8px 11px !important;
+}
+
+html.tg-miniapp .chart-v2,
+html.tg-miniapp .chart {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+html.tg-miniapp .chart-v2::-webkit-scrollbar,
+html.tg-miniapp .chart::-webkit-scrollbar {
+  display: none;
+}
+
+html.tg-miniapp .event-v2,
+html.tg-miniapp .top-user {
+  min-width: 0;
+}
+
+html.tg-miniapp .event-v2 time {
+  white-space: nowrap;
+}
+
+/* ---------- Users ---------- */
+
+html.tg-miniapp .users-hero {
+  margin: 0 0 12px !important;
+  padding: 18px !important;
+  border-radius: 16px !important;
+  gap: 12px !important;
+}
+
+html.tg-miniapp .users-hero h1 {
+  margin: 6px 0 !important;
+  font-size: 28px !important;
+}
+
+html.tg-miniapp .users-hero p {
+  margin: 0 !important;
+  font-size: 12px !important;
+}
+
+html.tg-miniapp .online-pill {
+  display: none !important;
+}
+
+html.tg-miniapp .users-workspace {
+  display: block !important;
+}
+
+html.tg-miniapp .users-content {
+  min-width: 0 !important;
+}
+
+html.tg-miniapp .users-toolbar {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  gap: 9px !important;
+  margin-bottom: 10px !important;
+}
+
+html.tg-miniapp .search {
+  display: grid !important;
+  grid-template-columns: auto minmax(0, 1fr) auto !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+html.tg-miniapp .search input {
+  min-width: 0 !important;
+  width: 100% !important;
+  font-size: 16px !important;
+}
+
+html.tg-miniapp .search button,
+html.tg-miniapp .select-user {
+  min-height: 42px !important;
+}
+
+html.tg-miniapp .result-count {
+  justify-self: start !important;
+}
+
+html.tg-miniapp .users-table {
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+}
+
+html.tg-miniapp .table-head {
+  display: none !important;
+}
+
+html.tg-miniapp .user-row {
+  display: block !important;
+  margin: 0 0 10px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  border: 1px solid rgba(0, 255, 225, .12) !important;
+  border-radius: 15px !important;
+  background: linear-gradient(145deg, rgba(4, 16, 24, .92), rgba(3, 9, 16, .86)) !important;
+}
+
+html.tg-miniapp .user-row.selected {
+  border-color: rgba(0, 255, 225, .55) !important;
+  box-shadow: 0 0 0 1px rgba(0, 255, 225, .08), 0 0 25px rgba(0, 255, 225, .08) !important;
+}
+
+html.tg-miniapp .user-main-link {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  gap: 9px 10px !important;
+  padding: 14px !important;
+  color: inherit !important;
+  text-decoration: none !important;
+}
+
+html.tg-miniapp .user-main-link .user-cell {
+  flex: 1 1 100% !important;
+  min-width: 0 !important;
+}
+
+html.tg-miniapp .user-main-link > div:nth-child(2) {
+  flex: 0 0 auto !important;
+}
+
+html.tg-miniapp .messages-count {
+  flex: 0 0 auto !important;
+  font-size: 12px !important;
+}
+
+html.tg-miniapp .messages-count::before {
+  content: "Сообщения: ";
+  color: #718b9b;
+  font-weight: 500;
+}
+
+html.tg-miniapp .moderation-mini {
+  flex: 1 1 100% !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 6px !important;
+}
+
+html.tg-miniapp .last-seen {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  font-size: 10px !important;
+}
+
+html.tg-miniapp .last-seen::before {
+  content: "Визит: ";
+  color: #718b9b;
+}
+
+html.tg-miniapp .arrow {
+  margin-left: auto !important;
+}
+
+html.tg-miniapp .select-user {
+  width: calc(100% - 28px) !important;
+  margin: 0 14px 14px !important;
+  border-radius: 10px !important;
+}
+
+html.tg-miniapp .quick-actions {
+  position: static !important;
+  width: 100% !important;
+  margin-top: 10px !important;
+}
+
+/* Creator Web-account controls contain inline desktop grid styles. */
+html.tg-miniapp [data-account-row] {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  gap: 9px !important;
+  padding: 13px !important;
+}
+
+html.tg-miniapp [data-account-row] select,
+html.tg-miniapp [data-account-row] button {
+  width: 100% !important;
+  min-height: 42px !important;
+}
+
+/* ---------- Modals / forms ---------- */
+
+html.tg-miniapp input,
+html.tg-miniapp select,
+html.tg-miniapp textarea,
+html.tg-miniapp button {
+  font-family: inherit;
+}
+
+html.tg-miniapp input,
+html.tg-miniapp select,
+html.tg-miniapp textarea {
+  font-size: 16px;
+}
+
+html.tg-miniapp .quick-modal-card,
+html.tg-miniapp #accountModal > div {
+  max-height: calc(100vh - 28px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) !important;
+  overflow-y: auto !important;
+}
+
+/* ---------- Telegram bottom navigation ---------- */
+
+html.tg-miniapp .tg-bottom-nav {
+  position: fixed;
+  z-index: 1000;
+  left: 50%;
+  right: auto;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: min(100%, 760px);
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 4px;
+  padding: 7px 8px calc(7px + env(safe-area-inset-bottom));
+  border-top: 1px solid rgba(0, 255, 225, .14);
+  background: rgba(2, 7, 15, .94);
+  box-shadow: 0 -16px 38px rgba(0, 0, 0, .38);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+html.tg-miniapp .tg-bottom-nav a {
+  min-width: 0;
+  min-height: 58px;
+  padding: 7px 3px 5px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: #78909d;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html.tg-miniapp .tg-bottom-nav a.active {
+  color: #eaffff;
+  border-color: rgba(0, 255, 225, .18);
+  background: linear-gradient(180deg, rgba(0, 255, 225, .08), rgba(156, 69, 255, .045));
+}
+
+html.tg-miniapp .tg-bottom-nav .tg-nav-icon {
+  min-width: 26px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  color: #9c45ff;
+  font-size: 18px;
+  line-height: 1;
+}
+
+html.tg-miniapp .tg-bottom-nav a.active .tg-nav-icon {
+  color: #00ffe1;
+  text-shadow: 0 0 14px rgba(0, 255, 225, .42);
+}
+
+html.tg-miniapp .tg-bottom-nav b {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.05;
+  white-space: nowrap;
+}
+
+/* Slightly roomier Telegram Desktop / tablets. */
+@media (min-width: 600px) {
+  html.tg-miniapp .cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  html.tg-miniapp .admin-main,
+  html.tg-miniapp .users-main {
+    padding-left: 18px !important;
+    padding-right: 18px !important;
+  }
+}
+
+@media (max-width: 360px) {
+  html.tg-miniapp .admin-main,
+  html.tg-miniapp .users-main {
+    padding-left: 9px !important;
+    padding-right: 9px !important;
+  }
+
+  html.tg-miniapp .dashboard-hero {
+    padding: 17px 14px !important;
+  }
+
+  html.tg-miniapp .tg-bottom-nav b {
+    font-size: 8px;
+  }
+}
