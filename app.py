@@ -5,12 +5,14 @@ import time
 import json
 import secrets
 import hashlib
+import hmac
 import traceback
 import gzip
 import uuid
 import requests
 from datetime import datetime, timedelta, timezone
 from functools import wraps
+from urllib.parse import parse_qsl
 
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, send_file, g, abort
 from sqlalchemy import create_engine, Column, Integer, BigInteger, String, DateTime, Boolean, Text, func, desc, or_, text, UniqueConstraint, inspect
@@ -1245,11 +1247,298 @@ def _finalize_web_login(db, account):
         _security_notify(f"✅ PROTOGEN SECURITY\nВход подтверждён\nАккаунт: {account.username}\nIP: {_client_ip()}")
 
 
+
+# ============================================================
+# TELEGRAM MINI APP AUTH
+# ============================================================
+
+def _verify_telegram_init_data(init_data: str, max_age: int = 900):
+    """Validate Telegram Mini App initData using BOT_TOKEN."""
+    bot_token = (os.getenv("BOT_TOKEN") or "").strip()
+
+    if not bot_token:
+        return None, "BOT_TOKEN не настроен на Web-сервисе."
+
+    if not init_data:
+        return None, "Telegram initData отсутствует."
+
+    try:
+        data = dict(parse_qsl(init_data, keep_blank_values=True))
+    except Exception:
+        return None, "Некорректные Telegram данные."
+
+    received_hash = data.pop("hash", None)
+    if not received_hash:
+        return None, "Telegram hash отсутствует."
+
+    try:
+        auth_date = int(data.get("auth_date", "0"))
+    except (TypeError, ValueError):
+        return None, "Некорректный auth_date."
+
+    now = int(time.time())
+    if auth_date <= 0 or abs(now - auth_date) > max_age:
+        return None, "Telegram авторизация устарела. Закрой и открой Mini App снова."
+
+    data_check_string = "\n".join(
+        f"{key}={value}"
+        for key, value in sorted(data.items())
+    )
+
+    secret_key = hmac.new(
+        b"WebAppData",
+        bot_token.encode("utf-8"),
+        hashlib.sha256,
+    ).digest()
+
+    calculated_hash = hmac.new(
+        secret_key,
+        data_check_string.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+    if not hmac.compare_digest(calculated_hash, received_hash):
+        return None, "Подпись Telegram не прошла проверку."
+
+    try:
+        telegram_user = json.loads(data.get("user") or "{}")
+    except Exception:
+        return None, "Не удалось прочитать Telegram пользователя."
+
+    if not telegram_user.get("id"):
+        return None, "Telegram ID отсутствует."
+
+    return telegram_user, None
+
+
+@app.route("/miniapp")
+def telegram_miniapp():
+    return """<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <title>PROTOGEN // CONTROL CENTER</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: #07111f;
+            color: #eaf7ff;
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 24px;
+        }
+        .box {
+            width: 100%;
+            max-width: 420px;
+            text-align: center;
+        }
+        .logo {
+            font-size: 42px;
+            margin-bottom: 16px;
+        }
+        h1 {
+            margin: 0 0 10px;
+            font-size: 20px;
+        }
+        #status {
+            color: #8da9bd;
+            line-height: 1.5;
+        }
+        .loader {
+            width: 42px;
+            height: 42px;
+            margin: 25px auto;
+            border: 3px solid rgba(80, 220, 255, .15);
+            border-top-color: #50dcff;
+            border-radius: 50%;
+            animation: spin .8s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <div class="logo">🤖</div>
+        <h1>PROTOGEN // CONTROL CENTER</h1>
+        <div class="loader" id="loader"></div>
+        <div id="status">Проверяем Telegram…</div>
+    </div>
+
+    <script>
+        async function startProtogenMiniApp() {
+            const status = document.getElementById("status");
+            const loader = document.getElementById("loader");
+            const tg = window.Telegram && window.Telegram.WebApp;
+
+            if (!tg) {
+                loader.style.display = "none";
+                status.textContent = "Открой панель через кнопку Telegram.";
+                return;
+            }
+
+            tg.ready();
+            tg.expand();
+
+            const initData = tg.initData || "";
+
+            if (!initData) {
+                loader.style.display = "none";
+                status.textContent =
+                    "Telegram не передал данные авторизации. Закрой окно и открой панель снова.";
+                return;
+            }
+
+            try {
+                const response = await fetch("/api/telegram-auth", {
+                    method: "POST",
+                    credentials: "same-origin",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        init_data: initData
+                    })
+                });
+
+                const result = await response.json();
+
+                if (!response.ok || !result.ok) {
+                    loader.style.display = "none";
+                    status.textContent =
+                        result.error || "Ошибка авторизации.";
+                    return;
+                }
+
+                status.textContent = "Доступ подтверждён ✓";
+                window.location.replace(result.redirect || "/admin");
+
+            } catch (error) {
+                loader.style.display = "none";
+                status.textContent =
+                    "Не удалось подключиться к панели управления.";
+            }
+        }
+
+        startProtogenMiniApp();
+    </script>
+</body>
+</html>"""
+
+
+@app.route("/api/telegram-auth", methods=["POST"])
+def telegram_miniapp_auth():
+    payload = request.get_json(silent=True) or {}
+    init_data = (payload.get("init_data") or "").strip()
+
+    telegram_user, error = _verify_telegram_init_data(init_data)
+    if error:
+        return jsonify({
+            "ok": False,
+            "error": error,
+        }), 401
+
+    try:
+        telegram_id = int(telegram_user["id"])
+    except (KeyError, TypeError, ValueError):
+        return jsonify({
+            "ok": False,
+            "error": "Некорректный Telegram ID.",
+        }), 400
+
+    if not SessionLocal:
+        return jsonify({
+            "ok": False,
+            "error": "База данных недоступна.",
+        }), 500
+
+    db = SessionLocal()
+
+    try:
+        accounts = (
+            db.query(WebAccount)
+            .filter(WebAccount.telegram_id == telegram_id)
+            .all()
+        )
+
+        if not accounts:
+            return jsonify({
+                "ok": False,
+                "error": "Этот Telegram аккаунт не привязан к панели PROTOGEN.",
+            }), 403
+
+        if len(accounts) > 1:
+            _security_log(
+                "TELEGRAM_AUTH_DUPLICATE",
+                "HIGH",
+                f"telegram_id={telegram_id}; accounts={len(accounts)}",
+            )
+            return jsonify({
+                "ok": False,
+                "error": "Этот Telegram ID привязан к нескольким аккаунтам. Исправь привязку в Security Center.",
+            }), 403
+
+        account = accounts[0]
+
+        if not account.active:
+            return jsonify({
+                "ok": False,
+                "error": "Аккаунт панели отключён.",
+            }), 403
+
+        if account.role == "trainee":
+            return jsonify({
+                "ok": False,
+                "error": "Для роли Стажёр доступ к панели закрыт.",
+            }), 403
+
+        if account.web_access_blocked:
+            return jsonify({
+                "ok": False,
+                "error": "Доступ к панели заблокирован Создателем.",
+            }), 403
+
+        _finalize_web_login(db, account)
+
+        return jsonify({
+            "ok": True,
+            "redirect": url_for("admin_dashboard"),
+            "telegram_id": telegram_id,
+            "role": account.role,
+        })
+
+    except Exception as exc:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+        print(
+            f"TELEGRAM MINIAPP AUTH ERROR: "
+            f"{type(exc).__name__}: {exc}"
+        )
+
+        return jsonify({
+            "ok": False,
+            "error": "Ошибка входа в панель.",
+        }), 500
+
+    finally:
+        db.close()
+
+
 @app.before_request
 def _protogen_security_gate():
     # Login and 2FA validate CSRF inside their own routes so a stale authenticated
     # browser session cannot be stopped here with a raw JSON response.
-    public_security_paths = {"/admin/login", "/admin/2fa", "/admin/logout", "/admin/access-denied", "/admin/blocked"}
+    public_security_paths = {"/admin/login", "/admin/2fa", "/admin/logout", "/admin/access-denied", "/admin/blocked", "/api/telegram-auth"}
 
     # Protect authenticated state-changing admin requests against cross-site submission.
     if (
