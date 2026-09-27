@@ -7,8 +7,44 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='system-boot.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='mobile.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='telegram-miniapp.css') }}">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script>
+  (() => {
+    const tg = window.Telegram && window.Telegram.WebApp;
+    if (!tg) return;
+
+    document.documentElement.classList.add('tg-miniapp');
+
+    try {
+      tg.ready();
+      tg.expand();
+      if (tg.setHeaderColor) tg.setHeaderColor('#02050b');
+      if (tg.setBackgroundColor) tg.setBackgroundColor('#02050b');
+    } catch (_) {}
+
+    window.addEventListener('DOMContentLoaded', () => {
+      document.body.classList.add('tg-miniapp');
+
+      const backTarget = document.body.dataset.tgBack;
+      if (!tg.BackButton) return;
+
+      try {
+        if (backTarget) {
+          tg.BackButton.show();
+          tg.BackButton.onClick(() => {
+            window.location.href = backTarget;
+          });
+        } else {
+          tg.BackButton.hide();
+        }
+      } catch (_) {}
+    });
+  })();
+  </script>
+
 </head>
-<body class="admin-dashboard-page">
+<body class="admin-dashboard-page" data-tg-page="home">
 
   <div class="system-entry-sequence" data-system-boot data-boot-key="protogen-admin-entry-v1" aria-hidden="false">
     <div class="boot-scan"></div>
@@ -122,5 +158,27 @@ renderTopUsers(d.top_users||d.users_top||[]);
 }catch(e){$('db-status').textContent='ERROR';$('db-status').className='bad';$('recent').innerHTML='<div class="empty">Не удалось загрузить данные: '+esc(e.message)+'</div>';}}
 $('refresh').addEventListener('click',loadDashboard);loadDashboard();setInterval(loadDashboard,30000);const wave=$('protoWave');if(wave)wave.innerHTML=Array.from({length:34},(_,i)=>`<i style="--h:${12+(i*17)%48}px"></i>`).join('');
 </script>
+
+  <nav class="tg-bottom-nav" aria-label="Навигация Mini App">
+    <a class="active" href="/admin" aria-current="page">
+      <span class="tg-nav-icon">⌂</span>
+      <b>Главная</b>
+    </a>
+    <a href="/admin/users">
+      <span class="tg-nav-icon">👥</span>
+      <b>Пользователи</b>
+    </a>
+    <a href="/admin/moderation">
+      <span class="tg-nav-icon">🛡</span>
+      <b>Модерация</b>
+    </a>
+    {% if is_admin_or_creator %}
+    <a href="/admin/settings">
+      <span class="tg-nav-icon">⚙</span>
+      <b>Настройки</b>
+    </a>
+    {% endif %}
+  </nav>
+
 <script src="{{ url_for('static', filename='system-boot.js') }}"></script>
 </body></html>
