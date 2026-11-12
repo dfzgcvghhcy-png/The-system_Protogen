@@ -3,7 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Protogen Bot</title>
+  <title>Protogen Bot — страж и помощник для Telegram-чатов</title>
+  <meta name="description" content="Protogen — Telegram-бот для модерации чатов: варны, муты, баны, AutoMod, уровни, репутация и Web-панель управления.">
+  <meta property="og:title" content="Protogen Bot">
+  <meta property="og:description" content="Модерация, AutoMod, уровни и Web-панель для Telegram-чатов.">
+  <meta property="og:image" content="{{ url_for('static', filename='my_avatar.png', _external=True) }}">
+  <meta name="theme-color" content="#05070f">
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
+  <link rel="preload" as="image" href="/static/bg.webp">
   <link rel="stylesheet" href="/static/style.css">
   <link rel="stylesheet" href="{{ url_for('static', filename='mobile.css') }}">
 </head>
@@ -21,7 +28,7 @@
       <div class="intro-orbit orbit-a"></div>
       <div class="intro-orbit orbit-b"></div>
       <div class="intro-avatar">
-        <img src="/static/my_avatar.png" alt="Protogen">
+        <img src="/static/my_avatar.webp" alt="Protogen">
       </div>
 
       <div class="intro-kicker">THE SYSTEM // PROTOGEN</div>
@@ -67,7 +74,7 @@
   <header class="topbar">
     <div class="brand">
       <div class="brand-avatar">
-        <img src="/static/my_avatar.png" alt="Protogen Bot">
+        <img src="/static/my_avatar.webp" alt="Protogen Bot">
       </div>
       <div class="brand-copy">
         <strong>PROTOGEN BOT</strong>
@@ -95,11 +102,16 @@
           </p>
 
           <div class="hero-actions">
-            <button class="chat-cta" id="heroChatBtn" type="button">
-              ◈ &nbsp; ЗАЙТИ В ЧАТ <b>→</b>
+            {% if bot_add_url %}
+            <a class="chat-cta add-bot-cta" href="{{ bot_add_url }}" target="_blank" rel="noopener">
+              ＋ &nbsp; ДОБАВИТЬ В ГРУППУ <b>→</b>
+            </a>
+            {% endif %}
+            <button class="{{ 'admin-cta' if bot_add_url else 'chat-cta' }} chat-open-btn" id="heroChatBtn" type="button">
+              ◈ &nbsp; ЧАТ С PROTOGEN <b>→</b>
             </button>
-            <a class="admin-cta" href="/admin/login">
-              ⚙ &nbsp; НАСТРОЙКИ СИСТЕМЫ <b>→</b>
+            <a class="admin-cta admin-login-link" href="/admin/login">
+              ⚙ &nbsp; ПАНЕЛЬ УПРАВЛЕНИЯ <b>→</b>
             </a>
             <a class="commands-cta" href="/commands">
               📚 &nbsp; ВСЕ КОМАНДЫ <b>→</b>
@@ -114,17 +126,17 @@
           <div class="feature-card">
             <b>⚔️</b>
             <span>Модерация</span>
-            <small>Warn · Mute · Ban</small>
+            <small>Ответом, по @username или словами «мут 10м»</small>
           </div>
           <div class="feature-card">
-            <b>👥</b>
-            <span>Участники</span>
-            <small>Профили и активность</small>
+            <b>🤖</b>
+            <span>AutoMod</span>
+            <small>Флуд, спам-ссылки, капс, рейды, капча</small>
           </div>
           <div class="feature-card">
-            <b>📜</b>
-            <span>История</span>
-            <small>Все действия в базе</small>
+            <b>⚡</b>
+            <span>Сообщество</span>
+            <small>Уровни, репутация, награды, daily</small>
           </div>
         </div>
 
@@ -140,7 +152,7 @@
           </div>
           <div class="stats-grid">
             <div class="stat-item"><b>♙</b><strong id="statUsers">0</strong><span>ПОЛЬЗОВАТЕЛЕЙ</span></div>
-            <div class="stat-item"><b>⌁</b><strong id="statOnline">0</strong><span>ОНЛАЙН</span></div>
+            <div class="stat-item"><b>⌁</b><strong id="statOnline">0</strong><span>АКТИВНЫ ЗА 24 Ч</span></div>
             <div class="stat-item"><b>▣</b><strong id="statMessages">0</strong><span>СООБЩЕНИЙ</span></div>
             <div class="stat-item"><b>⚒</b><strong id="statActions">0</strong><span>ДЕЙСТВИЙ МОДЕРАЦИИ</span></div>
             <div class="stat-item"><b>◇</b><strong id="statStability">ONLINE</strong><span>СТАТУС СИСТЕМЫ</span></div>
@@ -152,7 +164,7 @@
       <aside class="chat-panel" id="chatPanel" aria-label="Protogen Chat" aria-hidden="true">
         <div class="chat-modal-header">
           <div class="panel-user">
-            <div class="panel-avatar"><img src="/static/my_avatar.png" alt=""></div>
+            <div class="panel-avatar"><img src="/static/my_avatar.webp" alt=""></div>
             <div>
               <strong id="chatTitle">PROTOGEN CHAT</strong>
               <span><i></i> онлайн</span>
@@ -182,13 +194,13 @@
             <div class="core-ring">
               <span class="ring ring-a"></span><span class="ring ring-b"></span><span class="ring ring-c"></span>
               <span class="scan-dot"></span>
-              <div class="core-avatar"><img src="/static/my_avatar.png" alt="Protogen core"></div>
+              <div class="core-avatar"><img src="/static/my_avatar.webp" alt="Protogen core"></div>
             </div>
             <div class="metrics">
-              <div class="metric"><span>CPU</span><div class="mini-wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><b id="cpuValue">--%</b></div>
-              <div class="metric"><span>RAM</span><div class="mini-wave cyan"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><b id="ramValue">--%</b></div>
+              <div class="metric"><span>BOT</span><div class="mini-wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><b id="botValue">…</b></div>
+              <div class="metric"><span>DB</span><div class="mini-wave cyan"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><b id="dbValue">--ms</b></div>
               <div class="metric"><span>PING</span><div class="mini-wave cyan"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><b id="pingValue">--ms</b></div>
-              <div class="metric"><span>UPTIME</span><span class="uptime-value">SYSTEM</span><b>LIVE</b></div>
+              <div class="metric"><span>UPTIME</span><span class="uptime-value">WEB</span><b id="uptimeValue">--</b></div>
             </div>
           </div>
         </section>
@@ -222,7 +234,7 @@
             <div class="wave wave-left"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
             <div class="animated-core">
               <div class="core-glow"></div><div class="core-orbit"></div>
-              <img src="/static/my_avatar.png" alt="Animated Protogen">
+              <img src="/static/my_avatar.webp" alt="Animated Protogen">
             </div>
             <div class="wave wave-right"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
           </div>
@@ -234,10 +246,10 @@
             <div><span class="side-icon">⌁</span><strong>СИСТЕМНЫЕ СИГНАЛЫ</strong></div>
           </div>
           <div class="quick-grid">
-            <div><span>◉</span> API <b>READY</b></div>
-            <div><span>◈</span> DB <b>ONLINE</b></div>
-            <div><span>✦</span> AI CORE <b>READY</b></div>
-            <div><span>⬡</span> SECURITY <b>LOCKED</b></div>
+            <div><span>◉</span> WEB <b id="sigWeb">ONLINE</b></div>
+            <div><span>◈</span> DB <b id="sigDb">…</b></div>
+            <div><span>✦</span> AI CORE <b id="sigAi">…</b></div>
+            <div><span>⬡</span> BOT <b id="sigBot">…</b></div>
           </div>
         </section>
       </aside>

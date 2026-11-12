@@ -403,11 +403,12 @@ def _security_active(chat_id):
 async def start_verification(update, context, tg_user):
     if tg_user.is_bot:
         return
+    from chat_settings import effective
+    chat_cfg = effective(update.effective_chat.id)
+    enabled = bool(chat_cfg.get("verification_enabled"))
+    minutes = max(1, int(chat_cfg.get("verification_timeout_minutes") or 3))
     db = Session()
     try:
-        settings = db.get(BotSetting, 1)
-        enabled = bool(settings and settings.verification_enabled)
-        minutes = max(1, int(settings.verification_timeout_minutes or 3)) if settings else 3
         cfg = db.get(ChatConfig, update.effective_chat.id)
         welcome_enabled = True if cfg is None else bool(cfg.welcome_enabled)
         welcome_text = (cfg.welcome_text if cfg and cfg.welcome_text else "👋 Добро пожаловать, {name}!")
@@ -493,7 +494,8 @@ async def verification_callback(update: Update, context: ContextTypes.DEFAULT_TY
     if _security_active(query.message.chat_id):
         return await query.answer("⚠️ RAID MODE активен. Доступ будет открыт после завершения протокола.", show_alert=True)
     try:
-        await context.bot.restrict_chat_member(query.message.chat_id, user_id, permissions=ChatPermissions.all_permissions())
+        from core import UNMUTE_PERMISSIONS
+        await context.bot.restrict_chat_member(query.message.chat_id, user_id, permissions=UNMUTE_PERMISSIONS)
     except Exception as e:
         return await query.answer(f"Не удалось снять ограничение: {e}", show_alert=True)
     db = Session()
@@ -517,8 +519,8 @@ async def _verification_timeout(context):
         row = db.get(VerificationChallenge, challenge_id)
         if not row or row.status != "pending":
             return
-        settings = db.get(BotSetting, 1)
-        kick = True if not settings else bool(settings.verification_kick_unverified)
+        from chat_settings import effective
+        kick = bool(effective(row.chat_id).get("verification_kick_unverified", True))
         chat_id, user_id, message_id = row.chat_id, row.user_id, row.message_id
         row.status = "expired"; db.commit()
     finally:

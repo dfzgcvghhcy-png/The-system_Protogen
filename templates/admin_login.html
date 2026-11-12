@@ -12,7 +12,7 @@
       min-height:100vh;display:grid;place-items:center;padding:24px;overflow:hidden;
       background:
         linear-gradient(180deg,rgba(1,4,8,.62),rgba(1,5,9,.88)),
-        url("/static/bg.png") center/cover fixed;
+        url("/static/bg.webp") center/cover fixed;
     }
     body:before{
       content:"";position:fixed;inset:-10%;pointer-events:none;
@@ -80,6 +80,12 @@
     @keyframes authDeniedShake{10%,90%{transform:translateX(-1px)}20%,80%{transform:translateX(4px)}30%,50%,70%{transform:translateX(-7px)}40%,60%{transform:translateX(7px)}}
     @keyframes errorPulse{0%{transform:scale(.985);opacity:.55}45%{transform:scale(1.018)}100%{transform:scale(1);opacity:1}}
     @keyframes deniedBlink{50%{opacity:.25}}
+    .or-line{display:flex;align-items:center;gap:10px;margin:16px 0 10px;color:#4d6667;font-size:9px;letter-spacing:1px}
+    .or-line:before,.or-line:after{content:"";flex:1;height:1px;background:rgba(255,255,255,.07)}
+    button.tg-login{background:linear-gradient(90deg,#2aa3e6,#36c2ff);color:#03131c;box-shadow:0 0 24px rgba(42,163,230,.18)}
+    button.tg-login[disabled]{opacity:.7;cursor:wait}
+    .tg-hint{color:#5d7677;font-size:9px;line-height:1.55;margin:9px 2px 0;text-align:center}
+    .tg-hint.ok{color:#4ee7bd}.tg-hint.bad{color:#ff8da0}
 
   </style>
   <link rel="stylesheet" href="{{ url_for('static', filename='mobile.css') }}">
@@ -88,7 +94,7 @@
   <div class="scan"></div>
   <main class="auth" id="authCard">
     <div class="brand">
-      <div class="avatar"><img src="/static/my_avatar.png" alt="Protogen"></div>
+      <div class="avatar"><img src="/static/my_avatar.webp" alt="Protogen"></div>
       <div>
         <strong>PROTOGEN SYSTEM</strong>
         <span>SECURE ADMIN CONSOLE</span>
@@ -118,9 +124,60 @@
       <button type="submit">ВОЙТИ В PROTOGEN ADMIN →</button>
     </form>
 
+    {% if bot_username %}
+    <div class="or-line"><span>или</span></div>
+    <button type="button" class="tg-login" id="tgLoginBtn">✈ ВОЙТИ ЧЕРЕЗ TELEGRAM</button>
+    <p class="tg-hint" id="tgLoginHint">Без пароля: подтверди вход кнопкой в личке бота. Работает, если твой Telegram ID привязан к аккаунту панели.</p>
+    {% endif %}
+
     <div class="secure">🔒 ДОСТУП ТОЛЬКО АВТОРИЗОВАННЫМ АДМИНИСТРАТОРАМ · <b>SECURE</b></div>
     <a class="back" href="/">← Вернуться на главную</a>
   </main>
+
+  {% if bot_username %}
+  <script>
+  (() => {
+    const btn = document.getElementById('tgLoginBtn');
+    const hint = document.getElementById('tgLoginHint');
+    const csrf = document.querySelector('input[name="csrf_token"]')?.value || '';
+    let timer = null;
+    const setHint = (text, cls = '') => { hint.textContent = text; hint.className = 'tg-hint ' + cls; };
+    btn?.addEventListener('click', async () => {
+      btn.disabled = true;
+      // Open the tab synchronously (inside the click) so popup blockers allow it.
+      const tab = window.open('about:blank', '_blank');
+      try {
+        const res = await fetch('/admin/login/telegram/start', {method: 'POST', headers: {'X-CSRF-Token': csrf}});
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || 'Ошибка');
+        if (tab) { tab.opener = null; tab.location.href = data.url; }
+        hint.innerHTML = '';
+        const link = document.createElement('a');
+        link.href = data.url; link.target = '_blank'; link.rel = 'noopener'; link.textContent = 'Открыть бота';
+        link.style.color = '#36c2ff';
+        hint.append(link, ' и нажми «Подтвердить вход». Жду подтверждения… (5 минут)');
+        hint.className = 'tg-hint';
+        const deadline = Date.now() + data.expires_in * 1000;
+        clearInterval(timer);
+        timer = setInterval(async () => {
+          if (Date.now() > deadline) { clearInterval(timer); btn.disabled = false; return setHint('Время вышло. Нажми кнопку ещё раз.', 'bad'); }
+          const r = await fetch('/admin/login/telegram/status', {cache: 'no-store'}).then(x => x.json()).catch(() => null);
+          if (!r) return;
+          if (r.status === 'approved') { clearInterval(timer); setHint('Вход подтверждён ✓', 'ok'); location.href = r.redirect || '/admin'; }
+          else if (r.status === 'denied' || r.status === 'expired' || r.status === 'none') {
+            clearInterval(timer); btn.disabled = false;
+            setHint(r.status === 'denied' ? 'Вход отклонён в Telegram или аккаунт не найден.' : 'Запрос устарел. Попробуй ещё раз.', 'bad');
+          }
+        }, 2000);
+      } catch (e) {
+        if (tab) tab.close();
+        btn.disabled = false;
+        setHint(e.message, 'bad');
+      }
+    });
+  })();
+  </script>
+  {% endif %}
 
   <audio id="loginDeniedSound" preload="auto" src="{{ url_for('static', filename='login-denied.mp3') }}"></audio>
   {% if error == "Неверный логин или пароль." %}

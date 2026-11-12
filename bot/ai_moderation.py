@@ -116,7 +116,8 @@ async def maybe_ai_moderate(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     if heuristic_score < 20:
         return
     score, details, recommendation, source = await asyncio.to_thread(_openrouter_analysis, text, heuristic_score, heuristic_category)
-    threshold = _threshold()
+    threshold = (max(50, min(100, int(settings.get("ai_moderation_threshold") or 85)))
+                 if settings else _threshold())
     if score < threshold:
         return
 

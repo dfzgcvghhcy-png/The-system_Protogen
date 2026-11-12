@@ -1,583 +1,747 @@
+"""Info, tools, community and fun commands.
+
+Fixed compared to the previous version:
+* every name / user text is HTML-escaped (a "<" in a nickname used to make
+  Telegram reject the reply, so the command silently "did nothing");
+* group-only commands no longer crash with AttributeError in private chats;
+* reputation can't be farmed: one vote per person per day, amount only for moderators;
+* /weather no longer freezes the whole bot while waiting for the HTTP answer;
+* /rules and /welcome keep line breaks;
+* /clear and /purge delete in batches and report how many were removed.
+"""
 import asyncio
 import random
 import re
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import requests
-from telegram import ChatPermissions, Update
-from telegram.constants import ParseMode
+from telegram import Update
 from telegram.ext import ContextTypes
 
-from database import Session, ChatUser, ChatActivity, ChatRole, ChatConfig, Reputation, StarReputation, Reward, Bookmark, Note, ScheduledAction, Punishment
-from filters import is_admin, bot_can_restrict
+from core import (
+    command_tail, esc, group_only, mention, name, reply, require_level, resolve_target,
+    role_level, get_target_or_explain, bot_rights,
+)
+from database import (
+    Session, ChatUser, ChatRole, ChatConfig, Reputation, StarReputation, Reward,
+    Bookmark, Note, ChatFeatureSetting, ReputationVote,
+)
 
 
 def _name(user):
-    if user is None:
-        return "Пользователь"
-    full_name = getattr(user, "full_name", None)
-    if full_name:
-        return full_name
-    first = getattr(user, "first_name", None) or ""
-    last = getattr(user, "last_name", None) or ""
-    if (first + last).strip():
-        return (first + " " + last).strip()
-    username = getattr(user, "username", None)
-    if username:
-        return f"@{username}" if not str(username).startswith("@") else str(username)
-    return str(getattr(user, "id", "Пользователь"))
+    return name(user)
 
 
 def _target_from_reply(update):
-    if update.message and update.message.reply_to_message:
-        return update.message.reply_to_message.from_user
+    message = update.effective_message
+    if message and message.reply_to_message:
+        return message.reply_to_message.from_user
     return None
 
 
-def _chat(update):
-    return update.effective_chat if update and update.effective_chat and update.effective_chat.type in ("group", "supergroup") else None
+def _message_link(chat, message_id):
+    if chat.username:
+        return f"https://t.me/{chat.username}/{message_id}"
+    cid = str(chat.id)
+    if cid.startswith("-100"):
+        return f"https://t.me/c/{cid[4:]}/{message_id}"
+    return None
 
 
+# ---------------------------------------------------------------------------
+# Info
+# ---------------------------------------------------------------------------
+
+@group_only
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat = _chat(update)
-    if not chat:
-        return await update.message.reply_text("ℹ️ Команда работает только в группе.")
+    from sqlalchemy import func
+    chat = update.effective_chat
     session = Session()
     try:
-        users = session.query(ChatUser).filter(ChatUser.chat_id == chat.id).count()
-        messages = sum((x.messages_count or 0) for x in session.query(ChatUser).filter(ChatUser.chat_id == chat.id).all())
-        warns = session.query(Punishment).filter(Punishment.type == "warn").join(ChatUser, False).count() if False else session.query(ChatUser).filter(ChatUser.chat_id == chat.id).with_entities(ChatUser.warns).all()
-        warn_count = sum((x[0] or 0) for x in warns)
-        mutes = sum((x[0] or 0) for x in session.query(ChatUser).filter(ChatUser.chat_id == chat.id).with_entities(ChatUser.mutes).all())
-        bans = sum((x[0] or 0) for x in session.query(ChatUser).filter(ChatUser.chat_id == chat.id).with_entities(ChatUser.bans).all())
-        kicks = sum((x[0] or 0) for x in session.query(ChatUser).filter(ChatUser.chat_id == chat.id).with_entities(ChatUser.kicks).all())
-        await update.message.reply_text(
-            f"📊 <b>Статистика чата</b>\n\n👥 Участников в базе: <b>{users}</b>\n💬 Сообщений: <b>{messages}</b>\n⚠️ Варнов: <b>{warn_count}</b>\n🔇 Мутов: <b>{mutes}</b>\n🚫 Банов: <b>{bans}</b>\n👢 Киков: <b>{kicks}</b>",
-            parse_mode=ParseMode.HTML,
-        )
+        row = (session.query(func.count(ChatUser.id), func.coalesce(func.sum(ChatUser.messages_count), 0),
+                             func.coalesce(func.sum(ChatUser.warns), 0), func.coalesce(func.sum(ChatUser.mutes), 0),
+                             func.coalesce(func.sum(ChatUser.bans), 0), func.coalesce(func.sum(ChatUser.kicks), 0))
+               .filter(ChatUser.chat_id == chat.id).one())
     finally:
         session.close()
+    users, messages, warns_, mutes_, bans_, kicks_ = row
+    await reply(update,
+                f"📊 <b>Статистика чата</b>\n\n"
+                f"👥 Участников в базе: <b>{users}</b>\n💬 Сообщений: <b>{messages}</b>\n"
+                f"⚠️ Варнов: <b>{warns_}</b> · 🔇 Мутов: <b>{mutes_}</b>\n"
+                f"🚫 Банов: <b>{bans_}</b> · 👢 Киков: <b>{kicks_}</b>")
 
 
+@group_only
 async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat = _chat(update)
-    if not chat:
-        return await update.message.reply_text("ℹ️ Команда работает только в группе.")
+    chat = update.effective_chat
     session = Session()
     try:
-        rows = session.query(ChatUser).filter(ChatUser.chat_id == chat.id).order_by(ChatUser.messages_count.desc()).limit(10).all()
-        if not rows:
-            return await update.message.reply_text("📊 Пока нет данных об активности.")
-        lines = ["🏆 <b>ТОП АКТИВНЫХ</b>", ""]
-        for i, u in enumerate(rows, 1):
-            lines.append(f"<b>{i}.</b> {_name(u)} — 💬 {u.messages_count or 0}")
-        await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
+        rows = (session.query(ChatUser).filter(ChatUser.chat_id == chat.id, ChatUser.messages_count > 0)
+                .order_by(ChatUser.messages_count.desc()).limit(10).all())
     finally:
         session.close()
+    if not rows:
+        return await reply(update, "📊 Пока нет данных об активности.")
+    medals = {1: "🥇", 2: "🥈", 3: "🥉"}
+    lines = ["🏆 <b>ТОП АКТИВНЫХ</b>", ""]
+    for i, u in enumerate(rows, 1):
+        lines.append(f"{medals.get(i, f'<b>{i}.</b>')} {_name(u)} — 💬 {u.messages_count or 0}")
+    await reply(update, "\n".join(lines))
 
 
+# ---------------------------------------------------------------------------
+# Tools
+# ---------------------------------------------------------------------------
+
+@group_only
 async def bookmark(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat = _chat(update)
-    reply = update.message.reply_to_message if update.message else None
-    if not chat or not reply:
-        return await update.message.reply_text("🔖 Ответь командой /bookmark на сообщение, которое хочешь сохранить.")
-    title = " ".join(context.args).strip() or f"Закладка #{reply.message_id}"
+    chat = update.effective_chat
+    replied = update.effective_message.reply_to_message
+    if not replied:
+        return await reply(update, "🔖 Ответь командой /bookmark на сообщение, которое хочешь сохранить.")
+    title = command_tail(update) or f"Закладка #{replied.message_id}"
     session = Session()
     try:
-        session.add(Bookmark(chat_id=chat.id, user_id=update.effective_user.id, message_id=reply.message_id, title=title[:120], text=(reply.text or reply.caption or "")[:10000]))
+        session.add(Bookmark(chat_id=chat.id, user_id=update.effective_user.id, message_id=replied.message_id,
+                             title=title[:120], text=(replied.text or replied.caption or "")[:10000]))
         session.commit()
-        await update.message.reply_text(f"🔖 Сохранено: <b>{title[:120]}</b>", parse_mode=ParseMode.HTML)
     finally:
         session.close()
+    await reply(update, f"🔖 Сохранено: <b>{esc(title[:120])}</b>\nСписок: /bookmarks")
 
 
+@group_only
 async def bookmarks(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat = _chat(update)
+    chat = update.effective_chat
     session = Session()
     try:
-        rows = session.query(Bookmark).filter(Bookmark.chat_id == chat.id, Bookmark.user_id == update.effective_user.id).order_by(Bookmark.id.desc()).limit(20).all()
-        if not rows:
-            return await update.message.reply_text("🔖 У тебя пока нет закладок.")
-        lines = ["🔖 <b>МОИ ЗАКЛАДКИ</b>", ""]
-        for b in rows:
-            lines.append(f"<b>#{b.id}</b> {b.title} — сообщение {b.message_id}")
-        await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
+        rows = (session.query(Bookmark).filter(Bookmark.chat_id == chat.id, Bookmark.user_id == update.effective_user.id)
+                .order_by(Bookmark.id.desc()).limit(20).all())
     finally:
         session.close()
+    if not rows:
+        return await reply(update, "🔖 У тебя пока нет закладок. Ответь /bookmark на сообщение.")
+    lines = ["🔖 <b>МОИ ЗАКЛАДКИ</b>", ""]
+    for b in rows:
+        link = _message_link(chat, b.message_id)
+        title = esc(b.title)
+        lines.append(f"• <a href=\"{link}\">{title}</a>" if link else f"• {title}")
+    await reply(update, "\n".join(lines))
 
 
+@group_only
 async def note(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat = _chat(update)
-    if not chat:
-        return await update.message.reply_text("ℹ️ Команда работает только в группе.")
-    if not context.args:
-        return await update.message.reply_text("📝 Использование: /note название текст")
-    name = context.args[0][:80]
-    content = " ".join(context.args[1:]).strip()
-    if not content:
-        return await update.message.reply_text("📝 Добавь текст заметки.")
+    chat = update.effective_chat
+    tail = command_tail(update)
+    if not tail:
+        return await reply(update, "📝 Использование: <code>/note название текст</code>\nПосмотреть: /notes")
+    parts = tail.split(None, 1)
+    note_name = parts[0][:80]
+    content = parts[1].strip() if len(parts) > 1 else ""
     session = Session()
     try:
-        row = session.query(Note).filter(Note.chat_id == chat.id, Note.user_id == update.effective_user.id, Note.name == name).first()
+        row = (session.query(Note)
+               .filter(Note.chat_id == chat.id, Note.user_id == update.effective_user.id, Note.name == note_name).first())
+        if not content:
+            if row:
+                return await reply(update, f"📝 <b>{esc(row.name)}</b>\n\n{esc(row.content)}")
+            return await reply(update, "📝 Добавь текст заметки после названия.")
         if row:
             row.content = content
             row.updated_at = datetime.utcnow()
         else:
-            session.add(Note(chat_id=chat.id, user_id=update.effective_user.id, name=name, content=content))
+            session.add(Note(chat_id=chat.id, user_id=update.effective_user.id, name=note_name, content=content))
         session.commit()
-        await update.message.reply_text(f"📝 Заметка <b>{name}</b> сохранена.", parse_mode=ParseMode.HTML)
     finally:
         session.close()
+    await reply(update, f"📝 Заметка <b>{esc(note_name)}</b> сохранена. Открыть: <code>/note {esc(note_name)}</code>")
 
 
+@group_only
 async def notes(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat = _chat(update)
+    chat = update.effective_chat
     session = Session()
     try:
-        rows = session.query(Note).filter(Note.chat_id == chat.id, Note.user_id == update.effective_user.id).order_by(Note.updated_at.desc()).limit(30).all()
-        if not rows:
-            return await update.message.reply_text("📝 У тебя пока нет заметок.")
-        lines = ["📝 <b>МОИ ЗАМЕТКИ</b>", ""]
-        for n in rows:
-            lines.append(f"<b>{n.name}</b> — {n.content[:300]}")
-        await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
+        rows = (session.query(Note).filter(Note.chat_id == chat.id, Note.user_id == update.effective_user.id)
+                .order_by(Note.updated_at.desc()).limit(30).all())
     finally:
         session.close()
+    if not rows:
+        return await reply(update, "📝 У тебя пока нет заметок.")
+    lines = ["📝 <b>МОИ ЗАМЕТКИ</b>", ""]
+    for n in rows:
+        lines.append(f"<b>{esc(n.name)}</b> — {esc(n.content[:200])}")
+    await reply(update, "\n".join(lines))
 
 
 async def timer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    from core import parse_duration, fmt_duration
     if not context.args:
-        return await update.message.reply_text("⏱ Использование: /timer 10m текст")
-    m = re.fullmatch(r"(\d+)\s*(s|m|h|сек|мин|ч|час|часы|часов)?", context.args[0].lower())
-    if not m:
-        return await update.message.reply_text("⏱ Формат: /timer 30s, /timer 10m или /timer 1h")
-    value, unit = int(m.group(1)), (m.group(2) or "m")
-    multiplier = {"s":1,"сек":1,"m":60,"мин":60,"h":3600,"ч":3600,"час":3600,"часы":3600,"часов":3600}[unit]
-    seconds = value * multiplier
+        return await reply(update, "⏱ Использование: <code>/timer 10m текст</code> (s, m/м, h/ч, d/д)")
+    seconds = parse_duration(context.args[0])
+    if not seconds:
+        return await reply(update, "⏱ Формат: <code>/timer 30s</code>, <code>/timer 10м</code>, <code>/timer 1ч</code>")
     if seconds > 7 * 86400:
-        return await update.message.reply_text("⏱ Максимум — 7 дней.")
-    text = " ".join(context.args[1:]).strip() or "⏰ Таймер завершён."
+        return await reply(update, "⏱ Максимум — 7 дней.")
+    text_value = " ".join(context.args[1:]).strip() or "Время вышло!"
     if context.job_queue is None:
-        return await update.message.reply_text("❌ Планировщик задач недоступен.")
-    context.job_queue.run_once(_timer_job, seconds, data={"chat_id": update.effective_chat.id, "text": text, "user": _name(update.effective_user)})
-    await update.message.reply_text(f"⏱ Таймер установлен на <b>{value}{unit}</b>.", parse_mode=ParseMode.HTML)
+        return await reply(update, "❌ Планировщик задач недоступен.")
+    context.job_queue.run_once(_timer_job, seconds, data={
+        "chat_id": update.effective_chat.id, "text": text_value,
+        "user_id": update.effective_user.id, "user": update.effective_user.full_name,
+        "reply_to": update.effective_message.message_id,
+    })
+    await reply(update, f"⏱ Напомню через <b>{fmt_duration(seconds)}</b>")
 
 
 async def _timer_job(context):
     data = context.job.data
-    await context.bot.send_message(data["chat_id"], f"⏰ <b>Таймер</b>\n\n{data['text']}", parse_mode=ParseMode.HTML)
+    who = f'<a href="tg://user?id={data["user_id"]}">{esc(data.get("user") or "Ты")}</a>'
+    try:
+        await context.bot.send_message(data["chat_id"], f"⏰ {who}, напоминание:\n\n{esc(data['text'])}",
+                                       parse_mode="HTML", reply_to_message_id=data.get("reply_to"))
+    except Exception:
+        await context.bot.send_message(data["chat_id"], f"⏰ {who}, напоминание:\n\n{esc(data['text'])}", parse_mode="HTML")
+
+
+def _fetch_weather(city):
+    r = requests.get("https://wttr.in/" + requests.utils.quote(city) + "?format=j1&lang=ru", timeout=8,
+                     headers={"User-Agent": "ProtogenBot/1.0"})
+    r.raise_for_status()
+    return r.json()
 
 
 async def weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    city = " ".join(context.args).strip()
+    city = command_tail(update)
     if not city:
-        return await update.message.reply_text("🌤 Использование: /weather Москва")
+        return await reply(update, "🌤 Использование: <code>/weather Москва</code>")
     try:
-        r = requests.get("https://wttr.in/" + requests.utils.quote(city) + "?format=j1", timeout=8, headers={"User-Agent":"ProtogenBot/1.0"})
-        r.raise_for_status()
-        data = r.json()["current_condition"][0]
-        desc = data.get("weatherDesc", [{"value":"—"}])[0]["value"]
-        await update.message.reply_text(f"🌤 <b>{city}</b>\n\n🌡 Сейчас: <b>{data.get('temp_C','—')}°C</b>\n💨 Ветер: <b>{data.get('windspeedKmph','—')} км/ч</b>\n💧 Влажность: <b>{data.get('humidity','—')}%</b>\n☁️ {desc}", parse_mode=ParseMode.HTML)
+        data = await asyncio.to_thread(_fetch_weather, city[:80])
+        cur = data["current_condition"][0]
+        desc = (cur.get("lang_ru") or cur.get("weatherDesc") or [{"value": "—"}])[0]["value"]
+        today = (data.get("weather") or [{}])[0]
+        await reply(update,
+                    f"🌤 <b>{esc(city)}</b>\n\n"
+                    f"🌡 Сейчас: <b>{cur.get('temp_C', '—')}°C</b> (ощущается {cur.get('FeelsLikeC', '—')}°C)\n"
+                    f"📈 Сегодня: {today.get('mintempC', '—')}…{today.get('maxtempC', '—')}°C\n"
+                    f"💨 Ветер: <b>{cur.get('windspeedKmph', '—')} км/ч</b> · 💧 {cur.get('humidity', '—')}%\n"
+                    f"☁️ {esc(desc)}")
     except Exception as e:
         print(f"WEATHER ERROR: {type(e).__name__}: {e}")
-        await update.message.reply_text("❌ Не удалось получить погоду. Попробуй другой город.")
+        await reply(update, "❌ Не удалось получить погоду. Проверь название города.")
 
 
-async def warns(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    target = _target_from_reply(update) or update.effective_user
-    chat = _chat(update)
-    session = Session()
-    try:
-        row = session.query(ChatUser).filter(ChatUser.chat_id == chat.id, ChatUser.user_id == target.id).first()
-        count = row.warns if row else 0
-        await update.message.reply_text(f"⚠️ {_name(target)} имеет <b>{count}</b> предупреждений.", parse_mode=ParseMode.HTML)
-    finally:
-        session.close()
+# ---------------------------------------------------------------------------
+# Message cleanup
+# ---------------------------------------------------------------------------
 
-
-async def unwarn(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await is_admin(update, context):
-        return await update.message.reply_text("❌ У тебя нет прав администратора.")
-    target = _target_from_reply(update)
-    if not target:
-        return await update.message.reply_text("⚠️ Ответь /unwarn на сообщение пользователя.")
-    chat = _chat(update)
-    session = Session()
-    try:
-        row = session.query(ChatUser).filter(ChatUser.chat_id == chat.id, ChatUser.user_id == target.id).first()
-        if not row or (row.warns or 0) <= 0:
-            return await update.message.reply_text("ℹ️ У пользователя нет варнов.")
-        row.warns -= 1
-        session.add(Punishment(user_id=target.id, type="unwarn", reason="Снято командой /unwarn", moderator_id=update.effective_user.id))
-        session.add(__import__('database').ChatPunishment(chat_id=chat.id, user_id=target.id, type="unwarn", reason="Снято командой /unwarn", moderator_id=update.effective_user.id))
-        session.commit()
-        await update.message.reply_text(f"🧹 Варн снят. Осталось: <b>{row.warns}</b>", parse_mode=ParseMode.HTML)
-    finally:
-        session.close()
-
-
-async def tempmute(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await is_admin(update, context):
-        return await update.message.reply_text("❌ У тебя нет прав администратора.")
-    target = _target_from_reply(update)
-    if not target:
-        return await update.message.reply_text("🔇 Ответь /tempmute на сообщение пользователя. Пример: /tempmute 10m")
-    duration = context.args[0] if context.args else "10m"
-    m = re.fullmatch(r"(\d+)\s*(m|min|мин|h|ч|d|д)?", duration.lower())
-    if not m:
-        return await update.message.reply_text("🔇 Формат: /tempmute 10m, 1h или 1d")
-    n, unit = int(m.group(1)), m.group(2) or "m"
-    seconds = n * {"m":60,"min":60,"мин":60,"h":3600,"ч":3600,"d":86400,"д":86400}[unit]
-    if not await bot_can_restrict(update, context):
-        return await update.message.reply_text("❌ У бота нет права ограничивать пользователей.")
-    try:
-        member = await update.effective_chat.get_member(target.id)
-        if member.status in ("administrator", "creator"):
-            return await update.message.reply_text("⚠️ Нельзя выдать мут администратору.")
-        permissions = ChatPermissions(can_send_messages=False, can_send_audios=False, can_send_documents=False, can_send_photos=False, can_send_videos=False, can_send_video_notes=False, can_send_voice_notes=False, can_send_polls=False, can_send_other_messages=False, can_add_web_page_previews=False)
-        until = datetime.utcnow() + timedelta(seconds=seconds)
-        await context.bot.restrict_chat_member(update.effective_chat.id, target.id, permissions=permissions, until_date=until)
-        session = Session()
-        try:
-            session.add(Punishment(user_id=target.id, type="mute", reason=f"Временный мут {duration}", moderator_id=update.effective_user.id))
-            session.commit()
-        finally:
-            session.close()
-        await update.message.reply_text(f"🔇 {_name(target)} получил мут на <b>{duration}</b>.", parse_mode=ParseMode.HTML)
-    except Exception as e:
-        await update.message.reply_text(f"❌ Не удалось выдать мут: {e}")
-
-
-async def _moderator_required(update, context):
-    if not await is_admin(update, context):
-        await update.message.reply_text("❌ У тебя нет прав администратора.")
+async def _cleanup_allowed(update, context, command):
+    if not update.effective_chat or update.effective_chat.type not in ("group", "supergroup"):
+        await reply(update, "ℹ️ Работает только в группах.")
         return False
-    if not await bot_can_restrict(update, context):
-        # Для удаления сообщений Telegram требует can_delete_messages.
-        member = await update.effective_chat.get_member(context.bot.id)
-        if member.status != "creator" and not getattr(member, "can_delete_messages", False):
-            await update.message.reply_text("❌ У бота нет права удалять сообщения.")
-            return False
+    if not await require_level(update, command, 1):
+        return False
+    if not (await bot_rights(update.effective_chat, context.bot))["delete"]:
+        await reply(update, "❌ У меня нет права <b>«Удалять сообщения»</b>.")
+        return False
     return True
 
 
-async def delete_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await _moderator_required(update, context):
-        return
-    reply = update.message.reply_to_message if update.message else None
-    if not reply:
-        return await update.message.reply_text("🧹 Ответь командой /del на сообщение, которое нужно удалить.")
+async def _delete_range(bot, chat_id, ids):
+    deleted = 0
+    for i in range(0, len(ids), 100):
+        chunk = ids[i:i + 100]
+        try:
+            await bot.delete_messages(chat_id, chunk)
+            deleted += len(chunk)
+        except Exception:
+            for mid in chunk:
+                try:
+                    await bot.delete_message(chat_id, mid)
+                    deleted += 1
+                except Exception:
+                    pass
+    return deleted
+
+
+async def _notice(context, chat_id, text_value, seconds=5):
     try:
-        await context.bot.delete_message(update.effective_chat.id, reply.message_id)
-        await context.bot.delete_message(update.effective_chat.id, update.message.message_id)
-    except Exception as e:
-        print(f"DEL ERROR: {type(e).__name__}: {e}")
-        await update.message.reply_text("❌ Не удалось удалить сообщение. Проверь права бота.")
+        msg = await context.bot.send_message(chat_id, text_value)
+        await asyncio.sleep(seconds)
+        await msg.delete()
+    except Exception:
+        pass
+
+
+async def delete_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await _cleanup_allowed(update, context, "del"):
+        return
+    replied = update.effective_message.reply_to_message
+    if not replied:
+        return await reply(update, "🧹 Ответь командой /del на сообщение, которое нужно удалить.")
+    await _delete_range(context.bot, update.effective_chat.id, [replied.message_id, update.effective_message.message_id])
 
 
 async def clear_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await _moderator_required(update, context):
+    if not await _cleanup_allowed(update, context, "clear"):
         return
     try:
         count = int(context.args[0]) if context.args else 20
     except ValueError:
-        return await update.message.reply_text("🧹 Использование: /clear 20")
-    count = max(1, min(count, 100))
-    chat_id = update.effective_chat.id
-    start_id = max(1, update.message.message_id - count)
-    deleted = 0
-    for message_id in range(start_id, update.message.message_id + 1):
-        try:
-            await context.bot.delete_message(chat_id, message_id)
-            deleted += 1
-        except Exception:
-            pass
-    # Ничего не отправляем после очистки, чтобы команда сама не оставалась в чате.
+        return await reply(update, "🧹 Использование: <code>/clear 20</code> (до 300)")
+    count = max(1, min(count, 300))
+    last = update.effective_message.message_id
+    ids = list(range(max(1, last - count), last + 1))
+    deleted = await _delete_range(context.bot, update.effective_chat.id, ids)
+    context.application.create_task(_notice(context, update.effective_chat.id, f"🧹 Удалено сообщений: {max(0, deleted - 1)}"))
 
 
 async def purge_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await _moderator_required(update, context):
+    if not await _cleanup_allowed(update, context, "purge"):
         return
-    reply = update.message.reply_to_message if update.message else None
-    if not reply:
-        return await update.message.reply_text("🧹 Ответь /purge на сообщение, с которого нужно начать очистку.")
-    chat_id = update.effective_chat.id
-    first_id = min(reply.message_id, update.message.message_id)
-    last_id = max(reply.message_id, update.message.message_id)
-    deleted = 0
-    for message_id in range(first_id, last_id + 1):
-        try:
-            await context.bot.delete_message(chat_id, message_id)
-            deleted += 1
-        except Exception:
-            pass
+    replied = update.effective_message.reply_to_message
+    if not replied:
+        return await reply(update, "🧹 Ответь /purge на сообщение — удалю всё начиная с него.")
+    first_id, last_id = replied.message_id, update.effective_message.message_id
+    if last_id - first_id > 1000:
+        return await reply(update, "🧹 Слишком большой диапазон (максимум 1000 сообщений).")
+    deleted = await _delete_range(context.bot, update.effective_chat.id, list(range(first_id, last_id + 1)))
+    context.application.create_task(_notice(context, update.effective_chat.id, f"🧹 Удалено сообщений: {max(0, deleted - 1)}"))
 
 
-
-COMMAND_LIST = {
-    "📊 Информация": ["/stats", "/top", "/bookmark", "/bookmarks", "/note", "/notes", "/timer", "/weather"],
-    "🛡 Модерация": ["/report", "/warn", "/warns", "/unwarn", "/mute", "/tempmute", "/unmute", "/ban", "/unban", "/kick"],
-    "🎮 Развлечения": ["/dice", "/8ball", "/random", "/choose", "/ship", "/rp"],
-    "👑 Управление": ["/setmod", "/delmod", "/mods", "/modicon", "/welcome", "/rules"],
-    "⭐ Репутация": ["/reputation", "/plus", "/minus", "/rating", "/star", "/stars", "/mystars"],
-    "🏅 Награды": ["/reward", "/rewards", "/removereward"],
-    "⚡ Прогресс": ["/level", "/levels", "/achievements", "/streak", "/daily", "/dailyquest"],
-    "🚨 Безопасность": ["/report", "/appeal", "/raidmode"],
-    "🎫 Поддержка": ["/ticket", "/mytickets"],
-    "📝 Mod Notes": ["/modnote", "/modnotes", "/delmodnote"],
-    "📅 Автоматизация": ["/schedule", "/schedules", "/cancelschedule"],
-    "ℹ️ Справка": ["/commands", "/help", "/panel", "Кто админ", "Моя статья"],
-}
-
+# ---------------------------------------------------------------------------
+# Help (kept for backwards-compatible imports — the real menu is help_menu.py)
+# ---------------------------------------------------------------------------
 
 async def commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    lines = ["🤖 <b>КОМАНДЫ PROTOGEN</b>", ""]
-    for category, items in COMMAND_LIST.items():
-        lines.append(f"<b>{category}</b>")
-        lines.append("  " + " • ".join(items))
-        lines.append("")
-    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+    from help_menu import help_command as real_help
+    await real_help(update, context)
 
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await commands(update, context)
+help_command = commands
 
+
+# ---------------------------------------------------------------------------
+# Fun
+# ---------------------------------------------------------------------------
 
 async def dice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"🎲 Выпало: <b>{random.randint(1, 6)}</b>", parse_mode=ParseMode.HTML)
+    await update.effective_message.reply_dice()
 
 
 async def eightball(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    answers = ["Да.", "Нет.", "Скорее всего.", "Вряд ли.", "Определённо!", "Спроси позже.", "Шансы есть.", "Я бы не рассчитывал."]
-    await update.message.reply_text("🔮 " + random.choice(answers))
+    answers = ["Да.", "Нет.", "Скорее всего.", "Вряд ли.", "Определённо!", "Спроси позже.",
+               "Шансы есть.", "Я бы не рассчитывал.", "Протокол говорит: да.", "Мои сенсоры против."]
+    question = command_tail(update)
+    prefix = f"❓ {esc(question[:200])}\n" if question else ""
+    await reply(update, f"{prefix}🔮 <b>{random.choice(answers)}</b>")
 
 
 async def random_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) >= 2:
-        try:
-            a, b = int(context.args[0]), int(context.args[1])
-            if a > b: a, b = b, a
-            return await update.message.reply_text(f"🎲 Случайное число: <b>{random.randint(a,b)}</b>", parse_mode=ParseMode.HTML)
-        except ValueError:
-            pass
-    await update.message.reply_text(f"🎲 Случайное число: <b>{random.randint(1,100)}</b>", parse_mode=ParseMode.HTML)
+    a, b = 1, 100
+    nums = [int(x) for x in (context.args or []) if re.fullmatch(r"-?\d{1,12}", x)]
+    if len(nums) >= 2:
+        a, b = sorted(nums[:2])
+    elif len(nums) == 1:
+        a, b = sorted((1, nums[0]))
+    await reply(update, f"🎲 Случайное число ({a}–{b}): <b>{random.randint(a, b)}</b>")
 
 
 async def choose(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    options = [x.strip() for x in " ".join(context.args).split("|") if x.strip()]
+    raw = command_tail(update)
+    sep = "|" if "|" in raw else (" или " if " или " in raw else ",")
+    options = [x.strip() for x in raw.split(sep) if x.strip()]
     if len(options) < 2:
-        return await update.message.reply_text("🎯 Использование: /choose вариант 1 | вариант 2 | вариант 3")
-    await update.message.reply_text("🎯 Я выбираю: <b>" + random.choice(options)[:500] + "</b>", parse_mode=ParseMode.HTML)
+        return await reply(update, "🎯 Использование: <code>/choose пицца | суши | бургер</code> или <code>/choose чай или кофе</code>")
+    await reply(update, "🎯 Я выбираю: <b>" + esc(random.choice(options)[:500]) + "</b>")
 
 
 async def ship(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target = _target_from_reply(update)
-    target_name = _name(target) if target else (" ".join(context.args).strip() or "таинственный человек")
-    score = random.randint(0,100)
-    await update.message.reply_text(f"💞 Совместимость с <b>{target_name}</b>: <b>{score}%</b>", parse_mode=ParseMode.HTML)
+    target_name = _name(target) if target else (esc(command_tail(update)) or "таинственный человек")
+    seed = f"{update.effective_user.id}:{getattr(target, 'id', target_name)}:{datetime.utcnow():%Y-%m-%d}"
+    score = random.Random(seed).randint(0, 100)
+    hearts = "❤️" * (score // 20) + "🤍" * (5 - score // 20)
+    await reply(update, f"💞 {_name(update.effective_user)} + {target_name}\n{hearts} <b>{score}%</b>")
 
 
-async def setmod(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await is_admin(update, context): return await update.message.reply_text("❌ Только администратор может назначать модераторов.")
+RP_ACTIONS = {
+    "обнять": ("обнял(а)", "🤗"), "пожать руку": ("пожал(а) руку", "🤝"), "погладить": ("погладил(а)", "🫳"),
+    "дать пять": ("дал(а) пять", "🙌"), "помахать": ("помахал(а)", "👋"), "похлопать": ("похлопал(а)", "👏"),
+    "подмигнуть": ("подмигнул(а)", "😉"), "поклониться": ("поклонился(ась)", "🙇"), "угостить": ("угостил(а) печенькой", "🍪"),
+    "поцеловать": ("поцеловал(а)", "😘"), "укусить": ("укусил(а)", "😬"), "пнуть": ("пнул(а)", "🦶"),
+}
+
+
+async def rp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target = _target_from_reply(update)
-    if not target: return await update.message.reply_text("👑 Ответь /setmod на сообщение пользователя. Можно указать ранг после команды: /setmod 2")
-    try: level = max(1, min(5, int(context.args[0]))) if context.args else 1
-    except ValueError: level = 1
+    action = command_tail(update).lower() or "обнять"
+    if not target or action not in RP_ACTIONS:
+        return await reply(update, "🎭 Ответь на сообщение: <code>/rp обнять</code>\nДоступно: " + ", ".join(RP_ACTIONS))
+    verb, emoji = RP_ACTIONS[action]
+    await reply(update, f"{emoji} {mention(update.effective_user)} {verb} {mention(target)}")
+
+
+async def my_article(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    articles = [
+        "получает статью за слишком хорошее настроение и подозрительно активное использование чата.",
+        "получает статью за покушение на спокойствие модераторов.",
+        "получает статью за незаконное распространение мемов в особо крупном размере.",
+        "получает статью за хранение стикеров без лицензии.",
+        "получает статью за систематическое «щас вернусь» и невозвращение.",
+    ]
+    await reply(update, f"🕵️ {_name(update.effective_user)} {random.choice(articles)}")
+
+
+# ---------------------------------------------------------------------------
+# Roles
+# ---------------------------------------------------------------------------
+
+@group_only
+async def setmod(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await require_level(update, "setmod", 2, floor=2):
+        return
+    target, rest = await get_target_or_explain(update, context.args, "👑 <b>/setmod</b> — назначить модератора Protogen")
+    if not target:
+        return
+    try:
+        level = max(1, min(5, int(rest[0]))) if rest else 1
+    except ValueError:
+        level = 1
     session = Session()
     try:
         row = session.query(ChatRole).filter(ChatRole.chat_id == update.effective_chat.id, ChatRole.user_id == target.id).first()
-        if row: row.role_level = level
-        else: session.add(ChatRole(chat_id=update.effective_chat.id, user_id=target.id, role_level=level))
+        if row:
+            row.role_level = level
+        else:
+            session.add(ChatRole(chat_id=update.effective_chat.id, user_id=target.id, role_level=level))
         session.commit()
-        await update.message.reply_text(f"🛡 {_name(target)} назначен модератором. Ранг: <b>{level}</b>", parse_mode=ParseMode.HTML)
-    finally: session.close()
+    finally:
+        session.close()
+    await reply(update, f"🛡 {mention(target)} теперь модератор Protogen (ранг {level}).\n"
+                        "Может: варн, мут, кик, удаление сообщений. Бан — только админы (меняется в Web-панели).")
 
 
+@group_only
 async def delmod(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await is_admin(update, context): return await update.message.reply_text("❌ Только администратор может снимать модераторов.")
-    target = _target_from_reply(update)
-    if not target: return await update.message.reply_text("👑 Ответь /delmod на сообщение пользователя.")
+    if not await require_level(update, "delmod", 2, floor=2):
+        return
+    target, _ = await get_target_or_explain(update, context.args, "👑 <b>/delmod</b> — снять модератора")
+    if not target:
+        return
     session = Session()
     try:
         session.query(ChatRole).filter(ChatRole.chat_id == update.effective_chat.id, ChatRole.user_id == target.id).delete()
         session.commit()
-        await update.message.reply_text(f"🧹 Роль {_name(target)} снята.", parse_mode=ParseMode.HTML)
-    finally: session.close()
+    finally:
+        session.close()
+    await reply(update, f"🧹 {mention(target)} больше не модератор.")
 
 
+@group_only
 async def mods(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
+    lines = ["🛡 <b>КОМАНДА ЧАТА</b>", ""]
+    try:
+        admins = await context.bot.get_chat_administrators(chat.id)
+        for m in admins:
+            if m.user.is_bot:
+                continue
+            lines.append(("👑 " if m.status == "creator" else "🛡 ") + mention(m.user))
+    except Exception:
+        pass
     session = Session()
     try:
-        rows = session.query(ChatRole).filter(ChatRole.chat_id == update.effective_chat.id).order_by(ChatRole.role_level.desc()).all()
-        if not rows: return await update.message.reply_text("🛡 Модераторы Protogen ещё не назначены.")
-        lines=["🛡 <b>МОДЕРАТОРЫ PROTOGEN</b>", ""]
+        icon_row = session.get(ChatFeatureSetting, chat.id)
+        icon = esc(icon_row.moderator_icon) if icon_row and icon_row.moderator_icon else "⭐️"
+        rows = session.query(ChatRole).filter(ChatRole.chat_id == chat.id).order_by(ChatRole.role_level.desc()).all()
         for r in rows:
-            u=session.query(ChatUser).filter(ChatUser.chat_id==r.chat_id, ChatUser.user_id==r.user_id).first()
-            name = _name(u) if u else str(r.user_id)
-            lines.append(f"• {name} — ранг <b>{r.role_level}</b>")
-        await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
-    finally: session.close()
+            u = session.query(ChatUser).filter(ChatUser.chat_id == r.chat_id, ChatUser.user_id == r.user_id).first()
+            lines.append(f"{icon} {_name(u) if u else r.user_id} — модератор, ранг {r.role_level}")
+    finally:
+        session.close()
+    if len(lines) == 2:
+        lines.append("Пока никого.")
+    await reply(update, "\n".join(lines))
 
 
+@group_only
 async def modicon(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await is_admin(update, context): return await update.message.reply_text("❌ Только администратор может менять иконку.")
-    session=Session()
+    if not await require_level(update, "modicon", 2, floor=2):
+        return
+    session = Session()
     try:
-        from database import ChatFeatureSetting
-        row=session.get(ChatFeatureSetting, update.effective_chat.id)
+        row = session.get(ChatFeatureSetting, update.effective_chat.id)
         if not row:
-            row=ChatFeatureSetting(chat_id=update.effective_chat.id); session.add(row)
-        row.moderator_icon=(context.args[0] if context.args else "⭐️")[:20]
+            row = ChatFeatureSetting(chat_id=update.effective_chat.id)
+            session.add(row)
+        row.moderator_icon = (context.args[0] if context.args else "⭐️")[:20]
         session.commit()
-        await update.message.reply_text(f"⭐ Иконка модераторов: {row.moderator_icon}")
-    finally: session.close()
+        icon = row.moderator_icon
+    finally:
+        session.close()
+    await reply(update, f"⭐ Иконка модераторов: {esc(icon)}")
 
 
+# ---------------------------------------------------------------------------
+# Welcome & rules
+# ---------------------------------------------------------------------------
+
+def _chat_config(session, chat_id):
+    row = session.get(ChatConfig, chat_id)
+    if not row:
+        row = ChatConfig(chat_id=chat_id)
+        session.add(row)
+        session.commit()
+    return row
+
+
+@group_only
 async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat=_chat(update)
-    session=Session()
+    tail = command_tail(update)
+    session = Session()
     try:
-        row=session.get(ChatConfig, chat.id)
-        if not row:
-            row=ChatConfig(chat_id=chat.id); session.add(row); session.commit()
-        if context.args:
-            if not await is_admin(update, context): return await update.message.reply_text("❌ Только администратор может менять приветствие.")
-            row.welcome_text=" ".join(context.args)[:1000]; row.welcome_enabled=True; session.commit()
-            return await update.message.reply_text("👋 Приветствие сохранено.")
-        await update.message.reply_text(f"👋 <b>Приветствие</b>: {'включено' if row.welcome_enabled else 'выключено'}\n\n{row.welcome_text}", parse_mode=ParseMode.HTML)
-    finally: session.close()
+        row = _chat_config(session, update.effective_chat.id)
+        if tail:
+            if not await require_level(update, "welcome", 2, floor=2):
+                return
+            if tail.lower() in ("off", "выкл"):
+                row.welcome_enabled = False
+                session.commit()
+                return await reply(update, "👋 Приветствие выключено. Включить: <code>/welcome on</code>")
+            if tail.lower() in ("on", "вкл"):
+                row.welcome_enabled = True
+                session.commit()
+                return await reply(update, "👋 Приветствие включено.")
+            row.welcome_text = tail[:1000]
+            row.welcome_enabled = True
+            session.commit()
+            return await reply(update, "👋 Приветствие сохранено.\nПодстановки: <code>{name}</code>, <code>{username}</code>")
+        status = "включено" if row.welcome_enabled else "выключено"
+        await reply(update,
+                    f"👋 <b>Приветствие</b>: {status}\n\n{esc(row.welcome_text)}\n\n"
+                    "<i>Изменить: /welcome текст · /welcome on|off</i>")
+    finally:
+        session.close()
 
 
+@group_only
 async def rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat=_chat(update)
-    session=Session()
+    tail = command_tail(update)
+    session = Session()
     try:
-        row=session.get(ChatConfig, chat.id)
-        if not row:
-            row=ChatConfig(chat_id=chat.id); session.add(row); session.commit()
-        if context.args:
-            if not await is_admin(update, context): return await update.message.reply_text("❌ Только администратор может менять правила.")
-            row.rules_text=" ".join(context.args)[:4000]; session.commit(); return await update.message.reply_text("📜 Правила сохранены.")
-        await update.message.reply_text("📜 <b>ПРАВИЛА ЧАТА</b>\n\n" + row.rules_text, parse_mode=ParseMode.HTML)
-    finally: session.close()
+        row = _chat_config(session, update.effective_chat.id)
+        if tail:
+            if not await require_level(update, "rules", 2, floor=2):
+                return
+            row.rules_text = tail[:4000]
+            session.commit()
+            return await reply(update, "📜 Правила сохранены. Показать: /rules")
+        await reply(update, "📜 <b>ПРАВИЛА ЧАТА</b>\n\n" + esc(row.rules_text))
+    finally:
+        session.close()
 
 
+# ---------------------------------------------------------------------------
+# Reputation & stars
+# ---------------------------------------------------------------------------
+
+@group_only
 async def reputation(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    target=_target_from_reply(update) or update.effective_user; chat=_chat(update); session=Session()
+    target, _ = resolve_target(update, context.args)
+    if target is None or getattr(target, "id", None) is None:
+        target = update.effective_user
+    chat = update.effective_chat
+    session = Session()
     try:
-        row=session.query(Reputation).filter(Reputation.chat_id==chat.id, Reputation.user_id==target.id).first(); points=row.points if row else 0
-        await update.message.reply_text(f"⭐ <b>{_name(target)}</b>\nРепутация: <b>{points}</b>", parse_mode=ParseMode.HTML)
-    finally: session.close()
+        row = session.query(Reputation).filter(Reputation.chat_id == chat.id, Reputation.user_id == target.id).first()
+        points = row.points if row else 0
+    finally:
+        session.close()
+    await reply(update, f"⭐ {mention(target)}\nРепутация: <b>{points}</b>")
 
 
-async def _vote_rep(update, kind):
-    target=_target_from_reply(update)
-    if not target: return await update.message.reply_text(f"Ответь командой /{kind} на сообщение пользователя.")
-    if target.id == update.effective_user.id: return await update.message.reply_text("🙂 Себе репутацию ставить нельзя.")
-    chat=_chat(update)
-    try: amount=max(1,min(10,abs(int(update.message.text.split()[1])))) if len(update.message.text.split())>1 else 1
-    except ValueError: amount=1
-    session=Session()
+async def _vote_rep(update, context, kind):
+    if not update.effective_chat or update.effective_chat.type not in ("group", "supergroup"):
+        return await reply(update, "ℹ️ Работает только в группе.")
+    target = _target_from_reply(update)
+    if not target or target.is_bot:
+        return await reply(update, f"Ответь командой /{kind} на сообщение участника.")
+    voter = update.effective_user
+    if target.id == voter.id:
+        return await reply(update, "🙂 Себе репутацию менять нельзя.")
+    chat = update.effective_chat
+    amount = 1
+    if context.args and await role_level(chat, voter.id) >= 1:
+        try:
+            amount = max(1, min(10, abs(int(context.args[0]))))
+        except ValueError:
+            amount = 1
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    session = Session()
     try:
+        already = (session.query(ReputationVote)
+                   .filter(ReputationVote.chat_id == chat.id, ReputationVote.voter_id == voter.id,
+                           ReputationVote.target_id == target.id, ReputationVote.kind == kind,
+                           ReputationVote.day == today).first())
+        if already:
+            return await reply(update, "⏳ Ты уже голосовал(а) за этого участника сегодня. Завтра можно снова.")
         if kind == "star":
-            row=session.query(StarReputation).filter(StarReputation.chat_id==chat.id, StarReputation.user_id==target.id).first()
-            if not row: row=StarReputation(chat_id=chat.id,user_id=target.id,stars=0); session.add(row)
-            row.stars += amount; label="✨ Звёздность"
+            row = session.query(StarReputation).filter(StarReputation.chat_id == chat.id, StarReputation.user_id == target.id).first()
+            if not row:
+                row = StarReputation(chat_id=chat.id, user_id=target.id, stars=0)
+                session.add(row)
+            row.stars = (row.stars or 0) + amount
+            total, label = row.stars, "✨ Звёзды"
         else:
-            row=session.query(Reputation).filter(Reputation.chat_id==chat.id, Reputation.user_id==target.id).first()
-            if not row: row=Reputation(chat_id=chat.id,user_id=target.id,points=0); session.add(row)
-            row.points += amount if kind=="plus" else -amount; label="⭐ Репутация"
+            row = session.query(Reputation).filter(Reputation.chat_id == chat.id, Reputation.user_id == target.id).first()
+            if not row:
+                row = Reputation(chat_id=chat.id, user_id=target.id, points=0)
+                session.add(row)
+            row.points = (row.points or 0) + (amount if kind == "plus" else -amount)
+            total, label = row.points, "⭐ Репутация"
+        session.add(ReputationVote(chat_id=chat.id, voter_id=voter.id, target_id=target.id, kind=kind, day=today, amount=amount))
         session.commit()
-        await update.message.reply_text(f"{label}: <b>{_name(target)}</b> {'+' if kind!='minus' else '-'}{amount}", parse_mode=ParseMode.HTML)
-    finally: session.close()
+    finally:
+        session.close()
+    sign = "−" if kind == "minus" else "+"
+    await reply(update, f"{label} {mention(target)}: {sign}{amount} → <b>{total}</b>")
 
 
-async def plus(update, context): return await _vote_rep(update, "plus")
-async def minus(update, context): return await _vote_rep(update, "minus")
-async def star(update, context): return await _vote_rep(update, "star")
+async def plus(update, context):
+    return await _vote_rep(update, context, "plus")
 
 
+async def minus(update, context):
+    return await _vote_rep(update, context, "minus")
+
+
+async def star(update, context):
+    return await _vote_rep(update, context, "star")
+
+
+THANKS_RE = re.compile(r"(?i)^\s*(\+|\+1|спасибо|спс|благодарю|thanks|thx|👍)\s*!*\s*$")
+
+
+async def thanks_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Reply "+" or "спасибо" to someone's message to give them +1 reputation."""
+    message = update.effective_message
+    if not message or not message.reply_to_message or not message.text:
+        return
+    if not THANKS_RE.match(message.text):
+        return
+    target = message.reply_to_message.from_user
+    if not target or target.is_bot or target.id == update.effective_user.id:
+        return
+    await _vote_rep(update, context, "plus")
+
+
+@group_only
 async def rating(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat=_chat(update); session=Session()
+    chat = update.effective_chat
+    session = Session()
     try:
-        rows=session.query(Reputation).filter(Reputation.chat_id==chat.id).order_by(Reputation.points.desc()).limit(10).all()
-        lines=["🏆 <b>РЕЙТИНГ РЕПУТАЦИИ</b>", ""]
-        for i,r in enumerate(rows,1):
-            u=session.query(ChatUser).filter(ChatUser.chat_id==chat.id,ChatUser.user_id==r.user_id).first(); name=_name(u) if u else str(r.user_id)
-            lines.append(f"<b>{i}.</b> {name} — ⭐ {r.points}")
-        await update.message.reply_text("\n".join(lines) if rows else "🏆 Рейтинг пока пуст.", parse_mode=ParseMode.HTML)
-    finally: session.close()
+        rows = (session.query(Reputation).filter(Reputation.chat_id == chat.id)
+                .order_by(Reputation.points.desc()).limit(10).all())
+        lines = ["🏆 <b>РЕЙТИНГ РЕПУТАЦИИ</b>", ""]
+        for i, r in enumerate(rows, 1):
+            u = session.query(ChatUser).filter(ChatUser.chat_id == chat.id, ChatUser.user_id == r.user_id).first()
+            lines.append(f"<b>{i}.</b> {_name(u) if u else r.user_id} — ⭐ {r.points}")
+    finally:
+        session.close()
+    await reply(update, "\n".join(lines) if rows else "🏆 Рейтинг пока пуст. Ответь «+» или «спасибо» на полезное сообщение!")
 
 
+@group_only
 async def stars(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat=_chat(update); session=Session()
+    chat = update.effective_chat
+    session = Session()
     try:
-        rows=session.query(StarReputation).filter(StarReputation.chat_id==chat.id).order_by(StarReputation.stars.desc()).limit(10).all(); lines=["✨ <b>ЗВЁЗДЫ ЧАТА</b>", ""]
-        for i,r in enumerate(rows,1):
-            u=session.query(ChatUser).filter(ChatUser.chat_id==chat.id,ChatUser.user_id==r.user_id).first(); lines.append(f"<b>{i}.</b> {_name(u) if u else r.user_id} — ✨ {r.stars}")
-        await update.message.reply_text("\n".join(lines) if rows else "✨ Звёзд пока нет.", parse_mode=ParseMode.HTML)
-    finally: session.close()
+        rows = (session.query(StarReputation).filter(StarReputation.chat_id == chat.id)
+                .order_by(StarReputation.stars.desc()).limit(10).all())
+        lines = ["✨ <b>ЗВЁЗДЫ ЧАТА</b>", ""]
+        for i, r in enumerate(rows, 1):
+            u = session.query(ChatUser).filter(ChatUser.chat_id == chat.id, ChatUser.user_id == r.user_id).first()
+            lines.append(f"<b>{i}.</b> {_name(u) if u else r.user_id} — ✨ {r.stars}")
+    finally:
+        session.close()
+    await reply(update, "\n".join(lines) if rows else "✨ Звёзд пока нет.")
 
 
+@group_only
 async def mystars(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat=_chat(update); session=Session()
+    chat = update.effective_chat
+    session = Session()
     try:
-        row=session.query(StarReputation).filter(StarReputation.chat_id==chat.id,StarReputation.user_id==update.effective_user.id).first(); await update.message.reply_text(f"✨ Твоя звёздность: <b>{row.stars if row else 0}</b>",parse_mode=ParseMode.HTML)
-    finally: session.close()
+        row = (session.query(StarReputation)
+               .filter(StarReputation.chat_id == chat.id, StarReputation.user_id == update.effective_user.id).first())
+        value = row.stars if row else 0
+    finally:
+        session.close()
+    await reply(update, f"✨ Твоя звёздность: <b>{value}</b>")
 
 
+# ---------------------------------------------------------------------------
+# Rewards
+# ---------------------------------------------------------------------------
+
+@group_only
 async def reward(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await is_admin(update, context): return await update.message.reply_text("❌ Награды может выдавать только администратор.")
-    target=_target_from_reply(update)
-    if not target: return await update.message.reply_text("🏅 Ответь /reward на сообщение пользователя. Пример: /reward 3 за помощь")
-    try: degree=max(1,min(8,int(context.args[0]))) if context.args else 1
-    except ValueError: degree=1
-    description=" ".join(context.args[1:]).strip() or "За вклад в сообщество"
-    session=Session()
+    if not await require_level(update, "reward", 2, floor=1):
+        return
+    target, rest = await get_target_or_explain(update, context.args, "🏅 <b>/reward</b> [степень 1-8] [за что]")
+    if not target:
+        return
+    degree = 1
+    if rest and rest[0].isdigit():
+        degree = max(1, min(8, int(rest[0])))
+        rest = rest[1:]
+    description = " ".join(rest).strip() or "За вклад в сообщество"
+    session = Session()
     try:
-        session.add(Reward(chat_id=update.effective_chat.id,user_id=target.id,moderator_id=update.effective_user.id,title=f"Медаль {degree} степени",description=description[:4000])); session.commit()
-        await update.message.reply_text(f"🏅 {_name(target)} награждён медалью <b>{degree} степени</b>.\n{description}",parse_mode=ParseMode.HTML)
-    finally: session.close()
+        session.add(Reward(chat_id=update.effective_chat.id, user_id=target.id, moderator_id=update.effective_user.id,
+                           title=f"Медаль {degree} степени", description=description[:4000]))
+        session.commit()
+    finally:
+        session.close()
+    await reply(update, f"🏅 {mention(target)} награждён(а) медалью <b>{degree} степени</b>\n📝 {esc(description)}")
 
 
+@group_only
 async def rewards(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    target=_target_from_reply(update) or update.effective_user; session=Session()
+    target, _ = resolve_target(update, context.args)
+    if target is None or getattr(target, "id", None) is None:
+        target = update.effective_user
+    session = Session()
     try:
-        rows=session.query(Reward).filter(Reward.chat_id==update.effective_chat.id,Reward.user_id==target.id).order_by(Reward.id.desc()).all()
-        if not rows: return await update.message.reply_text(f"🏅 У {_name(target)} пока нет наград.")
-        lines=[f"🏅 <b>НАГРАДЫ {_name(target)}</b>", ""]
-        for r in rows: lines.append(f"#{r.id} • {r.title}\n📝 {r.description}")
-        await update.message.reply_text("\n".join(lines),parse_mode=ParseMode.HTML)
-    finally: session.close()
+        rows = (session.query(Reward).filter(Reward.chat_id == update.effective_chat.id, Reward.user_id == target.id)
+                .order_by(Reward.id.desc()).limit(25).all())
+    finally:
+        session.close()
+    if not rows:
+        return await reply(update, f"🏅 У {mention(target)} пока нет наград.")
+    lines = [f"🏅 <b>НАГРАДЫ</b> {mention(target)}", ""]
+    for r in rows:
+        lines.append(f"#{r.id} • {esc(r.title)}\n📝 {esc(r.description)}")
+    await reply(update, "\n".join(lines))
 
 
+@group_only
 async def removereward(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await is_admin(update, context): return await update.message.reply_text("❌ Только администратор может снимать награды.")
-    try: rid=int(context.args[0])
-    except (IndexError,ValueError): return await update.message.reply_text("🏅 Использование: /removereward номер")
-    session=Session()
+    if not await require_level(update, "removereward", 2):
+        return
     try:
-        row=session.query(Reward).filter(Reward.id==rid,Reward.chat_id==update.effective_chat.id).first()
-        if not row: return await update.message.reply_text("❌ Награда не найдена.")
-        session.delete(row); session.commit(); await update.message.reply_text("🧹 Награда снята.")
-    finally: session.close()
-
-
-RP_ACTIONS = {"обнять":"обнял","пожать руку":"пожал руку","погладить":"погладил","поцеловать":"поцеловал","укусить":"укусил","ударить":"ударил","пнуть":"пнул","дать пять":"дал пять"}
-async def rp(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    target=_target_from_reply(update)
-    if not target: return await update.message.reply_text("🎭 Ответь /rp на сообщение пользователя. Пример: /rp обнять")
-    action=" ".join(context.args).lower().strip() or "обнять"
-    verb=RP_ACTIONS.get(action)
-    if not verb: return await update.message.reply_text("🎭 Доступно: " + ", ".join(RP_ACTIONS.keys()))
-    await update.message.reply_text(f"🐾 <b>{_name(update.effective_user)}</b> {verb} <b>{_name(target)}</b>!",parse_mode=ParseMode.HTML)
-
-
-async def my_article(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    articles=[
-        "сегодня получил статью 199. Уклонение от уплаты налогов, сборов, подлежащих уплате организацией, и (или) страховых взносов, подлежащих уплате организацией.",
-        "сегодня получил статью за слишком хорошее настроение и подозрительно активное использование чата.",
-        "сегодня получил статью за покушение на спокойствие модераторов.",
-        "сегодня получил статью за незаконное распространение мемов в особо крупном размере.",
-    ]
-    await update.message.reply_text("🕵️ " + random.choice(articles))
+        rid = int(context.args[0].lstrip("#"))
+    except (IndexError, ValueError):
+        return await reply(update, "🏅 Использование: <code>/removereward номер</code> (номер виден в /rewards)")
+    session = Session()
+    try:
+        row = session.query(Reward).filter(Reward.id == rid, Reward.chat_id == update.effective_chat.id).first()
+        if not row:
+            return await reply(update, "❌ Награда не найдена.")
+        session.delete(row)
+        session.commit()
+    finally:
+        session.close()
+    await reply(update, "🧹 Награда снята.")

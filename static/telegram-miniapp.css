@@ -61,7 +61,7 @@ html.tg-miniapp .dashboard-hero {
   border-radius: 16px !important;
   background:
     linear-gradient(135deg, rgba(4, 14, 26, .94), rgba(7, 6, 23, .88)),
-    url("/static/bg.png") center 42% / cover !important;
+    url("/static/bg.webp") center 42% / cover !important;
 }
 
 html.tg-miniapp .dashboard-hero .hero-copy {

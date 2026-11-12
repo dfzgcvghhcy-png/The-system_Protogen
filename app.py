@@ -37,6 +37,13 @@ APP_STARTED_AT = datetime.utcnow()
 
 app = Flask(__name__)
 
+# Behind the hosting proxy (Render/Railway/Koyeb) trust X-Forwarded-Proto/Host so that
+# https URLs, Origin checks and secure cookies work correctly.
+if (os.getenv("RENDER") or os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("KOYEB_APP_NAME")
+        or os.getenv("TRUST_PROXY", "").strip().lower() in {"1", "true", "yes", "on"}):
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
 # Railway/production should provide SECRET_KEY. For local development we create
 # an ephemeral secret so the web panel can start without shipping a hardcoded key.
 SECRET_KEY = os.getenv("SECRET_KEY")
@@ -46,7 +53,8 @@ if not SECRET_KEY:
 
 SESSION_COOKIE_SECURE = os.getenv(
     "SESSION_COOKIE_SECURE",
-    "1" if os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_SERVICE_NAME") else "0",
+    "1" if (os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_SERVICE_NAME")
+            or os.getenv("RENDER") or os.getenv("KOYEB_APP_NAME")) else "0",
 ).strip().lower() in {"1", "true", "yes", "on"}
 
 app.secret_key = SECRET_KEY
@@ -69,7 +77,7 @@ if DATABASE_URL:
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
     engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=1800, pool_size=5, max_overflow=5, pool_timeout=15)
-    print("🗄️ Web Database: PostgreSQL Railway")
+    print("🗄️ Web Database: PostgreSQL")
 else:
     engine = create_engine(
         "sqlite:///database.db",
@@ -457,6 +465,19 @@ class CommandPermission(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class WebLoginToken(Base):
+    """One-time "Войти через Telegram" request, approved by the bot in a private chat."""
+    __tablename__ = "web_login_tokens"
+    token = Column(String(64), primary_key=True)
+    status = Column(String(16), default="pending", index=True)  # pending/approved/denied/consumed
+    account_id = Column(Integer, nullable=True)
+    telegram_id = Column(BigInteger, nullable=True)
+    ip_address = Column(String(80), nullable=True)
+    user_agent = Column(String(300), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False, index=True)
+
+
 DEFAULT_COMMAND_PERMISSIONS = [
     ("/report", "Пожаловаться модераторам", "Безопасность", 0, True, "Создать CASE по сообщению пользователя"),
     ("/appeal", "Апелляция", "Безопасность", 0, True, "Оспорить последнее наказание"),
@@ -484,8 +505,21 @@ DEFAULT_COMMAND_PERMISSIONS = [
     ("/del", "Удалить сообщение", "Очистка", 1, True, "Удалить сообщение"),
     ("/clear", "Очистить сообщения", "Очистка", 1, True, "Массовая очистка"),
     ("/purge", "Purge", "Очистка", 1, True, "Очистить выбранный диапазон"),
-    ("/whois", "Информация о пользователе", "Пользователи", 1, True, "Карточка пользователя"),
-    ("/history", "История наказаний", "Пользователи", 3, True, "Журнал модерации"),
+    ("/help", "Помощь", "Справка", 0, True, "Интерактивное меню команд с кнопками"),
+    ("/me", "Моя карточка", "Пользователи", 0, True, "Уровень, репутация, варны и место в топе"),
+    ("/ai", "AI-Протоген", "AI", 0, True, "Задать вопрос нейросети (также ///Протоген)"),
+    ("/settings", "Настройки бота", "Справка", 1, True, "Текущие настройки AutoMod и модерации"),
+    ("/ping", "Пинг", "Справка", 0, True, "Проверить, что бот онлайн"),
+    ("/gb", "Голосование за бан", "Наказания", 0, True, "Сообщество голосует за бан (ответом, или словом «Гб»)"),
+    ("/gbinfo", "Активные голосования", "Наказания", 0, True, "Список идущих голосований за бан"),
+    ("/gbstop", "Остановить голосование", "Наказания", 1, True, "Модератор останавливает голосование"),
+    ("/filter", "Автоответ", "Фильтры", 1, True, "Бот отвечает на слово или фразу"),
+    ("/filters", "Список автоответов", "Фильтры", 0, True, "Все автоответы чата"),
+    ("/banword", "Запрещённое слово", "Фильтры", 1, True, "Удаление сообщения и варн за слово"),
+    ("/banwords", "Запрещённые слова", "Фильтры", 1, True, "Список запрещённых слов"),
+    ("/setlog", "Лог-канал", "Чат", 2, True, "Дублировать все наказания в отдельный канал"),
+    ("/week", "Итоги недели", "Аналитика", 0, True, "Топ активных, благодарности и модерация за неделю"),
+    ("/backup", "Бэкап базы", "Безопасность", 3, True, "Отправить бэкап базы Создателю в личку"),
     ("/stats", "Статистика", "Аналитика", 2, True, "Статистика чата"),
     ("/top", "Топ пользователей", "Аналитика", 1, True, "Рейтинг активности"),
     ("/bookmark", "Закладка", "Инструменты", 1, True, "Сохранить важное сообщение"),
@@ -507,8 +541,6 @@ DEFAULT_COMMAND_PERMISSIONS = [
     ("/weather", "Погода", "Инструменты", 0, True, "Погода по городу"),
     ("/clearwarns", "Очистить Warn", "Наказания", 2, True, "Снять все предупреждения"),
     ("/id", "ID пользователя", "Пользователи", 0, True, "Показать Telegram ID"),
-    ("/banlist", "Бан-лист", "Наказания", 2, True, "Последние блокировки"),
-    ("/mutelist", "Мут-лист", "Наказания", 1, True, "Последние ограничения"),
     ("/setmod", "Назначить модератора", "Роли", 3, True, "Назначить модератора Protogen"),
     ("/delmod", "Снять модератора", "Роли", 3, True, "Снять модератора Protogen"),
     ("/mods", "Список модераторов", "Роли", 1, True, "Показать модераторов Protogen"),
@@ -519,10 +551,6 @@ DEFAULT_COMMAND_PERMISSIONS = [
     ("/mystars", "Моя звёздность", "Социальные", 0, True, "Показать звёзды пользователя"),
     ("/removereward", "Снять награду", "Социальные", 2, True, "Снять награду пользователя"),
     ("/modicon", "Иконка модераторов", "Роли", 3, True, "Изменить иконку модераторов"),
-    ("/gb", "Голосование за бан", "Наказания", 1, True, "Запустить голосование за бан"),
-    ("/gbinfo", "Информация о голосовании", "Наказания", 1, True, "Информация о голосовании за бан"),
-    ("/gbstop", "Остановить голосование", "Наказания", 2, True, "Остановить голосование за бан"),
-    ("/gblist", "Список голосований", "Наказания", 1, True, "Активные голосования"),
     ("/rp", "РП-команды", "РП", 0, True, "Безопасные РП-действия"),
     ("/level", "Мой уровень", "Прогресс", 0, True, "Графическая карточка уровня, XP и серии"),
     ("/levels", "Топ уровней", "Прогресс", 0, True, "Топ участников по XP"),
@@ -657,6 +685,10 @@ if engine:
 
     # Seed the moderation command matrix without overwriting creator changes.
     with SessionLocal() as seed_db:
+        # These commands were listed earlier but never existed in the bot — hide them.
+        seed_db.query(CommandPermission).filter(CommandPermission.command.in_(
+            ["/whois", "/history", "/banlist", "/mutelist"]
+        )).delete(synchronize_session=False)
         for command, label, category, level, enabled, description in DEFAULT_COMMAND_PERMISSIONS:
             row = seed_db.query(CommandPermission).filter(CommandPermission.command == command).first()
             if not row:
@@ -856,7 +888,7 @@ def _restore_snapshot(db, payload):
 
 def dashboard_data():
     if not SessionLocal:
-        return {"database": "offline", "error": "DATABASE_URL не настроен в Railway Variables."}
+        return {"database": "offline", "error": "DATABASE_URL не настроен в переменных окружения."}
 
     db = SessionLocal()
     try:
@@ -902,44 +934,44 @@ def dashboard_data():
             for day, count in reversed(activity_rows)
         ]
 
+        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        actions_today = (db.query(func.count(Punishment.id))
+                         .filter(Punishment.created_at >= today_start).scalar() or 0)
+
+        week_ago = today_start - timedelta(days=7)
+        top_rows = (
+            db.query(Activity.user_id, func.sum(Activity.messages_count).label("total"))
+            .filter(Activity.day >= week_ago)
+            .group_by(Activity.user_id)
+            .order_by(desc("total"))
+            .limit(5).all()
+        )
+        top_users = []
+        for user_id, total in top_rows:
+            u = db.get(User, user_id)
+            label = (f"{u.first_name or ''} {u.last_name or ''}".strip() or (u.username and "@" + u.username)) if u else None
+            top_users.append({"user_id": user_id, "username": label or str(user_id), "messages": int(total or 0)})
+
+        bot_state, bot_age = _worker_state(db)
         return {
             "database": "online",
+            "bot": bot_state,
+            "bot_seen_seconds_ago": bot_age,
+            "ai": {
+                "configured": bool(os.getenv("OPENROUTER_API_KEY")),
+                "model": os.getenv("OPENROUTER_MODEL", "openrouter/free"),
+            },
             "stats": {
                 "users": int(users), "messages": int(messages), "warns": int(warns),
                 "mutes": int(mutes), "bans": int(bans), "kicks": int(kicks),
-                "active_users": int(active),
+                "active_users": int(active), "actions_today": int(actions_today),
             },
             "recent": recent,
             "activity": activity,
+            "top_users": top_users,
         }
     finally:
         db.close()
-
-
-def _public_command_catalog():
-    catalog = []
-    if SessionLocal:
-        db = SessionLocal()
-        try:
-            rows = (db.query(CommandPermission)
-                    .filter(CommandPermission.enabled.is_(True))
-                    .order_by(CommandPermission.category, CommandPermission.id).all())
-            catalog = [
-                {"command": r.command, "label": r.label, "category": r.category, "description": r.description or ""}
-                for r in rows
-            ]
-        except Exception as e:
-            db.rollback()
-            print(f"PUBLIC COMMAND CATALOG ERROR: {type(e).__name__}: {e}")
-        finally:
-            db.close()
-    if not catalog:
-        catalog = [
-            {"command": command, "label": label, "category": category, "description": description}
-            for command, label, category, level, enabled, description in DEFAULT_COMMAND_PERMISSIONS
-            if enabled and command not in ("/commands", "/help")
-        ]
-    return catalog
 
 
 def _public_command_catalog():
@@ -963,6 +995,167 @@ def _public_command_catalog():
     return catalog
 
 
+# ============================================================
+# PUBLIC LANDING API (used by static/script.js on the home page)
+# ============================================================
+
+_PUBLIC_CACHE = {}
+_BOT_USERNAME_CACHE = {"value": None, "at": 0.0}
+
+
+def _cached(key, ttl, producer):
+    now = time.monotonic()
+    hit = _PUBLIC_CACHE.get(key)
+    if hit and now - hit[0] < ttl:
+        return hit[1]
+    value = producer()
+    _PUBLIC_CACHE[key] = (now, value)
+    return value
+
+
+def _bot_username():
+    """@username of the bot for the "Add to group" button (env BOT_USERNAME or one getMe call per hour)."""
+    explicit = (os.getenv("BOT_USERNAME") or "").strip().lstrip("@")
+    if explicit:
+        return explicit
+    now = time.monotonic()
+    if _BOT_USERNAME_CACHE["value"] is not None and now - _BOT_USERNAME_CACHE["at"] < 3600:
+        return _BOT_USERNAME_CACHE["value"]
+    value = ""
+    token = (os.getenv("BOT_TOKEN") or "").strip()
+    if token:
+        try:
+            r = requests.get(f"https://api.telegram.org/bot{token}/getMe", timeout=4)
+            value = (r.json().get("result") or {}).get("username") or ""
+        except Exception:
+            value = ""
+    _BOT_USERNAME_CACHE.update(value=value, at=now)
+    return value
+
+
+@app.context_processor
+def inject_bot_links():
+    username = _bot_username()
+    return {
+        "bot_username": username,
+        "bot_add_url": (f"https://t.me/{username}?startgroup=protogen&admin=delete_messages+restrict_members+pin_messages+invite_users"
+                        if username else ""),
+        "bot_chat_url": f"https://t.me/{username}" if username else "",
+    }
+
+
+def _worker_state(db):
+    try:
+        hb = db.get(WorkerHeartbeat, 1)
+    except Exception:
+        return "unknown", None
+    if not hb or not hb.last_seen:
+        return "offline", None
+    age = (datetime.utcnow() - hb.last_seen).total_seconds()
+    return ("online" if age < 120 else "offline"), int(age)
+
+
+def _public_servers():
+    if not SessionLocal:
+        return []
+    show_all = os.getenv("PUBLIC_SHOW_ALL_CHATS", "").strip().lower() in {"1", "true", "yes", "on"}
+    db = SessionLocal()
+    try:
+        sql = "SELECT chat_id, title, username FROM chats WHERE is_active = :active"
+        if not show_all:
+            # Private groups are not listed publicly unless the owner explicitly allows it.
+            sql += " AND username IS NOT NULL AND username <> ''"
+        rows = db.execute(text(sql + " ORDER BY last_seen DESC LIMIT 50"), {"active": True}).mappings().all()
+        return [{"chat_id": str(r["chat_id"]), "title": r["title"] or (r["username"] and "@" + r["username"]) or "Чат"}
+                for r in rows]
+    except Exception as e:
+        db.rollback()
+        print(f"PUBLIC SERVERS ERROR: {type(e).__name__}: {e}")
+        return []
+    finally:
+        db.close()
+
+
+def _public_stats(scope):
+    empty = {"users": 0, "active_users": 0, "messages": 0, "actions": 0, "chats": 0, "stability": "OFFLINE"}
+    if not SessionLocal:
+        return empty
+    db = SessionLocal()
+    try:
+        where, params = "", {}
+        if scope != "all":
+            allowed = {s["chat_id"] for s in _cached("servers", 60, _public_servers)}
+            if scope not in allowed:
+                scope = "all"
+            else:
+                where, params = " WHERE chat_id = :cid", {"cid": int(scope)}
+        since = datetime.utcnow() - timedelta(hours=24)
+        users = db.execute(text("SELECT COUNT(DISTINCT user_id) FROM chat_users" + where), params).scalar() or 0
+        active_where = (where + " AND " if where else " WHERE ") + "last_seen >= :since"
+        active = db.execute(text("SELECT COUNT(DISTINCT user_id) FROM chat_users" + active_where),
+                            {**params, "since": since}).scalar() or 0
+        messages = db.execute(text("SELECT COALESCE(SUM(messages_count), 0) FROM chat_users" + where), params).scalar() or 0
+        actions = db.execute(text("SELECT COUNT(*) FROM chat_punishments" + where), params).scalar() or 0
+        chats = db.execute(text("SELECT COUNT(*) FROM chats WHERE is_active = :active"), {"active": True}).scalar() or 0
+        state, _ = _worker_state(db)
+        return {"users": int(users), "active_users": int(active), "messages": int(messages), "actions": int(actions),
+                "chats": int(chats), "stability": "ONLINE" if state == "online" else "OFFLINE"}
+    except Exception as e:
+        db.rollback()
+        print(f"PUBLIC STATS ERROR: {type(e).__name__}: {e}")
+        return empty
+    finally:
+        db.close()
+
+
+@app.route("/api/public/servers")
+def public_servers_api():
+    return jsonify({"ok": True, "servers": _cached("servers", 60, _public_servers)})
+
+
+@app.route("/api/public/stats")
+def public_stats_api():
+    scope = (request.args.get("chat_id") or "all").strip()
+    if scope != "all" and not scope.lstrip("-").isdigit():
+        scope = "all"
+    stats = _cached(f"stats:{scope}", 15, lambda: _public_stats(scope))
+    return jsonify({"ok": True, "stats": stats, "updated_at": datetime.utcnow().isoformat() + "Z"})
+
+
+@app.route("/api/public/health")
+def public_health_api():
+    def produce():
+        result = {"web": "online", "bot": "unknown", "database": "offline", "db_ms": None,
+                  "ai": bool(os.getenv("OPENROUTER_API_KEY")),
+                  "uptime_seconds": int((datetime.utcnow() - APP_STARTED_AT).total_seconds())}
+        if SessionLocal:
+            db = SessionLocal()
+            try:
+                started = time.perf_counter()
+                db.execute(text("SELECT 1"))
+                result["db_ms"] = int((time.perf_counter() - started) * 1000)
+                result["database"] = "online"
+                result["bot"], result["bot_seen_seconds_ago"] = _worker_state(db)
+            except Exception:
+                db.rollback()
+            finally:
+                db.close()
+        return result
+    data = dict(_cached("health", 10, produce))
+    data["uptime_seconds"] = int((datetime.utcnow() - APP_STARTED_AT).total_seconds())
+    return jsonify(data)
+
+
+@app.route("/favicon.ico")
+def favicon():
+    return redirect(url_for("static", filename="favicon.png"), code=301)
+
+
+@app.route("/robots.txt")
+def robots_txt():
+    return app.response_class("User-agent: *\nDisallow: /admin\nDisallow: /api/\nDisallow: /miniapp\n", mimetype="text/plain")
+
+
 @app.route("/")
 def index():
     return render_template("index.html", command_catalog=_public_command_catalog())
@@ -980,6 +1173,10 @@ def public_commands():
     return render_template("commands.html", command_catalog=_public_command_catalog())
 
 
+_WEB_CHAT_HITS = {}
+WEB_CHAT_PER_MINUTE = int(os.getenv("WEB_CHAT_PER_MINUTE", "6"))
+
+
 @app.route("/chat", methods=["POST"])
 def chat():
     data = request.get_json(silent=True) or {}
@@ -987,12 +1184,25 @@ def chat():
 
     if not text:
         return jsonify({"response": "Эй, ты отправил пустое сообщение 😑"})
+    if len(text) > 800:
+        return jsonify({"response": "✂️ Слишком длинно. Уложись в 800 символов."})
+
+    # The public web chat spends the owner's OpenRouter quota: limit it per visitor IP.
+    ip = _client_ip()
+    now = time.monotonic()
+    window = [t for t in _WEB_CHAT_HITS.get(ip, []) if now - t < 60]
+    if len(window) >= WEB_CHAT_PER_MINUTE:
+        return jsonify({"response": "⏳ Слишком много сообщений. Подожди минуту."}), 429
+    window.append(now)
+    _WEB_CHAT_HITS[ip] = window
+    if len(_WEB_CHAT_HITS) > 5000:
+        _WEB_CHAT_HITS.clear()
 
     api_key = os.getenv("OPENROUTER_API_KEY")
 
     if not api_key:
         return jsonify({
-            "response": "💢 AI не подключён. Добавь OPENROUTER_API_KEY в Railway Variables."
+            "response": "💢 AI не подключён. Добавь OPENROUTER_API_KEY в переменные окружения сервера."
         })
 
     system_prompt = """
@@ -1985,7 +2195,7 @@ def admin_login():
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
         if not SessionLocal:
-            error = "DATABASE_URL не настроен в Railway Variables."
+            error = "DATABASE_URL не настроен в переменных окружения."
         else:
             db = SessionLocal()
             try:
@@ -2035,6 +2245,68 @@ def admin_login():
             finally:
                 db.close()
     return render_template("admin_login.html", error=error)
+
+
+TELEGRAM_LOGIN_TTL = timedelta(minutes=5)
+
+
+@app.route("/admin/login/telegram/start", methods=["POST"])
+def admin_login_telegram_start():
+    """Create a one-time token; the browser then opens t.me/<bot>?start=login_<token>."""
+    if not _same_origin_ok():
+        return jsonify({"ok": False, "error": "Обнови страницу и попробуй снова."}), 403
+    username = _bot_username()
+    if not username or not SessionLocal:
+        return jsonify({"ok": False, "error": "Бот не настроен (BOT_TOKEN)."}), 503
+    token = secrets.token_urlsafe(24)
+    db = SessionLocal()
+    try:
+        db.query(WebLoginToken).filter(WebLoginToken.expires_at < datetime.utcnow()).delete(synchronize_session=False)
+        db.add(WebLoginToken(token=token, status="pending", ip_address=_client_ip()[:80],
+                             user_agent=(request.headers.get("User-Agent") or "")[:300],
+                             created_at=datetime.utcnow(), expires_at=datetime.utcnow() + TELEGRAM_LOGIN_TTL))
+        db.commit()
+    finally:
+        db.close()
+    session["tg_login_token"] = token  # only THIS browser can complete the login
+    return jsonify({"ok": True, "url": f"https://t.me/{username}?start=login_{token}",
+                    "expires_in": int(TELEGRAM_LOGIN_TTL.total_seconds())})
+
+
+@app.route("/admin/login/telegram/status")
+def admin_login_telegram_status():
+    token = session.get("tg_login_token")
+    if not token or not SessionLocal:
+        return jsonify({"ok": False, "status": "none"})
+    db = SessionLocal()
+    try:
+        row = db.get(WebLoginToken, token)
+        if not row or row.expires_at < datetime.utcnow():
+            session.pop("tg_login_token", None)
+            return jsonify({"ok": False, "status": "expired"})
+        if row.status == "denied":
+            session.pop("tg_login_token", None)
+            return jsonify({"ok": False, "status": "denied"})
+        if row.status != "approved":
+            return jsonify({"ok": True, "status": "pending"})
+        account = db.get(WebAccount, row.account_id) if row.account_id else None
+        row.status = "consumed"
+        db.commit()
+        if not account or not account.active:
+            return jsonify({"ok": False, "status": "denied"})
+        if account.role == "trainee" or bool(account.web_access_blocked):
+            _security_log("WEB_ACCESS_BLOCKED", "HIGH", "telegram login", username=account.username, role=account.role)
+            session.clear()
+            session["blocked_notice"] = True
+            session["blocked_username"] = account.username
+            session["blocked_reason"] = "trainee" if account.role == "trainee" else "creator_block"
+            _csrf_token()
+            return jsonify({"ok": True, "status": "approved", "redirect": url_for("admin_web_access_blocked")})
+        _security_log("LOGIN_TELEGRAM", "INFO", f"telegram_id={row.telegram_id}", username=account.username, role=account.role)
+        _finalize_web_login(db, account)  # Telegram confirmation is the second factor
+        return jsonify({"ok": True, "status": "approved", "redirect": url_for("admin_dashboard")})
+    finally:
+        db.close()
 
 
 @app.route("/admin/blocked", methods=["GET", "POST"])
@@ -3016,7 +3288,7 @@ def _telegram_token():
 def _telegram_api(method, payload):
     token = _telegram_token()
     if not token:
-        raise RuntimeError("BOT_TOKEN не настроен в Railway Variables веб-сервиса. Добавь BOT_TOKEN в Variables именно для сервиса web.")
+        raise RuntimeError("BOT_TOKEN не настроен в переменных окружения сервера.")
     response = requests.post(
         f"https://api.telegram.org/bot{token}/{method}",
         json=payload,
@@ -3042,7 +3314,7 @@ def _quick_action_chat_id(db):
     row = db.execute(text("SELECT chat_id FROM chats WHERE is_active = TRUE ORDER BY last_seen DESC LIMIT 1")).first()
     if row:
         return int(row[0])
-    raise RuntimeError("Не найден активный Telegram-чат. Укажи BOT_CHAT_ID в Railway Variables.")
+    raise RuntimeError("Не найден активный Telegram-чат. Укажи BOT_CHAT_ID в переменных окружения.")
 
 
 @app.route("/api/admin/users/<int:user_id>/quick-action", methods=["POST"])

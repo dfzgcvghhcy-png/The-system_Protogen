@@ -37,19 +37,16 @@ def _mention(user_id, name):
     return f'<a href="tg://user?id={int(user_id)}">{html.escape(name or str(user_id))}</a>'
 
 
-def _settings():
-    db = Session()
-    try:
-        row = db.get(BotSetting, 1)
-        return {
-            "moderation_enabled": bool(row.moderation_enabled) if row else True,
-            "warn_enabled": bool(row.warn_enabled) if row else True,
-            "mute_enabled": bool(row.mute_enabled) if row else True,
-            "ban_enabled": bool(row.ban_enabled) if row else True,
-            "mute_duration": max(1, int(row.mute_duration or 60)) if row else 60,
-        }
-    finally:
-        db.close()
+def _settings(chat_id=None):
+    from chat_settings import effective
+    s = effective(chat_id)
+    return {
+        "moderation_enabled": bool(s["moderation_enabled"]),
+        "warn_enabled": bool(s["warn_enabled"]),
+        "mute_enabled": bool(s["mute_enabled"]),
+        "ban_enabled": bool(s["ban_enabled"]),
+        "mute_duration": max(1, int(s["mute_duration"] or 60)),
+    }
 
 
 def _ensure_global_user(db, user_id):
@@ -281,7 +278,7 @@ async def report_case_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     finally:
         db.close()
 
-    settings = _settings()
+    settings = _settings(query.message.chat_id)
     if action != "close":
         if not settings["moderation_enabled"]:
             return await query.answer("🛡️ Модерация отключена в Web-панели.", show_alert=True)

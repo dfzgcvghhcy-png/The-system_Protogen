@@ -63,7 +63,7 @@ if DATABASE_URL:
         pool_timeout=15,
     )
 
-    print("🗄️ Database: PostgreSQL Railway")
+    print("🗄️ Database: PostgreSQL")
 
 else:
     # Локальный запасной вариант
@@ -831,6 +831,35 @@ class SecurityState(Base):
     status = Column(String(20), default="normal")
     last_trigger = Column(String(120), nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+# ============================================================
+# PER-CHAT SETTINGS, FILTERS
+# ============================================================
+
+class ChatSettingValue(Base):
+    """Per-chat override of a setting (everything else falls back to bot_settings id=1)."""
+    __tablename__ = "chat_setting_values"
+    __table_args__ = (UniqueConstraint("chat_id", "key", name="uq_chat_setting_key"),)
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    key = Column(String(60), nullable=False)
+    value = Column(String(500), nullable=True)
+    updated_by = Column(BigInteger, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ChatFilter(Base):
+    """Auto-replies (kind='reply') and forbidden words (kind='banword')."""
+    __tablename__ = "chat_filters"
+    __table_args__ = (UniqueConstraint("chat_id", "kind", "trigger", name="uq_chat_filter"),)
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    kind = Column(String(10), nullable=False, default="reply")
+    trigger = Column(String(120), nullable=False)
+    response = Column(Text, nullable=True)
+    created_by = Column(BigInteger, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 # ============================================================

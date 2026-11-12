@@ -4,6 +4,7 @@ from telegram.constants import ParseMode
 from telegram.error import BadRequest
 from database import Session, User, Punishment, Activity, BotSetting, Chat, ChatUser, ChatActivity, ChatPunishment, UserProgress, UserAchievement, SecurityState
 from filters import is_admin, bot_can_restrict
+from core import role_level, member_status, site_url, esc
 from progression import record_message_progress
 from community import start_verification
 from ai_moderation import maybe_ai_moderate
@@ -38,7 +39,11 @@ DEFAULT_BOT_SETTINGS = dict(
     daily_enabled=True,
 )
 
-def get_bot_settings():
+def get_bot_settings(chat_id=None):
+    """Settings for a chat (per-chat overrides on top of the Web panel); global if no chat."""
+    if chat_id:
+        from chat_settings import effective
+        return effective(chat_id)
     session=Session()
     try:
         s=session.get(BotSetting,1)
@@ -50,7 +55,7 @@ def get_bot_settings():
     finally: session.close()
 
 async def check_moderation_setting(update, name):
-    s=get_bot_settings()
+    s=get_bot_settings(update.effective_chat.id if update.effective_chat else None)
     if not s["moderation_enabled"]:
         await update.message.reply_text("🛡️ Модерация сейчас отключена через Web-панель."); return False
     if not s[name]:
@@ -59,7 +64,7 @@ async def check_moderation_setting(update, name):
     return True
 
 async def check_callback_setting(query,name):
-    s=get_bot_settings()
+    s=get_bot_settings(query.message.chat_id if query.message else None)
     if not s["moderation_enabled"]:
         await query.answer("🛡️ Модерация отключена через Web-панель.",show_alert=True); return False
     if not s[name]:
@@ -67,7 +72,7 @@ async def check_callback_setting(query,name):
     return True
 
 
-SITE_URL = "https://web-production-c2beb.up.railway.app"
+SITE_URL = site_url()
 
 # Progress/achievement notifications are intentionally temporary so they do not
 # clutter busy chats. Users can still review unlocked achievements with
@@ -134,7 +139,8 @@ def _ensure_chat_user(session, chat, tg_user, status=None, joined_at=None, count
         row.username=tg_user.username; row.first_name=tg_user.first_name; row.last_name=tg_user.last_name
         row.last_seen=now
         if status: row.status=status
-        if joined_at and not row.joined_at: row.joined_at=joined_at
+        # A re-join resets the date so newcomer restrictions apply again.
+        if joined_at: row.joined_at=joined_at
         if count_message: row.messages_count=(row.messages_count or 0)+1
     return row
 
@@ -353,7 +359,7 @@ async def mute(update: Update, context: ContextTypes.DEFAULT_TYPE):
             can_send_other_messages=False,
             can_add_web_page_previews=False,
         )
-        settings = get_bot_settings()
+        settings = get_bot_settings(update.effective_chat.id)
         until_date = datetime.utcnow() + timedelta(minutes=max(1, int(settings["mute_duration"])))
         await context.bot.restrict_chat_member(
             chat_id=update.effective_chat.id,
@@ -713,11 +719,7 @@ def _trim_window(items, now, seconds):
 
 
 async def _member_is_admin(chat, user_id):
-    try:
-        member = await chat.get_member(user_id)
-        return member.status in ("administrator", "creator")
-    except Exception:
-        return False
+    return await member_status(chat, user_id) in ("administrator", "creator")
 
 
 async def _bot_has_restrict_rights(chat, bot_id):
@@ -878,7 +880,7 @@ async def _run_automod(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if chat.type not in ("group", "supergroup"):
         return
 
-    settings = get_bot_settings()
+    settings = get_bot_settings(chat.id)
     if not settings.get("moderation_enabled", True):
         return
     if await _member_is_admin(chat, user.id):
@@ -929,6 +931,13 @@ async def _run_automod(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(chat.id, "\n".join(lines), parse_mode=ParseMode.HTML)
     except Exception as e:
         print(f"AUTOMOD NOTICE ERROR: {type(e).__name__}: {e}")
+    try:
+        from modlog import modlog
+        excerpt = html.escape(text[:300])
+        await modlog(context.bot, chat.id, "\n".join(lines) + f"\n🆔 <code>{user.id}</code>\n💬 <blockquote>{excerpt}</blockquote>",
+                     chat_title=chat.title)
+    except Exception:
+        pass
 
 
 async def _handle_raid_join(update: Update, context: ContextTypes.DEFAULT_TYPE, tg_user):
@@ -936,7 +945,7 @@ async def _handle_raid_join(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     if not chat or not tg_user or tg_user.is_bot or chat.type not in ("group", "supergroup"):
         return
 
-    settings = get_bot_settings()
+    settings = get_bot_settings(chat.id)
     if not settings.get("moderation_enabled", True) or not settings.get("anti_raid_enabled", True):
         return
 
@@ -1048,10 +1057,9 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         status = None
 
-        try:
-            member = await update.effective_chat.get_member(user_tg.id)
-            status = member.status
-        except Exception:
+        # Cached for 2 minutes: one getChatMember per message used to hit Telegram limits.
+        status = await member_status(update.effective_chat, user_tg.id)
+        if status == "unknown":
             status = "member"
 
         user = _save_user_from_telegram(
@@ -1104,11 +1112,6 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         session.commit()
 
-        print(
-            f"USER TRACKED: {user_tg.id} | "
-            f"messages={user.messages_count or 0}"
-        )
-
     except Exception as e:
         session.rollback()
         print(f"TRACK MESSAGE ERROR: {type(e).__name__}: {e}")
@@ -1125,7 +1128,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # AI-модератор работает как ассистент: только review, без автоматического бана.
     try:
-        await maybe_ai_moderate(update, context, get_bot_settings())
+        await maybe_ai_moderate(update, context, get_bot_settings(update.effective_chat.id if update.effective_chat else None))
     except Exception as e:
         print(f"AI MODERATION ERROR: {type(e).__name__}: {e}")
 
@@ -1299,8 +1302,11 @@ async def _safe_panel_edit(query, text, reply_markup=None, parse_mode=ParseMode.
         raise
 
 async def panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await is_admin(update, context):
-        return await update.message.reply_text("❌ У тебя нет прав администратора.")
+    chat = update.effective_chat
+    if not chat or chat.type not in ("group", "supergroup"):
+        return await update.message.reply_text("ℹ️ /panel работает в группе. Для Web-панели используй /menu.")
+    if await role_level(chat, update.effective_user.id) < 1:
+        return await update.message.reply_text("⛔ Панель доступна только модераторам.")
     await show_main_panel(update)
 
 
@@ -1342,14 +1348,16 @@ async def show_moderation_panel(query):
 async def show_users_panel(query):
     session = Session()
     try:
-        users = session.query(User).order_by(User.last_seen.desc()).limit(30).all()
+        # Only members of THIS chat — moderators of one group must not browse another group's users.
+        chat_id = query.message.chat_id if query.message else 0
+        users = (session.query(ChatUser).filter(ChatUser.chat_id == chat_id)
+                 .order_by(ChatUser.last_seen.desc()).limit(30).all())
         keyboard = []
         for user in users:
-            total = session.query(Punishment).filter(Punishment.user_id == user.id).count()
-            name = _safe_text(user.first_name or user.username, str(user.id))[:18]
+            name = _safe_text(user.first_name or user.username, str(user.user_id))[:18]
             keyboard.append([InlineKeyboardButton(
                 f"👤 {name}  •  💬 {user.messages_count or 0}  •  ⚠️ {user.warns or 0}",
-                callback_data=f"user_{user.id}"
+                callback_data=f"user_{user.user_id}"
             )])
         keyboard.append([InlineKeyboardButton("🔄 Обновить", callback_data="panel_users")])
         keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="panel_main")])
@@ -1555,7 +1563,7 @@ async def send_user_profile(query, context, user_id):
         try:
             await query.answer(
                 "❌ Не удалось открыть профиль. "
-                "Подробность записана в Railway Logs.",
+                "Подробность записана в логах сервера.",
                 show_alert=True
             )
         except Exception:
@@ -1735,9 +1743,16 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if not query:
         return
-    await query.answer()
+    # The panel is visible to everyone in the group, so every button must check rights.
+    panel_chat = query.message.chat if query.message else None
+    if (panel_chat is None or panel_chat.type not in ("group", "supergroup")
+            or await role_level(panel_chat, query.from_user.id) < 1):
+        return await query.answer("⛔ Панель доступна только модераторам этого чата.", show_alert=True)
     data = query.data
-    print(f"CALLBACK: {data}")
+    if data.startswith(("action_ban_", "action_unban_")) and await role_level(panel_chat, query.from_user.id) < 2:
+        return await query.answer("⛔ Бан и разбан доступны только администраторам.", show_alert=True)
+    if not data.startswith(("action_", "mute_for_", "mute_setting_")):
+        await query.answer()
 
     if data == "panel_main":
         return await show_main_panel(update)
@@ -1821,7 +1836,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("mute_setting_"):
         user_id=int(data.split("_",2)[2])
         if not await check_callback_setting(query,"mute_enabled"): return
-        seconds=max(1,int(get_bot_settings()["mute_duration"]))*60
+        seconds=max(1,int(get_bot_settings(query.message.chat_id)["mute_duration"]))*60
         data=f"mute_for_{user_id}_{seconds}"
 
     # -------------------------------------------------
@@ -1832,10 +1847,9 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = int(user_id_raw)
         seconds = int(seconds_raw)
 
-        member = await query.message.chat.get_member(query.from_user.id)
-        if member.status not in ("administrator", "creator"):
+        if await role_level(query.message.chat, query.from_user.id) < 1:
             return await query.answer(
-                "❌ Только администраторы могут использовать модерацию.",
+                "❌ Только модераторы могут использовать модерацию.",
                 show_alert=True,
             )
 
@@ -1930,6 +1944,9 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 session.close()
 
             await query.answer("🔇 Мут выдан.", show_alert=True)
+            from modlog import modlog
+            await modlog(context.bot, chat_id, f"🔇 <b>Мут</b> {duration_name} через /panel → <code>{user_id}</code>\n"
+                         f"👮 {esc(query.from_user.full_name)}", chat_title=query.message.chat.title)
 
             return await query.edit_message_caption(
                 caption=(
@@ -1967,10 +1984,9 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         # Проверяем права того, кто нажал кнопку.
-        member = await query.message.chat.get_member(query.from_user.id)
-        if member.status not in ("administrator", "creator"):
+        if await role_level(query.message.chat, query.from_user.id) < 1:
             return await query.answer(
-                "❌ Только администраторы могут использовать модерацию.",
+                "❌ Только модераторы могут использовать модерацию.",
                 show_alert=True,
             )
 
@@ -2255,6 +2271,9 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             }
 
             await query.answer("✅ Действие выполнено.", show_alert=True)
+            from modlog import modlog
+            await modlog(context.bot, chat_id, f"🛠 <b>{punishment_type}</b> через /panel → <code>{user_id}</code>\n"
+                         f"👮 {esc(query.from_user.full_name)}", chat_title=query.message.chat.title)
 
             return await query.edit_message_caption(
                 caption=(
@@ -2303,7 +2322,7 @@ async def who_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user.is_bot: continue
         role="👑 Создатель" if member.status=="creator" else "🛡 Администратор"
         name=user.full_name or user.username or str(user.id)
-        mention=f'<a href="tg://user?id={user.id}">{_safe_text(name, "Пользователь")}</a>'
+        mention=f'<a href="tg://user?id={user.id}">{esc(_safe_text(name, "Пользователь"))}</a>'
         lines.append(f"{role} — {mention}")
     if len(lines)==1: lines.append("Администраторы не найдены.")
     await update.message.reply_text("\n".join(lines),parse_mode=ParseMode.HTML,disable_web_page_preview=True)
@@ -2319,7 +2338,7 @@ async def my_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user=_ensure_chat_user(session,chat,tg_user,status="member",count_message=False); session.commit()
         total=int(user.messages_count or 0)
         rows=(session.query(ChatActivity).filter(ChatActivity.chat_id==chat.id,ChatActivity.user_id==tg_user.id).order_by(ChatActivity.day.desc()).limit(7).all())
-        lines=["📊 <b>МОЯ СТАТА</b>","",f"👤 {_safe_text(tg_user.full_name, 'Пользователь')}",f"💬 Сообщений в чате: <b>{total}</b>","","📅 <b>Последние 7 дней</b>"]
+        lines=["📊 <b>МОЯ СТАТА</b>","",f"👤 {esc(_safe_text(tg_user.full_name, 'Пользователь'))}",f"💬 Сообщений в чате: <b>{total}</b>","","📅 <b>Последние 7 дней</b>"]
         if rows:
             for row in reversed(rows):
                 day=row.day.strftime("%d.%m") if row.day else "—"; count=int(row.messages_count or 0); bar="▮"*min(count,20)

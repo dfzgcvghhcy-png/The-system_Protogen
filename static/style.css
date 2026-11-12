@@ -13,7 +13,7 @@
 html,body{margin:0;min-height:100%;font-family:Inter,Segoe UI,Arial,sans-serif;color:var(--text);background:#02040a}
 body{
   min-height:100vh;overflow-x:hidden;
-  background-image:linear-gradient(180deg,rgba(1,4,9,.58),rgba(1,3,7,.80)),url("/static/bg.png");
+  background-image:linear-gradient(180deg,rgba(1,4,9,.58),rgba(1,3,7,.80)),url("/static/bg.webp");
   background-size:cover;background-position:center;background-attachment:fixed;
 }
 body:before{
@@ -257,7 +257,7 @@ body.chat-open .chat-panel{width:100%;opacity:1;visibility:visible;pointer-event
 .wall-main-preview{
   display:block;width:calc(100% - 20px);height:102px;margin:10px;border-radius:10px;
   border:1px solid rgba(155,69,255,.45);cursor:pointer;position:relative;overflow:hidden;
-  background:linear-gradient(180deg,rgba(2,5,9,.15),rgba(2,4,8,.50)),url("/static/bg.png") center/cover;
+  background:linear-gradient(180deg,rgba(2,5,9,.15),rgba(2,4,8,.50)),url("/static/bg.webp") center/cover;
   box-shadow:inset 0 0 30px rgba(0,0,0,.25),0 0 18px rgba(155,69,255,.08);
 }
 .wall-main-preview:after{
@@ -735,7 +735,7 @@ body.intro-lock{overflow:hidden}
   transform:translateY(24px) scale(.985);transition:transform .55s cubic-bezier(.2,.8,.2,1);
 }
 .assistant-teaser.is-visible .assistant-teaser__panel{transform:none}
-.assistant-teaser__image{position:absolute;inset:0;background:url('/static/assistant-teaser.png') center/cover no-repeat;filter:saturate(1.04) contrast(1.04)}
+.assistant-teaser__image{position:absolute;inset:0;background:url('/static/assistant-teaser.webp') center/cover no-repeat;filter:saturate(1.04) contrast(1.04)}
 .assistant-teaser__scrim{position:absolute;inset:0;background:linear-gradient(90deg,rgba(1,5,13,.95) 0%,rgba(1,5,13,.78) 35%,rgba(1,5,13,.24) 63%,rgba(1,5,13,.08) 100%),linear-gradient(0deg,rgba(1,4,10,.74),transparent 40%)}
 .assistant-teaser__content{position:absolute;left:clamp(28px,5vw,72px);bottom:clamp(42px,8vh,86px);z-index:3;max-width:560px}
 .assistant-teaser__eyebrow{display:block;margin-bottom:14px;color:#77ddff;font-size:12px;letter-spacing:.32em;font-weight:700}
@@ -761,3 +761,7 @@ body.assistant-teaser-lock{overflow:hidden}
   .assistant-teaser__content{left:24px;right:24px;bottom:36px}.assistant-teaser h2{font-size:clamp(38px,14vw,62px)}
   .assistant-teaser__eyebrow{letter-spacing:.18em}.assistant-teaser__actions{gap:8px}.assistant-teaser__cta,.assistant-teaser__actions button{height:44px;padding:0 16px;font-size:12px}
 }
+
+/* Real health indicators: highlight problems instead of always-green fake values. */
+.metric b.is-bad, .quick-grid b.is-bad, #signalState.is-bad { color: #ff5c7a !important; text-shadow: 0 0 10px rgba(255, 70, 110, .45); }
+.add-bot-cta { text-decoration: none; }

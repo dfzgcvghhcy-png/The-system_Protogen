@@ -54,7 +54,7 @@
       const permission = Notification.permission === 'default' ? await Notification.requestPermission() : Notification.permission;
       markArmed();
       if (permission === 'granted') {
-        new Notification('Protogen Assistant', { body: 'Уведомления о запуске включены.', icon: '/static/my_avatar.png' });
+        new Notification('Protogen Assistant', { body: 'Уведомления о запуске включены.', icon: '/static/my_avatar.webp' });
       } else {
         notifyStatus.textContent = 'Напоминание сохранено, но системные уведомления браузера запрещены.';
       }

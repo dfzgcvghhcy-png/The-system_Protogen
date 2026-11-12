@@ -11,7 +11,8 @@
   <script>
   (() => {
     const tg = window.Telegram && window.Telegram.WebApp;
-    if (!tg) return;
+    // telegram-web-app.js defines WebApp in every browser; initData exists only inside Telegram.
+    if (!tg || !tg.initData) return;
 
     document.documentElement.classList.add('tg-miniapp');
 
@@ -57,7 +58,7 @@
   {% if is_creator %}
   <section class="panel" style="margin:0 0 22px;padding:22px;border:1px solid rgba(0,255,225,.14);background:rgba(5,10,20,.72);border-radius:18px;box-shadow:0 0 35px rgba(0,0,0,.22)">
     <div style="display:flex;justify-content:space-between;gap:18px;align-items:flex-start;flex-wrap:wrap">
-      <div><div class="panel-kicker">WEB ACCESS CONTROL</div><h2 style="margin:6px 0 5px">Учетные записи панели</h2><p style="margin:0;color:#78909f">Логины и пароли хранятся в PostgreSQL. Railway Variables больше не нужны для каждого человека.</p></div>
+      <div><div class="panel-kicker">WEB ACCESS CONTROL</div><h2 style="margin:6px 0 5px">Учетные записи панели</h2><p style="margin:0;color:#78909f">Логины и пароли хранятся в PostgreSQL. Отдельные переменные окружения для каждого человека не нужны.</p></div>
       <button type="button" id="openAccountCreate" style="border:1px solid rgba(0,255,225,.35);background:rgba(0,255,225,.08);color:#dffffa;padding:11px 16px;border-radius:11px;cursor:pointer;font-weight:700">+ Создать доступ</button>
     </div>
     <div style="display:grid;gap:9px;margin-top:17px">

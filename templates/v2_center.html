@@ -53,7 +53,7 @@
   </section>
 
   <section class="v2-panel" id="backups">
-    <div class="panel-head"><div><small>DATABASE EXPORT</small><h2>Backup Center</h2></div><p>Создаёт логическую выгрузку PostgreSQL в JSON.GZ. Храни скачанный файл вне Railway — это важно, потому что локальный диск контейнера не является резервной копией.</p></div>
+    <div class="panel-head"><div><small>DATABASE EXPORT</small><h2>Backup Center</h2></div><p>Создаёт логическую выгрузку PostgreSQL в JSON.GZ. Храни скачанный файл вне хостинга — это важно, потому что локальный диск контейнера не является резервной копией.</p></div>
     <button class="primary" onclick="exportBackup()">⇩ Создать и скачать backup</button>
     <div class="list backups">
       {% for b in backups %}<article><div><b>{{ b.backup_id }}</b><small>{{ b.created_at.strftime('%d.%m.%Y %H:%M') if b.created_at else '—' }} · {{ b.table_count }} таблиц · {{ (b.size_bytes/1024/1024)|round(2) }} MB</small></div><span class="ok">{{ b.status|upper }}</span></article>{% else %}<p class="empty">Backup ещё не создавался.</p>{% endfor %}
@@ -61,7 +61,7 @@
   </section>
 
   <section class="v2-panel" id="errors">
-    <div class="panel-head"><div><small>DIAGNOSTICS</small><h2>Error Center</h2></div><p>Последние системные ошибки из Security Audit. Error ID можно использовать для поиска причины в Railway logs.</p></div>
+    <div class="panel-head"><div><small>DIAGNOSTICS</small><h2>Error Center</h2></div><p>Последние системные ошибки из Security Audit. Error ID можно использовать для поиска причины в логах сервера.</p></div>
     <div class="error-list">
       {% for e in errors %}<article><div class="error-meta"><span>{{ e.severity }}</span><b>#{{ e.id }}</b><small>{{ e.created_at.strftime('%d.%m.%Y %H:%M:%S') if e.created_at else '—' }}</small></div><pre>{{ e.details or 'Без деталей' }}</pre><button onclick="ackError({{ e.id }},this)">Отметить просмотренной</button></article>{% else %}<div class="good-state">✓ Ошибок в журнале сейчас нет.</div>{% endfor %}
     </div>

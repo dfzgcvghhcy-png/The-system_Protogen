@@ -127,7 +127,7 @@
 
   const presets = {
     default: {
-      image: 'url("/static/bg.png")',
+      image: 'url("/static/bg.webp")',
       overlay: 'linear-gradient(180deg,rgba(1,4,9,.58),rgba(1,3,7,.80))',
       size: 'cover'
     },
@@ -223,22 +223,44 @@
   loadWallpaper();
 
   // ---------------------------------------------------------
-  // SMALL LIVE VALUES / ANIMATION STATUS
+  // REAL SYSTEM HEALTH (no random numbers): bot heartbeat,
+  // database latency, round-trip ping and web uptime.
   // ---------------------------------------------------------
-  const cpu = $('#cpuValue');
-  const ram = $('#ramValue');
-  const ping = $('#pingValue');
-  const signalState = $('#signalState');
+  const el = id => document.getElementById(id);
+  const setText = (id, value, ok) => {
+    const node = el(id);
+    if (!node) return;
+    node.textContent = value;
+    node.classList.toggle('is-bad', ok === false);
+  };
+  const fmtUptime = s => {
+    s = Math.max(0, Number(s) || 0);
+    const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+    return d ? `${d}д ${h}ч` : h ? `${h}ч ${m}м` : `${m}м`;
+  };
 
-  setInterval(() => {
-    if (cpu) cpu.textContent = `${20 + Math.floor(Math.random() * 9)}%`;
-    if (ram) ram.textContent = `${38 + Math.floor(Math.random() * 8)}%`;
-    if (ping) ping.textContent = `${22 + Math.floor(Math.random() * 13)}ms`;
-    if (signalState) {
-      const states = ['STABLE', 'SYNC', 'ACTIVE', 'STABLE'];
-      signalState.textContent = states[Math.floor(Math.random() * states.length)];
+  async function loadHealth() {
+    const started = performance.now();
+    try {
+      const res = await fetch('/api/public/health', {cache: 'no-store'});
+      const h = await res.json();
+      const rtt = Math.round(performance.now() - started);
+      const botOk = h.bot === 'online';
+      setText('botValue', botOk ? 'ONLINE' : 'OFFLINE', botOk);
+      setText('dbValue', h.db_ms == null ? 'OFF' : `${h.db_ms}ms`, h.database === 'online');
+      setText('pingValue', `${rtt}ms`, rtt < 1500);
+      setText('uptimeValue', fmtUptime(h.uptime_seconds));
+      setText('sigDb', h.database === 'online' ? 'ONLINE' : 'OFFLINE', h.database === 'online');
+      setText('sigAi', h.ai ? 'READY' : 'OFF', !!h.ai);
+      setText('sigBot', botOk ? 'ONLINE' : 'OFFLINE', botOk);
+      setText('signalState', botOk ? 'STABLE' : 'NO SIGNAL', botOk);
+    } catch (err) {
+      setText('sigWeb', 'OFFLINE', false);
+      setText('signalState', 'NO SIGNAL', false);
     }
-  }, 2200);
+  }
+  loadHealth();
+  setInterval(loadHealth, 20000);
 })();
 
 
@@ -248,7 +270,7 @@
 // плавный SYSTEM ACCESS эффект, затем /admin/login.
 // ---------------------------------------------------------
 (() => {
-  const adminLink = document.querySelector('.admin-cta');
+  const adminLink = document.querySelector('.admin-login-link');
   if (!adminLink) return;
 
   adminLink.addEventListener('click', (event) => {

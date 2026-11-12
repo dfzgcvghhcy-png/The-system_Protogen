@@ -12,7 +12,7 @@
 *{box-sizing:border-box}
 html,body{margin:0;min-height:100%;font-family:Inter,Segoe UI,Arial,sans-serif;background:#02060b;color:#f5f8fb}
 body{min-height:100vh;overflow-x:hidden;background:
-linear-gradient(rgba(1,4,9,.70),rgba(1,4,9,.88)),url("{{ url_for('static', filename='bg.png') }}") center/cover fixed no-repeat}
+linear-gradient(rgba(1,4,9,.70),rgba(1,4,9,.88)),url("{{ url_for('static', filename='bg.webp') }}") center/cover fixed no-repeat}
 body:before{content:"";position:fixed;inset:0;pointer-events:none;background:
 repeating-linear-gradient(180deg,rgba(255,255,255,.018) 0 1px,transparent 1px 4px),
 radial-gradient(circle at 70% 30%,rgba(255,26,68,.12),transparent 36%)}
@@ -56,7 +56,7 @@ radial-gradient(circle at 70% 30%,rgba(255,26,68,.12),transparent 36%)}
   <main class="main">
     <section class="left-panel">
       <div class="account-card">
-        <div class="avatar"><img src="{{ url_for('static', filename='my_avatar.png') }}" alt="avatar"></div>
+        <div class="avatar"><img src="{{ url_for('static', filename='my_avatar.webp') }}" alt="avatar"></div>
         <div class="account-main">
           <div class="account-name">{{ username }}</div>
           <div class="account-meta">ID: {{ telegram_id or 'не привязан' }}</div>
@@ -102,7 +102,7 @@ radial-gradient(circle at 70% 30%,rgba(255,26,68,.12),transparent 36%)}
     </section>
 
     <section class="art-panel" aria-label="Protogen Security">
-      <img src="{{ url_for('static', filename='access-blocked-protogen.png') }}" alt="Protogen Security">
+      <img src="{{ url_for('static', filename='access-blocked-protogen.webp') }}" alt="Protogen Security">
     </section>
   </main>
 
