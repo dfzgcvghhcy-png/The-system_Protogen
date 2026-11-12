@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ProtogenAdmin — Модерация</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='moderation.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='mobile.css') }}">
+</head>
+<body class="moderation-page">
+<div class="bg"></div><div class="grid"></div><div class="scanlines"></div>
+{% include '_admin_sidebar.html' %}
+<div class="admin-main-wrap">
+{% include '_admin_topbar.html' %}
+<main class="moderation-main">
+  <section class="moderation-hero">
+    <div><div class="eyebrow">03 // MODERATION CONTROL CENTER</div><h1>Центр модерации <span>🛡️</span></h1><p>Управление наказаниями, автомодерацией и доступом к командам Protogen.</p></div>
+    <div class="role-badge"><i></i>{{ panel_role_name }}<small>УРОВЕНЬ {{ {'moderator':1,'admin':2,'deputy_creator':3,'creator':4}.get(panel_role,0) }}</small></div>
+  </section>
+
+  {% if error %}<div class="error-box">⚠️ {{ error }}</div>{% endif %}
+
+  <section class="moderation-grid">
+    <article class="mod-card accordion-card automation-card">
+      <button class="accordion-toggle" type="button" aria-expanded="false"><span><b>01 // AUTOMOD</b><strong>Автомодерация</strong><small>Базовые защитные механизмы чата</small></span><i>⌄</i></button>
+      <div class="accordion-content">
+      <div class="mod-head"><div></div><span class="status-pill"><i></i> {{ 'ACTIVE' if settings and settings.moderation_enabled else 'OFFLINE' }}</span></div>
+      <div class="toggle-list">
+        {% for key,label,desc in [
+          ('moderation_enabled','Система модерации','Главный переключатель модерации'),
+          ('auto_delete_spam','Автоудаление спама','Удалять обнаруженный спам'),
+          ('warn_enabled','Warn','Разрешить предупреждения'),
+          ('mute_enabled','Mute','Разрешить ограничения'),
+          ('ban_enabled','Ban','Разрешить блокировки'),
+          ('kick_enabled','Kick','Разрешить исключение'),
+          ('ai_moderation_enabled','AI-модерация','Передавать подозрительные сообщения AI'),
+          ('anti_flood_enabled','Anti-Flood','Защита от частых сообщений'),
+          ('anti_links_enabled','Anti-Links','Блокировать обычные ссылки'),
+          ('anti_invites_enabled','Anti-Invites','Блокировать Telegram-приглашения'),
+          ('anti_caps_enabled','Anti-CAPS','Контроль чрезмерного CAPS'),
+          ('anti_repeat_enabled','Anti-Repeat','Удалять повторяющиеся сообщения'),
+          ('anti_raid_enabled','Anti-Raid','Обнаруживать резкий всплеск входов'),
+          ('verification_enabled','Верификация входа','Новые участники подтверждают вход кнопкой'),
+          ('verification_kick_unverified','Kick без верификации','Исключать участника после истечения проверки'),
+          ('daily_enabled','Daily / Quest','Разрешить ежедневные XP-награды')
+        ] %}
+        <label class="toggle-row {% if not has_creator_operational_access %}locked{% endif %}"><span><b>{{ label }}</b><small>{{ desc }}</small></span><input type="checkbox" data-setting="{{ key }}" {% if settings and settings|attr(key) %}checked{% endif %} {% if not has_creator_operational_access %}disabled{% endif %}><i></i></label>
+        {% endfor %}
+      </div>
+
+      <div class="automod-tuning">
+        <div class="tuning-title"><b>AUTOMOD 2.0 // ЧУВСТВИТЕЛЬНОСТЬ</b><small>Пороговые значения применяются ботом сразу после сохранения.</small></div>
+        <div class="tuning-grid">
+          {% for key,label,unit,value,minv,maxv in [
+            ('flood_limit','Сообщений для Flood','шт.', settings.flood_limit if settings else 6,3,20),
+            ('flood_window_seconds','Окно Flood','сек.', settings.flood_window_seconds if settings else 8,3,60),
+            ('caps_percent','Порог CAPS','%', settings.caps_percent if settings else 75,50,100),
+            ('caps_min_letters','Минимум букв CAPS','букв', settings.caps_min_letters if settings else 12,5,100),
+            ('repeat_limit','Повторов текста','шт.', settings.repeat_limit if settings else 3,2,10),
+            ('repeat_window_seconds','Окно повторов','сек.', settings.repeat_window_seconds if settings else 30,5,180),
+            ('raid_join_limit','Входов для RAID','чел.', settings.raid_join_limit if settings else 6,3,50),
+            ('raid_window_seconds','Окно RAID','сек.', settings.raid_window_seconds if settings else 20,5,120),
+            ('raid_mode_minutes','Длительность RAID MODE','мин.', settings.raid_mode_minutes if settings else 10,1,120),
+            ('verification_timeout_minutes','Таймер верификации','мин.', settings.verification_timeout_minutes if settings else 3,1,30),
+            ('ai_moderation_threshold','Порог AI Review','%', settings.ai_moderation_threshold if settings else 85,50,100)
+          ] %}
+          <label class="tuning-field {% if not has_creator_operational_access %}locked{% endif %}"><span>{{ label }}<small>{{ unit }}</small></span><input type="number" data-number-setting="{{ key }}" value="{{ value }}" min="{{ minv }}" max="{{ maxv }}" {% if not has_creator_operational_access %}disabled{% endif %}></label>
+          {% endfor %}
+        </div>
+        <div class="automation-note automod-note"><span>⚡</span><div><b>Цепочка реакции</b><small>Нарушение → удаление сообщения → Warn → при достижении лимита выполняется выбранное действие Mute/Ban.</small></div></div>
+      </div>
+      </div>
+    </article>
+
+    <article class="mod-card accordion-card punish-card">
+      <button class="accordion-toggle" type="button" aria-expanded="false"><span><b>02 // LIMITS</b><strong>Наказания</strong><small>Общие параметры системы</small></span><i>⌄</i></button>
+      <div class="accordion-content">
+      <div class="mod-head"><div></div></div>
+      <div class="limit-row"><div><b>WARN LIMIT</b><small>До автоматического действия</small></div><strong>{{ settings.warn_limit if settings else '—' }}</strong></div>
+      <div class="limit-row"><div><b>MUTE DURATION</b><small>Стандартная длительность</small></div><strong>{{ settings.mute_duration if settings else '—' }}<em> мин</em></strong></div>
+      <div class="action-preview"><span>⚠️</span><div><b>Действие после лимита Warn</b><small>Что делать, когда пользователь достиг лимита предупреждений.</small><select id="autoWarnAction" {% if not has_creator_operational_access %}disabled{% endif %}><option value="mute" {% if settings and settings.auto_warn_action == 'mute' %}selected{% endif %}>🔇 Mute</option><option value="ban" {% if settings and settings.auto_warn_action == 'ban' %}selected{% endif %}>🚫 Ban</option><option value="none" {% if settings and settings.auto_warn_action == 'none' %}selected{% endif %}>⏸ Ничего</option></select></div></div>
+      </div>
+    </article>
+  </section>
+
+  <section class="mod-card accordion-card command-card">
+    <button class="accordion-toggle" type="button" aria-expanded="false"><span><b>03 // COMMAND ACCESS</b><strong>Доступ к командам</strong><small>Кто может использовать команды Protogen</small></span><i>⌄</i></button>
+    <div class="accordion-content">
+    <div class="mod-head command-head"><div><span class="panel-kicker">03 // COMMAND ACCESS</span><h2>Доступ к командам</h2><p>Кто может использовать команды Protogen. Изменять матрицу может Создатель или Заместитель создателя. Все действия заместителя фиксируются в аудите.</p></div><button id="saveModeration" class="save-command" {% if not has_creator_operational_access %}disabled{% endif %}>✓ СОХРАНИТЬ</button></div>
+    <div class="legend"><span><i class="dot green"></i> разрешено</span><span><i class="dot red"></i> заблокировано</span><span>Уровень: 1 Модератор · 2 Администратор · 3 Создатель</span></div>
+    <div class="command-table">
+      <div class="command-grid table-title"><span>КОМАНДА</span><span>ОПИСАНИЕ</span><span>МИНИМАЛЬНЫЙ РАНГ</span><span>СТАТУС</span></div>
+      {% for c in commands %}
+      <div class="command-grid command-row" data-command-id="{{ c.id }}" data-command="{{ c.command }}">
+        <div class="command-name"><b>{{ c.command }}</b><small>{{ c.label }}</small></div>
+        <div class="command-desc">{{ c.description or '—' }}</div>
+        <div class="rank-select">
+          <select data-role-level {% if not has_creator_operational_access %}disabled{% endif %}>
+            <option value="0" {% if c.min_role_level == 0 %}selected{% endif %}>Все участники</option>
+            <option value="1" {% if c.min_role_level == 1 %}selected{% endif %}>Модератор</option>
+            <option value="2" {% if c.min_role_level == 2 %}selected{% endif %}>Администратор</option>
+            <option value="3" {% if c.min_role_level == 3 %}selected{% endif %}>Создатель</option>
+          </select>
+        </div>
+        <label class="command-switch {% if not has_creator_operational_access %}locked{% endif %}"><input type="checkbox" data-command-enabled {% if c.enabled %}checked{% endif %} {% if not has_creator_operational_access %}disabled{% endif %}><i></i><span>{{ 'ON' if c.enabled else 'OFF' }}</span></label>
+      </div>
+      {% endfor %}
+    </div>
+    </div>
+  </section>
+
+  <section class="mod-card flow-card">
+    <div class="mod-head"><div><span class="panel-kicker">04 // PROTECTION FLOW</span><h2>Логика доступа</h2><p>Protogen проверяет права на сервере, а не только в интерфейсе.</p></div></div>
+    <div class="flow"><div><strong>👤 Пользователь</strong><small>команда</small></div><b>→</b><div><strong>🔐 Проверка ранга</strong><small>уровень доступа</small></div><b>→</b><div><strong>🛡️ Проверка функции</strong><small>включена / выключена</small></div><b>→</b><div><strong>⚡ Действие</strong><small>логирование</small></div></div>
+  </section>
+
+  <div class="moderation-savebar"><div><b>СИСТЕМА МОДЕРАЦИИ</b><small>Настройки доступа хранятся в PostgreSQL и не сбрасываются при перезапуске.</small></div><span>DATABASE <b>ONLINE</b></span></div>
+  <footer>PROTOGEN SYSTEM // MODERATION CONTROL CENTER · <span>SECURE SESSION</span></footer>
+</main>
+</div>
+<audio id="accessDeniedSound" preload="auto" src="{{ url_for('static', filename='access-denied.mp3') }}"></audio>
+<script src="{{ url_for('static', filename='access-control.js') }}"></script>
+<script>
+document.querySelectorAll('.accordion-toggle').forEach(btn=>{btn.addEventListener('click',()=>{const card=btn.closest('.accordion-card');const open=card.classList.toggle('open');btn.setAttribute('aria-expanded',open?'true':'false');});});
+const isCreator={{ 'true' if has_creator_operational_access else 'false' }};
+const levelNames=['Все участники','Модератор','Администратор','Создатель'];
+const rows=[...document.querySelectorAll('.command-row')];
+function denied(){ if(window.showAccessDenied) window.showAccessDenied(); }
+document.querySelectorAll('.locked').forEach(el=>el.addEventListener('click',e=>{if(!isCreator){e.preventDefault();denied()}}));
+const save=document.getElementById('saveModeration');
+save?.addEventListener('click',async()=>{
+ if(!isCreator){denied();return}
+ const settings={}; document.querySelectorAll('[data-setting]').forEach(x=>settings[x.dataset.setting]=x.checked); document.querySelectorAll('[data-number-setting]').forEach(x=>settings[x.dataset.numberSetting]=Number(x.value)); const autoWarn=document.getElementById('autoWarnAction'); if(autoWarn) settings.auto_warn_action=autoWarn.value;
+ const commands=rows.map(row=>({command:row.dataset.command,min_role_level:Number(row.querySelector('[data-role-level]').value),enabled:row.querySelector('[data-command-enabled]').checked}));
+ save.disabled=true; save.textContent='⟳ СОХРАНЕНИЕ...';
+ try{const r=await fetch('/api/admin/moderation',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({settings,commands})});const d=await r.json();if(!r.ok)throw Error(d.error||'Ошибка');save.textContent='✓ СОХРАНЕНО';setTimeout(()=>{save.textContent='✓ СОХРАНИТЬ';save.disabled=false},1200)}catch(e){save.disabled=false;save.textContent='✓ СОХРАНИТЬ';alert(e.message)}});
+document.querySelectorAll('[data-command-enabled]').forEach(x=>x.addEventListener('change',()=>x.closest('.command-switch').querySelector('span').textContent=x.checked?'ON':'OFF'));
+</script>
+</body>
+</html>

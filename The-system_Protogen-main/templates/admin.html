@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ProtogenAdmin Console</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='system-boot.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='mobile.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='telegram-miniapp.css') }}">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script>
+  (() => {
+    const tg = window.Telegram && window.Telegram.WebApp;
+    // telegram-web-app.js defines WebApp in every browser; initData exists only inside Telegram.
+    if (!tg || !tg.initData) return;
+
+    document.documentElement.classList.add('tg-miniapp');
+
+    try {
+      tg.ready();
+      tg.expand();
+      if (tg.setHeaderColor) tg.setHeaderColor('#02050b');
+      if (tg.setBackgroundColor) tg.setBackgroundColor('#02050b');
+    } catch (_) {}
+
+    window.addEventListener('DOMContentLoaded', () => {
+      document.body.classList.add('tg-miniapp');
+
+      const backTarget = document.body.dataset.tgBack;
+      if (!tg.BackButton) return;
+
+      try {
+        if (backTarget) {
+          tg.BackButton.show();
+          tg.BackButton.onClick(() => {
+            window.location.href = backTarget;
+          });
+        } else {
+          tg.BackButton.hide();
+        }
+      } catch (_) {}
+    });
+  })();
+  </script>
+
+</head>
+<body class="admin-dashboard-page" data-tg-page="home">
+
+  <div class="system-entry-sequence" data-system-boot data-boot-key="protogen-admin-entry-v1" aria-hidden="false">
+    <div class="boot-scan"></div>
+    <section class="boot-shell" role="status" aria-live="polite">
+      <button class="boot-skip" type="button" data-boot-skip>ПРОПУСТИТЬ</button>
+      <div class="boot-brandline">THE SYSTEM_PROTOGEN // <b>SECURE NODE</b></div>
+      <div class="boot-core">
+        <div class="boot-orbit"></div>
+        <img class="boot-avatar" src="{{ url_for('static', filename='my_avatar.webp') }}" alt="">
+      </div>
+      <div class="boot-kicker">AUTHENTICATION COMPLETE</div>
+      <div class="boot-title">ACCESS GRANTED</div>
+      <div class="boot-subtitle">ADMIN CONSOLE // SECURE SESSION ESTABLISHED</div>
+      <div class="boot-statuses">
+        <div class="boot-status"><i></i>IDENTITY VERIFIED</div>
+        <div class="boot-status"><i></i>DATABASE LINKED</div>
+        <div class="boot-status"><i></i>PROTOGEN CORE ONLINE</div>
+      </div>
+      <div class="boot-progress"><i></i></div>
+      <div class="boot-progress-meta"><span>INITIALIZING ADMIN ENVIRONMENT</span><b data-boot-percent>0%</b></div>
+    </section>
+  </div>
+  <div class="bg"></div><div class="grid"></div><div class="scanlines"></div>
+  <div class="admin-app">
+    {% include '_admin_sidebar.html' %}
+
+    <div class="admin-main-wrap">
+      <header class="admin-topbar">
+        <div class="topbar-brand"><div class="brand-name">ProtogenAdmin <span>Console</span></div><div class="brand-sub"><i></i> THE SYSTEM_PROTOGEN</div></div>
+        <div class="topbar-status"><span><i></i> DATABASE <b id="top-db">…</b></span><span><i></i> BOT STATUS <b id="top-bot">…</b></span></div>
+      </header>
+
+      <main id="dashboard" class="admin-main">
+        <section class="dashboard-hero">
+          <div class="hero-copy"><div class="eyebrow">SYSTEM CONTROL // ADMIN PANEL</div><h1>Добро пожаловать, <span>{{ username }}</span> <em>👋</em></h1><p>Управление системой, модерацией, AI и поведением Protogen.</p></div>
+          <div class="hero-signal"><i></i><span>SYSTEM CORE</span><b>ONLINE</b></div>
+        </section>
+
+        <section class="cards" id="statistics">
+          <article class="stat-card"><div class="stat-icon">👥</div><div><span>Участники</span><strong id="users">—</strong><small>в базе</small></div></article>
+          <article class="stat-card"><div class="stat-icon pulse">⌁</div><div><span>Активные</span><strong id="active">—</strong><small>за 24 часа</small></div></article>
+          <article class="stat-card"><div class="stat-icon">▣</div><div><span>Сообщения</span><strong id="messages">—</strong><small>всего сообщений</small></div></article>
+          <article class="stat-card mute"><div class="stat-icon">🔇</div><div><span>Муты</span><strong id="mutes">—</strong><small>всего</small></div></article>
+          <article class="stat-card ban"><div class="stat-icon">⊘</div><div><span>Баны</span><strong id="bans">—</strong><small>всего</small></div></article>
+          <article class="stat-card kick"><div class="stat-icon">♜</div><div><span>Действия</span><strong id="actions">—</strong><small>сегодня</small></div></article>
+        </section>
+
+        <section class="dashboard-grid-v2">
+          <article class="panel activity compact-panel">
+            <div class="panel-head"><div><span class="panel-kicker">ACTIVITY</span><h2>Активность сообщений</h2></div><button id="refresh" class="period">7 дней⌄</button></div>
+            <div id="chart" class="chart-v2"><div class="loading">Загрузка статистики…</div></div>
+          </article>
+
+          <article class="panel status compact-panel">
+            <div class="panel-head"><div><span class="panel-kicker">SYSTEM</span><h2>Система</h2></div></div>
+            <div class="system-list">
+              <div><span>▤</span><label>База данных</label><b id="db-status">Проверка…</b></div>
+              <div><span>➤</span><label>Telegram-бот</label><b id="bot-status">Проверка…</b></div>
+              <div><span>✦</span><label>OpenRouter AI</label><b id="ai-status">Проверка…</b></div>
+              <div><span>♢</span><label>Действий сегодня</label><b id="today-actions">—</b></div>
+              <div><span>✦</span><label>Варнов всего</label><b id="warns-total">—</b></div>
+            </div>
+          </article>
+
+          <article class="panel ai-panel compact-panel">
+            <div class="panel-head"><div><span class="panel-kicker">PROTOGEN AI</span><h2>Protogen AI</h2></div><span class="live"><i></i> LIVE</span></div>
+            <div class="ai-core"><div class="ai-avatar"><img src="{{ url_for('static', filename='my_avatar.webp') }}" alt="Protogen AI"></div><div class="ai-meta"><p>Режим: <b id="ai-mode">…</b></p><p>Модель: <b id="ai-model">…</b></p><p>Триггер: <b>/ai · ///Протоген</b></p></div></div>
+            <div class="visual-wave" id="protoWave"></div>
+          </article>
+
+          <article class="panel recent-panel">
+            <div class="panel-head"><div><span class="panel-kicker">MODERATION</span><h2>Последние действия</h2></div><button class="small-link" onclick="location.href='/admin/history'">Смотреть все</button></div>
+            <div id="recent" class="recent-v2"><div class="loading">Загрузка истории…</div></div>
+          </article>
+
+          <article class="panel top-users-panel">
+            <div class="panel-head"><div><span class="panel-kicker">RANKING</span><h2>Топ пользователей</h2></div><span class="period-label">7 дней</span></div>
+            <div id="topUsers" class="top-users"><div class="empty">Статистика пользователей появится после загрузки данных.</div></div>
+          </article>
+
+          {% if has_creator_operational_access %}
+          <article class="panel quick-panel">
+            <div class="panel-head"><div><span class="panel-kicker">COMMAND CENTER</span><h2>Быстрые действия</h2></div></div>
+            <div class="quick-list">
+              <button onclick="loadDashboard()"><span>⟳</span><div><b>Обновить статистику</b><small>Получить актуальные данные</small></div></button>
+              <button onclick="location.href='/admin/statistics'"><span>ϟ</span><div><b>Статистика</b><small>Открыть аналитику системы</small></div></button>
+              <button onclick="location.href='/admin/history'"><span>♢</span><div><b>Проверка системы</b><small>Журнал и диагностика</small></div></button>
+              <button onclick="location.href='/admin/settings'"><span>☁</span><div><b>Настройки</b><small>Конфигурация Protogen</small></div></button>
+            </div>
+          </article>
+          {% endif %}
+        </section>
+        <footer>PROTOGEN CORE v2.0 · THE SYSTEM_PROTOGEN · <span>SECURE ADMIN SESSION</span></footer>
+      </main>
+    </div>
+  </div>
+<script>
+const $=id=>document.getElementById(id); const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+function icon(t){return({warn:'⚠',unwarn:'⌁',mute:'⊘',ban:'⊘',kick:'♜'})[t]||'◇'}
+function renderTopUsers(rows){
+  const el=$('topUsers');
+  if(!rows.length){el.innerHTML='<div class="empty">Нет данных о пользователях.</div>';return}
+  el.innerHTML=rows.slice(0,4).map((x,i)=>`<div class="top-user"><strong>${i+1}</strong><div class="mini-avatar">${esc((x.username||x.user||'?').slice(0,1).toUpperCase())}</div><b>${esc(x.username||x.user||'Пользователь')}</b><span>${esc(x.messages??x.count??0)} сообщений</span></div>`).join('');
+}
+async function loadDashboard(){try{const r=await fetch('/api/admin/dashboard',{cache:'no-store'});const d=await r.json();if(!r.ok)throw Error(d.error||'API error');
+$('users').textContent=d.stats.users;$('active').textContent=d.stats.active_users;$('messages').textContent=d.stats.messages;$('mutes').textContent=d.stats.mutes;$('bans').textContent=d.stats.bans;
+$('actions').textContent=Number(d.stats.actions_today||0);$('db-status').textContent=d.database==='online'?'ONLINE':'OFFLINE';$('db-status').className=d.database==='online'?'ok':'bad';
+const setS=(id,ok,yes,no)=>{const n=$(id);if(n){n.textContent=ok?yes:no;n.className=ok?'ok':'bad';}};
+setS('top-db',d.database==='online','ONLINE','OFFLINE');setS('top-bot',d.bot==='online','ONLINE','OFFLINE');setS('bot-status',d.bot==='online','ONLINE','OFFLINE');
+const ai=d.ai||{};setS('ai-status',!!ai.configured,'ПОДКЛЮЧЁН','НЕТ КЛЮЧА');setS('ai-mode',!!ai.configured,'ACTIVE','OFF');if($('ai-model'))$('ai-model').textContent=String(ai.model||'—').split('/').pop();
+$('today-actions').textContent=Number(d.stats.actions_today||0);$('warns-total').textContent=Number(d.stats.warns||0);
+const rows=d.activity||[];const max=Math.max(...rows.map(x=>Number(x.messages)||0),1);$('chart').innerHTML=rows.length?rows.slice(-7).map(x=>`<div class="bar-wrap"><div class="bar"><i style="height:${Math.max(7,(Number(x.messages)||0)/max*100)}%"></i></div><span>${esc(x.day)}</span><b>${esc(x.messages)}</b></div>`).join(''):'<div class="empty">Пока нет дневной статистики.</div>';
+const recent=d.recent||[];$('recent').innerHTML=recent.length?recent.slice(0,4).map(x=>`<div class="event-v2"><div class="event-icon">${icon(x.type)}</div><div><b>${esc(x.user)}</b><small>${esc(x.type)} · ${esc(x.reason)}</small></div><time>${esc(x.created_at)}</time></div>`).join(''):'<div class="empty">История пока пустая.</div>';
+renderTopUsers(d.top_users||d.users_top||[]);
+}catch(e){$('db-status').textContent='ERROR';$('db-status').className='bad';$('recent').innerHTML='<div class="empty">Не удалось загрузить данные: '+esc(e.message)+'</div>';}}
+$('refresh').addEventListener('click',loadDashboard);loadDashboard();setInterval(loadDashboard,30000);const wave=$('protoWave');if(wave)wave.innerHTML=Array.from({length:34},(_,i)=>`<i style="--h:${12+(i*17)%48}px"></i>`).join('');
+</script>
+
+  <nav class="tg-bottom-nav" aria-label="Навигация Mini App">
+    <a class="active" href="/admin" aria-current="page">
+      <span class="tg-nav-icon">⌂</span>
+      <b>Главная</b>
+    </a>
+    <a href="/admin/users">
+      <span class="tg-nav-icon">👥</span>
+      <b>Пользователи</b>
+    </a>
+    <a href="/admin/moderation">
+      <span class="tg-nav-icon">🛡</span>
+      <b>Модерация</b>
+    </a>
+    {% if is_admin_or_creator %}
+    <a href="/admin/settings">
+      <span class="tg-nav-icon">⚙</span>
+      <b>Настройки</b>
+    </a>
+    {% endif %}
+  </nav>
+
+<script src="{{ url_for('static', filename='system-boot.js') }}"></script>
+</body></html>

@@ -1,0 +1,36 @@
+# Render Blueprint: Dashboard → New → Blueprint → choose this repository.
+# One free web service runs BOTH the web panel and the Telegram bot (webhook mode).
+services:
+  - type: web
+    name: protogen
+    runtime: python
+    plan: free
+    region: frankfurt
+    buildCommand: pip install -r requirements.txt
+    # ONE worker only — otherwise several copies of the bot would start.
+    startCommand: gunicorn server:app --workers 1 --threads 8 --timeout 120 --bind 0.0.0.0:$PORT
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: BOT_MODE
+        value: webhook
+      - key: BOT_TIMEZONE
+        value: Europe/Moscow
+      - key: SECRET_KEY
+        generateValue: true
+      - key: WEBHOOK_SECRET
+        generateValue: true
+      # Values below are entered by you in the Render dashboard (never commit them):
+      - key: BOT_TOKEN
+        sync: false
+      - key: DATABASE_URL       # Neon connection string (free PostgreSQL)
+        sync: false
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: CREATOR_TELEGRAM_ID
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false

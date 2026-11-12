@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Protogen — Доступ заблокирован</title>
+<style>
+:root{
+  --red:#ff3853;--red2:#ff1744;--cyan:#18f5df;--ink:#030710;--panel:#071019;
+  --line:rgba(255,56,83,.34);--line2:rgba(255,255,255,.08);--muted:#91a0ad;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;font-family:Inter,Segoe UI,Arial,sans-serif;background:#02060b;color:#f5f8fb}
+body{min-height:100vh;overflow-x:hidden;background:
+linear-gradient(rgba(1,4,9,.70),rgba(1,4,9,.88)),url("{{ url_for('static', filename='bg.webp') }}") center/cover fixed no-repeat}
+body:before{content:"";position:fixed;inset:0;pointer-events:none;background:
+repeating-linear-gradient(180deg,rgba(255,255,255,.018) 0 1px,transparent 1px 4px),
+radial-gradient(circle at 70% 30%,rgba(255,26,68,.12),transparent 36%)}
+.shell{position:relative;z-index:1;width:min(100%,1540px);min-height:100vh;margin:0 auto;padding:18px 22px 16px;display:flex;flex-direction:column;gap:16px}
+.topbar,.statusbar,.left-panel,.art-panel{background:rgba(4,10,18,.93);backdrop-filter:blur(15px);box-shadow:0 24px 80px rgba(0,0,0,.45)}
+.topbar{height:64px;border:1px solid rgba(255,56,83,.2);border-radius:18px;display:flex;align-items:center;justify-content:space-between;padding:0 22px}
+.brand{display:flex;align-items:center;gap:13px}.brand-mark{width:40px;height:40px;border:1px solid var(--red);border-radius:12px;display:grid;place-items:center;color:var(--red);font-size:21px;box-shadow:0 0 20px rgba(255,56,83,.15)}
+.brand-title{font-weight:900;letter-spacing:2px;font-size:16px}.brand-sub{color:#788997;font-size:10px;letter-spacing:2px;margin-top:3px}
+.navline{color:#7f8c99;font-size:10px;letter-spacing:2.4px}.online{display:flex;align-items:center;gap:10px;color:#dfe8ef;font-size:10px;letter-spacing:1.4px}.dot{width:9px;height:9px;border-radius:50%;background:var(--red);box-shadow:0 0 18px var(--red)}
+.main{flex:1;display:grid;grid-template-columns:minmax(470px,560px) minmax(0,1fr);gap:16px;min-height:0;align-items:start}
+.left-panel,.art-panel{border:1px solid var(--line);border-radius:18px;overflow:hidden;position:relative}
+.left-panel{padding:18px;display:flex;flex-direction:column;min-height:0}
+.left-panel:before,.art-panel:before{content:"";position:absolute;inset:0;pointer-events:none;border:1px solid rgba(255,56,83,.07);border-radius:18px;box-shadow:inset 0 0 60px rgba(255,36,71,.025)}
+.account-card{border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;align-items:center;gap:14px;background:linear-gradient(135deg,rgba(255,255,255,.035),rgba(255,56,83,.025));position:relative}
+.avatar{width:74px;height:74px;border-radius:50%;border:2px solid var(--red);display:grid;place-items:center;background:radial-gradient(circle at 40% 35%,#33204d,#0a1020 58%,#05080d 100%);box-shadow:0 0 24px rgba(255,56,83,.18);overflow:hidden}
+.avatar img{width:100%;height:100%;object-fit:cover}.account-main{min-width:0;flex:1}.account-name{font-size:22px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.account-meta{font-size:12px;color:#8d9aa6;margin-top:6px}.role-badge{border:1px solid #a45b14;color:#ffb34e;background:rgba(168,87,14,.10);border-radius:999px;padding:8px 13px;font-weight:800;font-size:12px;letter-spacing:1px;align-self:flex-start}
+.denied-block{padding:18px 10px 8px}.kicker{color:#ff6276;font-size:10px;letter-spacing:2px;font-weight:800}.headline-row{display:flex;align-items:center;gap:16px;margin:8px 0 8px}.warn-icon{font-size:60px;line-height:1;filter:drop-shadow(0 0 14px rgba(255,56,83,.5))}.headline{font-size:clamp(34px,3.6vw,54px);font-weight:950;line-height:.92;letter-spacing:-1px;color:#ffd4dc;text-shadow:0 0 26px rgba(255,56,83,.18)}
+.desc{font-size:16px;line-height:1.45;color:#d2dce4;max-width:560px}
+.details{margin-top:12px;border:1px solid var(--line2);border-radius:12px;overflow:hidden;background:rgba(255,255,255,.018)}
+.detail-row{display:grid;grid-template-columns:1fr 1.2fr;gap:12px;padding:9px 12px;border-bottom:1px solid var(--line2);font-size:12px}.detail-row:last-child{border-bottom:0}.detail-key{color:#8f9da8}.detail-val{font-weight:700;color:#e8edf2}.danger{color:#ff4963}.cyan{color:var(--cyan)}
+.request-row{display:grid;grid-template-columns:1.4fr .8fr;gap:10px;margin-top:14px}.request-card,.timer-card{border:1px solid var(--line);border-radius:12px;padding:12px;background:rgba(255,33,68,.055)}
+.request-card form{margin:0}.request-btn{width:100%;border:0;background:transparent;color:#fff;text-align:left;padding:0;cursor:pointer;font:inherit}.request-title{font-size:15px;font-weight:900}.request-sub{font-size:10px;color:#c58a93;margin-top:5px}.request-btn[disabled]{opacity:.55;cursor:not-allowed}.timer-card{border-color:var(--line2);background:rgba(255,255,255,.018);display:flex;flex-direction:column;justify-content:center;align-items:center}.timer-label{font-size:10px;color:#87939d}.timer{font-size:24px;font-weight:900;color:#ff8c9c;margin-top:5px;letter-spacing:1px}.flash{margin-top:10px;padding:10px 12px;border-radius:10px;font-size:11px}.flash.ok{background:rgba(24,245,223,.08);border:1px solid rgba(24,245,223,.24);color:#8fffeF}.flash.err{background:rgba(255,56,83,.08);border:1px solid rgba(255,56,83,.24);color:#ff9aab}
+.left-footer{margin-top:auto;padding-top:14px;border-top:1px solid var(--line2);font-size:9px;letter-spacing:1.2px;color:#5f6f7c;display:flex;align-items:center;justify-content:space-between}.version{color:#71808c}
+.art-panel{min-height:0;aspect-ratio:990/780;background:#05070c;align-self:start}.art-panel img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:center;filter:saturate(1.03) contrast(1.02);background:#05070c}.art-panel:after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,rgba(2,5,9,.05),transparent 28%),repeating-linear-gradient(180deg,transparent 0 3px,rgba(255,255,255,.014) 3px 4px)}
+.statusbar{min-height:58px;border:1px solid rgba(255,56,83,.18);border-radius:16px;display:flex;align-items:center;justify-content:space-between;padding:0 22px}.status-items{display:flex;align-items:center;gap:26px}.status-item{display:flex;align-items:center;gap:9px;font-size:11px;letter-spacing:1.1px;color:#b8c4cc}.status-item strong{color:#fff}.status-item.notify{color:#70ffe8}.status-item.denied{color:#ff6d80}.module{font-size:9px;color:#5f6d78;letter-spacing:1.4px}
+.actions-mobile{display:none}
+@media(max-width:1050px){.main{grid-template-columns:1fr}.art-panel{min-height:0;aspect-ratio:990/780;order:1}.left-panel{order:2;min-height:auto}.navline{display:none}}
+@media(max-width:700px){.shell{padding:10px}.topbar{height:auto;min-height:58px;padding:10px 14px}.online .date{display:none}.main{gap:10px}.art-panel{min-height:0;aspect-ratio:990/780}.left-panel{padding:12px}.account-card{padding:11px}.avatar{width:58px;height:58px}.account-name{font-size:18px}.role-badge{font-size:10px;padding:6px 9px}.headline-row{align-items:flex-start}.warn-icon{font-size:44px}.headline{font-size:36px}.desc{font-size:14px}.detail-row{grid-template-columns:1fr;gap:3px;padding:8px 10px}.request-row{grid-template-columns:1fr}.timer-card{min-height:74px}.statusbar{padding:12px 14px;align-items:flex-start;gap:10px}.status-items{flex-wrap:wrap;gap:12px}.module{display:none}}
+@media(max-width:430px){.brand-title{font-size:14px}.brand-sub{font-size:8px}.account-card{align-items:flex-start}.role-badge{position:absolute;right:10px;top:10px}.account-main{padding-right:82px}.headline{font-size:31px}.statusbar{font-size:9px}}
+</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='mobile.css') }}">
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <div class="brand"><div class="brand-mark">◇</div><div><div class="brand-title">PROTOGEN</div><div class="brand-sub">SECURE ACCESS CONTROL</div></div></div>
+    <div class="navline">PROTECTION&nbsp;&nbsp;//&nbsp;&nbsp;CONTROL&nbsp;&nbsp;//&nbsp;&nbsp;SECURITY&nbsp;&nbsp;//&nbsp;&nbsp;FOR A BETTER TOMORROW</div>
+    <div class="online"><span class="dot"></span><span>SYSTEM ONLINE</span><span class="date" id="clock"></span></div>
+  </header>
+
+  <main class="main">
+    <section class="left-panel">
+      <div class="account-card">
+        <div class="avatar"><img src="{{ url_for('static', filename='my_avatar.webp') }}" alt="avatar"></div>
+        <div class="account-main">
+          <div class="account-name">{{ username }}</div>
+          <div class="account-meta">ID: {{ telegram_id or 'не привязан' }}</div>
+          <div class="account-meta">@username не указан</div>
+        </div>
+        <div class="role-badge">{{ role_name|upper }}</div>
+      </div>
+
+      <div class="denied-block">
+        <div class="kicker">WEB ACCESS CONTROL</div>
+        <div class="headline-row"><div class="warn-icon">⚠</div><div class="headline">ДОСТУП<br>ЗАБЛОКИРОВАН</div></div>
+        <div class="desc">Вы не можете войти в систему.<br>Доступ к панели был ограничен Создателем.<br>По всем вопросам восстановления доступа обращайтесь к Создателю.</div>
+      </div>
+
+      <div class="details">
+        <div class="detail-row"><div class="detail-key">◉ РОЛЬ</div><div class="detail-val">{{ role_name }}</div></div>
+        <div class="detail-row"><div class="detail-key">◉ СТАТУС</div><div class="detail-val danger">Заблокирован</div></div>
+        <div class="detail-row"><div class="detail-key">◉ ПРИЧИНА</div><div class="detail-val">{{ block_reason_text }}</div></div>
+        <div class="detail-row"><div class="detail-key">◉ ТИП БЛОКИРОВКИ</div><div class="detail-val">{{ block_type }}</div></div>
+        <div class="detail-row"><div class="detail-key">◉ ЗАБЛОКИРОВАНО</div><div class="detail-val js-local-time" data-utc="{{ blocked_at.isoformat() if blocked_at else '' }}" data-fallback="—">—</div></div>
+        <div class="detail-row"><div class="detail-key">◉ ИНИЦИАТОР</div><div class="detail-val">{{ blocked_by }}</div></div>
+        <div class="detail-row"><div class="detail-key">◉ ПОСЛЕДНИЙ УСПЕШНЫЙ ВХОД</div><div class="detail-val js-local-time" data-utc="{{ last_login.isoformat() if last_login else '' }}" data-fallback="нет данных">нет данных</div></div>
+        <div class="detail-row"><div class="detail-key">◉ АКТИВНЫЕ СЕССИИ</div><div class="detail-val">Завершено: {{ terminated_sessions }}</div></div>
+      </div>
+
+      <div class="request-row">
+        <div class="request-card">
+          <form method="post" action="{{ url_for('admin_web_access_blocked') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="request-btn" id="requestBtn" type="submit" {% if request_cooldown > 0 %}disabled{% endif %}>
+              <div class="request-title">✉ Запросить доступ</div>
+              <div class="request-sub">Уведомление уйдёт Создателю в Telegram и сохранится в Security Audit</div>
+            </button>
+          </form>
+        </div>
+        <div class="timer-card"><div class="timer-label">Можно отправить через</div><div class="timer" id="timer" data-seconds="{{ request_cooldown|int }}">00:00</div></div>
+      </div>
+
+      {% if request_sent %}<div class="flash ok">✓ Запрос зарегистрирован и отправлен Создателю.</div>{% endif %}
+      {% if request_error %}<div class="flash err">{{ request_error }}</div>{% endif %}
+
+      <div class="left-footer"><span>THE SYSTEM_PROTOGEN // CREATOR ACCESS POLICY // EVENT LOGGED</span><span class="version">v2.8.1</span></div>
+    </section>
+
+    <section class="art-panel" aria-label="Protogen Security">
+      <img src="{{ url_for('static', filename='access-blocked-protogen.webp') }}" alt="Protogen Security">
+    </section>
+  </main>
+
+  <footer class="statusbar">
+    <div class="status-items">
+      <div class="status-item"><span>▣</span><strong>EVENT LOGGED</strong></div>
+      {% if request_sent %}
+      <div class="status-item notify"><span>●</span><strong>CREATOR NOTIFIED</strong></div>
+      {% elif request_error %}
+      <div class="status-item denied"><span>●</span><strong>NOTIFY FAILED</strong></div>
+      {% else %}
+      <div class="status-item notify"><span>●</span><strong>CREATOR STANDBY</strong></div>
+      {% endif %}
+      <div class="status-item denied"><span>●</span><strong>ACCESS DENIED</strong></div>
+    </div>
+    <div class="module">THE SYSTEM_PROTOGEN &nbsp;//&nbsp; SECURITY MODULE &nbsp; v2.8.1</div>
+  </footer>
+</div>
+<audio id="blockedSound" preload="auto" data-autoplay="{{ '1' if play_block_sound else '0' }}" {% if play_block_sound %}autoplay{% endif %}><source src="{{ url_for('static', filename='stager-denied.mp3') }}" type="audio/mpeg"></audio>
+<script>
+const audio=document.getElementById('blockedSound');
+function playSound(){try{audio.currentTime=0;audio.play().catch(()=>{});}catch(e){}}
+if(audio && audio.dataset.autoplay==='1'){window.addEventListener('load',playSound,{once:true});}
+function pad(n){return String(n).padStart(2,'0')}
+function updateClock(){const d=new Date();const el=document.getElementById('clock');if(el)el.textContent=`${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()}  ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`}
+function parseUtc(value){
+  if(!value)return null;
+  let v=String(value).trim();
+  if(!/[zZ]$|[+-]\d{2}:?\d{2}$/.test(v))v+='Z';
+  const d=new Date(v);
+  return Number.isNaN(d.getTime())?null:d;
+}
+function formatLocalDateTime(d){return `${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`}
+document.querySelectorAll('.js-local-time').forEach(el=>{const d=parseUtc(el.dataset.utc);el.textContent=d?formatLocalDateTime(d):(el.dataset.fallback||'—');el.title='Локальное время вашего устройства';});
+updateClock();setInterval(updateClock,1000);
+let remain=Number(document.getElementById('timer')?.dataset.seconds||0);const timer=document.getElementById('timer');const btn=document.getElementById('requestBtn');
+function renderTimer(){if(!timer)return;const m=Math.floor(remain/60),s=remain%60;timer.textContent=`${pad(m)}:${pad(s)}`;if(remain<=0&&btn){btn.disabled=false;timer.textContent='00:00'}else if(btn){btn.disabled=true}}
+renderTimer();if(remain>0)setInterval(()=>{if(remain>0){remain--;renderTimer()}},1000);
+</script>
+</body>
+</html>

@@ -1,0 +1,431 @@
+(() => {
+  const $ = (s, root = document) => root.querySelector(s);
+  const $$ = (s, root = document) => [...root.querySelectorAll(s)];
+
+  // === PROTOGEN STARTUP INTRO ===
+  const intro = document.querySelector('#protogenIntro');
+  const introSkip = document.querySelector('#introSkip');
+  const INTRO_SESSION_KEY = 'protogen_intro_seen_v1';
+  let introTimer = null;
+
+  function closeProtogenIntro(markSeen = true) {
+    if (!intro) return;
+    if (markSeen) sessionStorage.setItem(INTRO_SESSION_KEY, '1');
+    intro.classList.add('is-exiting');
+    intro.classList.remove('is-visible');
+    document.body.classList.remove('intro-lock');
+    if (introTimer) window.clearTimeout(introTimer);
+    window.setTimeout(() => intro.setAttribute('aria-hidden', 'true'), 620);
+  }
+
+  if (intro && !sessionStorage.getItem(INTRO_SESSION_KEY)) {
+    intro.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('intro-lock');
+    requestAnimationFrame(() => intro.classList.add('is-visible'));
+    introTimer = window.setTimeout(() => closeProtogenIntro(true), 4500);
+  } else if (intro) {
+    intro.setAttribute('aria-hidden', 'true');
+  }
+
+  introSkip?.addEventListener('click', () => closeProtogenIntro(true));
+  // === /PROTOGEN STARTUP INTRO ===
+
+
+  // ---------------------------------------------------------
+  // CHAT PANEL — hidden by default, toggle on click.
+  // ---------------------------------------------------------
+  const chatPanel = $('#chatPanel');
+  const heroChatBtn = $('#heroChatBtn');
+  const topChatBtn = $('#topChatBtn');
+  const input = $('#input');
+  const messages = $('#messages');
+
+  function setChat(open, focusInput = false) {
+    if (!chatPanel) return;
+    document.body.classList.toggle('chat-open', open);
+    document.documentElement.classList.toggle('chat-open-lock', open);
+    chatPanel.classList.toggle('is-open', open);
+    chatPanel.setAttribute('aria-hidden', open ? 'false' : 'true');
+    if (heroChatBtn) heroChatBtn.setAttribute('aria-expanded', String(open));
+    if (topChatBtn) topChatBtn.classList.toggle('active', open);
+
+    if (open) {
+      window.setTimeout(() => {
+        if (focusInput) input?.focus();
+        messages?.scrollTo({top: messages.scrollHeight, behavior:'smooth'});
+      }, 220);
+    }
+  }
+
+  function toggleChat(focusInput = true) {
+    setChat(!chatPanel?.classList.contains('is-open'), focusInput);
+  }
+
+  heroChatBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    toggleChat(true);
+  });
+
+  topChatBtn?.addEventListener('click', () => toggleChat(true));
+
+  function addMessage(text, type = 'bot') {
+    if (!messages) return null;
+    const div = document.createElement('div');
+    div.className = `message ${type === 'user' ? 'user-message' : 'bot-message'}`;
+    div.textContent = text;
+    messages.appendChild(div);
+    messages.scrollTop = messages.scrollHeight;
+    return div;
+  }
+
+  async function sendMessage() {
+    if (!input || !messages) return;
+    const text = input.value.trim();
+    if (!text) return;
+
+    addMessage(text, 'user');
+    input.value = '';
+
+    const thinking = addMessage('Protogen обрабатывает сообщение…', 'bot');
+    thinking?.classList.add('thinking');
+
+    try {
+      const response = await fetch('/chat', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({message: text})
+      });
+      const data = await response.json();
+      thinking?.remove();
+      addMessage(data.response || 'Protogen пока молчит…', 'bot');
+    } catch (err) {
+      thinking?.remove();
+      addMessage('💥 Не удалось связаться с Protogen. Попробуй ещё раз.', 'bot');
+      console.error('CHAT:', err);
+    }
+  }
+
+  // Keep wheel/touch scrolling inside the chat. This prevents the page from
+  // taking over when the cursor is over the conversation.
+  messages?.addEventListener('wheel', (e) => {
+    if (messages.scrollHeight > messages.clientHeight) e.stopPropagation();
+  }, {passive:true});
+
+  $('#sendBtn')?.addEventListener('click', sendMessage);
+  input?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+
+  // ---------------------------------------------------------
+  // USER-ONLY WALLPAPERS
+  // Stored locally in this browser. No admin API call.
+  // ---------------------------------------------------------
+  const WALL_KEY = 'protogen_user_wallpaper_v2';
+
+  const presets = {
+    default: {
+      image: 'url("/static/bg.webp")',
+      overlay: 'linear-gradient(180deg,rgba(1,4,9,.58),rgba(1,3,7,.80))',
+      size: 'cover'
+    },
+    violet: {
+      image: 'radial-gradient(circle at 72% 20%,rgba(155,69,255,.58),transparent 25%),linear-gradient(135deg,#070317,#17102b 52%,#020609)',
+      overlay: 'linear-gradient(180deg,rgba(1,4,8,.28),rgba(1,4,8,.72))',
+      size: 'cover'
+    },
+    nebula: {
+      image: 'radial-gradient(circle at 28% 28%,rgba(0,132,255,.58),transparent 22%),radial-gradient(circle at 75% 70%,rgba(155,69,255,.52),transparent 30%),linear-gradient(135deg,#020812,#0a0b20 55%,#020307)',
+      overlay: 'linear-gradient(180deg,rgba(1,4,8,.28),rgba(1,4,8,.72))',
+      size: 'cover'
+    },
+    cyber: {
+      image: 'linear-gradient(rgba(0,255,225,.11) 1px,transparent 1px),linear-gradient(90deg,rgba(0,255,225,.11) 1px,transparent 1px),linear-gradient(135deg,#02090c,#080616)',
+      overlay: 'linear-gradient(180deg,rgba(1,4,8,.26),rgba(1,4,8,.76))',
+      size: '22px 22px,22px 22px,auto'
+    },
+    dark: {
+      image: 'linear-gradient(135deg,#010307,#070914 50%,#10051d)',
+      overlay: 'linear-gradient(180deg,rgba(1,3,6,.30),rgba(1,3,6,.78))',
+      size: 'cover'
+    }
+  };
+
+  function setWallpaper(id, custom = null, save = true) {
+    if (!id) id = 'default';
+
+    if (custom) {
+      document.body.style.backgroundImage =
+        `linear-gradient(180deg,rgba(1,4,8,.48),rgba(1,3,7,.80)),url("${custom}")`;
+      document.body.style.backgroundSize = 'cover';
+      document.body.style.backgroundPosition = 'center';
+      document.body.style.backgroundAttachment = 'fixed';
+    } else {
+      const preset = presets[id] || presets.default;
+      document.body.style.backgroundImage = `${preset.overlay},${preset.image}`;
+      document.body.style.backgroundSize = preset.size;
+      document.body.style.backgroundPosition = 'center';
+      document.body.style.backgroundAttachment = 'fixed';
+    }
+
+    $$('.wall-thumb').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.wall === id);
+    });
+
+    if (save) {
+      try {
+        localStorage.setItem(WALL_KEY, JSON.stringify({id, custom}));
+      } catch (err) {
+        console.warn('Wallpaper could not be saved locally:', err);
+      }
+    }
+  }
+
+  function loadWallpaper() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(WALL_KEY) || 'null');
+      if (saved?.custom) setWallpaper('custom', saved.custom, false);
+      else setWallpaper(saved?.id || 'default', null, false);
+    } catch {
+      setWallpaper('default', null, false);
+    }
+  }
+
+  $$('.wall-thumb').forEach(btn => {
+    btn.addEventListener('click', () => setWallpaper(btn.dataset.wall));
+  });
+
+  $('.wall-main-preview')?.addEventListener('click', () => setWallpaper('default'));
+
+  $('#customWallpaper')?.addEventListener('change', () => {
+    const file = $('#customWallpaper').files?.[0];
+    if (!file) return;
+
+    if (file.size > 3 * 1024 * 1024) {
+      alert('Файл слишком большой. Максимум 3 МБ.');
+      $('#customWallpaper').value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setWallpaper('custom', reader.result);
+      $('.wall-main-preview').style.backgroundImage =
+        `linear-gradient(180deg,rgba(2,5,9,.15),rgba(2,4,8,.50)),url("${reader.result}")`;
+      alert('Готово — эти обои видишь только ты в этом браузере.');
+      $('#customWallpaper').value = '';
+    };
+    reader.readAsDataURL(file);
+  });
+
+  loadWallpaper();
+
+  // ---------------------------------------------------------
+  // REAL SYSTEM HEALTH (no random numbers): bot heartbeat,
+  // database latency, round-trip ping and web uptime.
+  // ---------------------------------------------------------
+  const el = id => document.getElementById(id);
+  const setText = (id, value, ok) => {
+    const node = el(id);
+    if (!node) return;
+    node.textContent = value;
+    node.classList.toggle('is-bad', ok === false);
+  };
+  const fmtUptime = s => {
+    s = Math.max(0, Number(s) || 0);
+    const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+    return d ? `${d}д ${h}ч` : h ? `${h}ч ${m}м` : `${m}м`;
+  };
+
+  async function loadHealth() {
+    const started = performance.now();
+    try {
+      const res = await fetch('/api/public/health', {cache: 'no-store'});
+      const h = await res.json();
+      const rtt = Math.round(performance.now() - started);
+      const botOk = h.bot === 'online';
+      setText('botValue', botOk ? 'ONLINE' : 'OFFLINE', botOk);
+      setText('dbValue', h.db_ms == null ? 'OFF' : `${h.db_ms}ms`, h.database === 'online');
+      setText('pingValue', `${rtt}ms`, rtt < 1500);
+      setText('uptimeValue', fmtUptime(h.uptime_seconds));
+      setText('sigDb', h.database === 'online' ? 'ONLINE' : 'OFFLINE', h.database === 'online');
+      setText('sigAi', h.ai ? 'READY' : 'OFF', !!h.ai);
+      setText('sigBot', botOk ? 'ONLINE' : 'OFFLINE', botOk);
+      setText('signalState', botOk ? 'STABLE' : 'NO SIGNAL', botOk);
+    } catch (err) {
+      setText('sigWeb', 'OFFLINE', false);
+      setText('signalState', 'NO SIGNAL', false);
+    }
+  }
+  loadHealth();
+  setInterval(loadHealth, 20000);
+})();
+
+
+// ---------------------------------------------------------
+// ADMIN SETTINGS TRANSITION
+// Кнопка не открывает панель сразу: сначала короткий
+// плавный SYSTEM ACCESS эффект, затем /admin/login.
+// ---------------------------------------------------------
+(() => {
+  const adminLink = document.querySelector('.admin-login-link');
+  if (!adminLink) return;
+
+  adminLink.addEventListener('click', (event) => {
+    const target = adminLink.href;
+    if (!target) return;
+
+    event.preventDefault();
+
+    // Защита от двойного клика.
+    if (document.body.classList.contains('admin-transitioning')) return;
+
+    document.body.classList.add('admin-transitioning');
+
+    // Даем анимации завершиться, после чего открываем
+    // существующую защищенную страницу входа.
+    window.setTimeout(() => {
+      window.location.href = target;
+    }, 720);
+  });
+})();
+
+
+// ---------------------------------------------------------
+// REAL LIVE MULTI-SERVER STATISTICS
+// ---------------------------------------------------------
+(() => {
+  const selector = document.getElementById('serverSelector');
+  const ids = {
+    users: document.getElementById('statUsers'),
+    online: document.getElementById('statOnline'),
+    messages: document.getElementById('statMessages'),
+    actions: document.getElementById('statActions'),
+    stability: document.getElementById('statStability'),
+  };
+  const updated = document.getElementById('statsUpdated');
+  const cards = [...document.querySelectorAll('.stat-item')];
+  if (!selector || !ids.users) return;
+
+  const fmt = value => new Intl.NumberFormat('ru-RU').format(Number.isFinite(Number(value)) ? Number(value) : 0);
+  let serversLoaded = false;
+
+  function setValues(s) {
+    ids.users.textContent = fmt(s.users);
+    ids.online.textContent = fmt(s.active_users);
+    ids.messages.textContent = fmt(s.messages);
+    ids.actions.textContent = fmt(s.actions);
+    ids.stability.textContent = s.stability || 'ONLINE';
+  }
+
+  function loading(on) { cards.forEach(c => c.classList.toggle('updating', on)); }
+
+  async function loadServers() {
+    try {
+      const res = await fetch('/api/public/servers', {cache:'no-store'});
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'servers');
+      const current = selector.value || 'all';
+      selector.innerHTML = '<option value="all">ВСЕ СЕРВЕРЫ</option>';
+      (data.servers || []).forEach(server => {
+        const option = document.createElement('option');
+        option.value = server.chat_id;
+        option.textContent = `🟢 ${server.title}`;
+        selector.appendChild(option);
+      });
+      if ([...selector.options].some(o => o.value === current)) selector.value = current;
+      serversLoaded = true;
+    } catch (e) {
+      console.warn('SERVERS API:', e);
+    }
+  }
+
+  async function loadStats() {
+    loading(true);
+    try {
+      const scope = selector.value || 'all';
+      const res = await fetch(`/api/public/stats?chat_id=${encodeURIComponent(scope)}`, {cache:'no-store'});
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'stats');
+      setValues(data.stats || {});
+      if (updated) {
+        const d = data.updated_at ? new Date(data.updated_at) : new Date();
+        updated.textContent = `LIVE // ${d.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}`;
+      }
+    } catch (e) {
+      console.warn('STATS API:', e);
+      // Never leave visual dashes on the screen.
+      setValues({users:0, active_users:0, messages:0, actions:0, stability:'OFFLINE'});
+      if (updated) updated.textContent = 'LIVE // DATABASE WAITING';
+    } finally {
+      setTimeout(() => loading(false), 120);
+    }
+  }
+
+  selector.addEventListener('change', loadStats);
+  (async () => {
+    await loadServers();
+    await loadStats();
+    setInterval(async () => {
+      await loadStats();
+      if (serversLoaded) await loadServers();
+    }, 15000);
+  })();
+})();
+
+
+// ---------------------------------------------------------
+// PROTOGEN ASSISTANT SHORT TEASER
+// Appears once per session shortly after the home page opens.
+// It deliberately waits for the startup intro to finish first.
+// ---------------------------------------------------------
+(() => {
+  const teaser = document.querySelector('#assistantTeaser');
+  const closeBtn = document.querySelector('#assistantTeaserClose');
+  const laterBtn = document.querySelector('#assistantTeaserLater');
+  const intro = document.querySelector('#protogenIntro');
+  if (!teaser) return;
+
+  const SESSION_KEY = 'protogen_assistant_teaser_seen_v1';
+  const AUTO_CLOSE_MS = 5200;
+  let autoCloseTimer = null;
+  let showTimer = null;
+
+  function hideTeaser(markSeen = true) {
+    if (markSeen) sessionStorage.setItem(SESSION_KEY, '1');
+    if (autoCloseTimer) clearTimeout(autoCloseTimer);
+    if (showTimer) clearTimeout(showTimer);
+    teaser.classList.remove('is-visible');
+    teaser.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('assistant-teaser-lock');
+  }
+
+  function showTeaser() {
+    if (sessionStorage.getItem(SESSION_KEY)) return;
+    teaser.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('assistant-teaser-lock');
+    requestAnimationFrame(() => teaser.classList.add('is-visible'));
+    autoCloseTimer = setTimeout(() => hideTeaser(true), AUTO_CLOSE_MS);
+  }
+
+  function scheduleTeaser() {
+    if (sessionStorage.getItem(SESSION_KEY)) return;
+    if (intro && intro.getAttribute('aria-hidden') !== 'true') {
+      showTimer = setTimeout(scheduleTeaser, 650);
+      return;
+    }
+    showTimer = setTimeout(showTeaser, 1200);
+  }
+
+  window.setTimeout(scheduleTeaser, 3000);
+  closeBtn?.addEventListener('click', () => hideTeaser(true));
+  laterBtn?.addEventListener('click', () => hideTeaser(true));
+  teaser.addEventListener('click', (event) => {
+    if (event.target === teaser || event.target.classList.contains('assistant-teaser__backdrop')) hideTeaser(true);
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && teaser.classList.contains('is-visible')) hideTeaser(true);
+  });
+})();

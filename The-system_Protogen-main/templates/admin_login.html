@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Protogen System — Authorization</title>
+  <style>
+    *{box-sizing:border-box}
+    :root{--cyan:#00ffe1;--purple:#9b45ff;--green:#00ff9c}
+    html,body{margin:0;min-height:100%;font-family:Inter,Segoe UI,Arial,sans-serif;color:#efffff}
+    body{
+      min-height:100vh;display:grid;place-items:center;padding:24px;overflow:hidden;
+      background:
+        linear-gradient(180deg,rgba(1,4,8,.62),rgba(1,5,9,.88)),
+        url("/static/bg.webp") center/cover fixed;
+    }
+    body:before{
+      content:"";position:fixed;inset:-10%;pointer-events:none;
+      background:
+        radial-gradient(circle at 50% 45%,rgba(0,255,225,.12),transparent 22%),
+        radial-gradient(circle at 65% 30%,rgba(155,69,255,.14),transparent 28%);
+      animation:drift 8s ease-in-out infinite alternate;
+    }
+    .scan{
+      position:fixed;inset:0;pointer-events:none;opacity:.035;
+      background:repeating-linear-gradient(0deg,transparent 0 3px,#fff 4px);
+    }
+    .auth{
+      width:min(440px,100%);position:relative;padding:30px;border-radius:22px;
+      border:1px solid rgba(0,255,225,.25);
+      background:linear-gradient(145deg,rgba(3,14,20,.93),rgba(4,7,15,.91));
+      box-shadow:0 0 70px rgba(0,255,225,.10),0 30px 100px rgba(0,0,0,.5);
+      backdrop-filter:blur(20px);z-index:1;
+    }
+    .auth:before{
+      content:"";position:absolute;left:20px;right:20px;top:0;height:1px;
+      background:linear-gradient(90deg,transparent,var(--cyan),var(--purple),transparent);
+    }
+    .brand{display:flex;align-items:center;gap:12px;margin-bottom:28px}
+    .avatar{width:50px;height:50px;border-radius:50%;overflow:hidden;border:1px solid var(--cyan);
+      box-shadow:0 0 20px rgba(0,255,225,.18)}
+    .avatar img{width:100%;height:100%;object-fit:cover}
+    .brand strong{display:block;font-size:15px;letter-spacing:.6px}
+    .brand span{display:block;color:var(--cyan);font-size:8px;letter-spacing:2px;margin-top:4px}
+    .kicker{color:var(--cyan);font-size:8px;letter-spacing:2.5px;font-weight:900}
+    h1{font-size:27px;margin:8px 0 6px}
+    .sub{color:#708889;font-size:11px;line-height:1.6;margin:0 0 23px}
+    label{display:block;color:#91aaab;font-size:9px;letter-spacing:.8px;margin:0 0 7px}
+    .field{margin-bottom:14px}
+    input{
+      width:100%;padding:13px 14px;border-radius:11px;
+      border:1px solid rgba(0,255,225,.13);background:#061014;color:#fff;outline:none;
+      font-size:12px;
+    }
+    input:focus{border-color:rgba(0,255,225,.65);box-shadow:0 0 0 3px rgba(0,255,225,.05)}
+    button{
+      width:100%;border:0;border-radius:11px;padding:13px;margin-top:4px;
+      background:linear-gradient(90deg,var(--cyan),#48f6e9);color:#00100f;
+      font-weight:900;cursor:pointer;letter-spacing:.4px;
+      box-shadow:0 0 24px rgba(0,255,225,.15);transition:.2s;
+    }
+    button:hover{filter:brightness(1.08);transform:translateY(-1px)}
+    .error{
+      margin:0 0 14px;padding:10px;border-radius:9px;
+      border:1px solid rgba(255,90,120,.28);background:rgba(255,60,100,.06);
+      color:#ff8da0;font-size:10px;
+    }
+    .secure{
+      margin-top:18px;padding-top:15px;border-top:1px solid rgba(255,255,255,.05);
+      color:#526b6d;text-align:center;font-size:8px;letter-spacing:.7px;
+    }
+    .secure b{color:#4ee7bd}
+    .back{display:block;text-align:center;color:#60797a;text-decoration:none;font-size:9px;margin-top:14px}
+    .back:hover{color:var(--cyan)}
+    @keyframes drift{from{transform:translate(-1%,-1%) scale(1)}to{transform:translate(1%,1%) scale(1.04)}}
+    .auth.auth-denied{animation:authDeniedShake .48s cubic-bezier(.36,.07,.19,.97) both;border-color:rgba(255,70,105,.72);box-shadow:0 0 0 1px rgba(255,70,105,.18),0 0 60px rgba(255,35,85,.16),0 30px 100px rgba(0,0,0,.55)}
+    .auth.auth-denied:after{content:"ACCESS DENIED";position:absolute;right:18px;top:18px;color:#ff607d;font-size:8px;letter-spacing:1.6px;font-weight:900;text-shadow:0 0 12px rgba(255,70,110,.55);animation:deniedBlink .9s ease-in-out 2}
+    .auth-denied .error{animation:errorPulse .9s ease-out 1;background:rgba(255,45,88,.1);border-color:rgba(255,75,112,.58);box-shadow:0 0 25px rgba(255,40,85,.08)}
+    .auth-denied input{border-color:rgba(255,80,110,.24)}
+    @keyframes authDeniedShake{10%,90%{transform:translateX(-1px)}20%,80%{transform:translateX(4px)}30%,50%,70%{transform:translateX(-7px)}40%,60%{transform:translateX(7px)}}
+    @keyframes errorPulse{0%{transform:scale(.985);opacity:.55}45%{transform:scale(1.018)}100%{transform:scale(1);opacity:1}}
+    @keyframes deniedBlink{50%{opacity:.25}}
+    .or-line{display:flex;align-items:center;gap:10px;margin:16px 0 10px;color:#4d6667;font-size:9px;letter-spacing:1px}
+    .or-line:before,.or-line:after{content:"";flex:1;height:1px;background:rgba(255,255,255,.07)}
+    button.tg-login{background:linear-gradient(90deg,#2aa3e6,#36c2ff);color:#03131c;box-shadow:0 0 24px rgba(42,163,230,.18)}
+    button.tg-login[disabled]{opacity:.7;cursor:wait}
+    .tg-hint{color:#5d7677;font-size:9px;line-height:1.55;margin:9px 2px 0;text-align:center}
+    .tg-hint.ok{color:#4ee7bd}.tg-hint.bad{color:#ff8da0}
+
+  </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='mobile.css') }}">
+</head>
+<body>
+  <div class="scan"></div>
+  <main class="auth" id="authCard">
+    <div class="brand">
+      <div class="avatar"><img src="/static/my_avatar.webp" alt="Protogen"></div>
+      <div>
+        <strong>PROTOGEN SYSTEM</strong>
+        <span>SECURE ADMIN CONSOLE</span>
+      </div>
+    </div>
+
+    <div class="kicker">ADMIN ACCESS // AUTHORIZATION</div>
+    <h1>Вход в систему</h1>
+    <p class="sub">Административная панель закрыта. Введи свои учётные данные для продолжения.</p>
+
+    {% if error %}
+      <div class="error" id="loginError">⚠ {{ error }}</div>
+    {% endif %}
+
+    <form method="post" autocomplete="on">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="field">
+        <label for="username">ЛОГИН</label>
+        <input id="username" name="username" type="text" autocomplete="username" required autofocus>
+      </div>
+
+      <div class="field">
+        <label for="password">ПАРОЛЬ</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+      </div>
+
+      <button type="submit">ВОЙТИ В PROTOGEN ADMIN →</button>
+    </form>
+
+    {% if bot_username %}
+    <div class="or-line"><span>или</span></div>
+    <button type="button" class="tg-login" id="tgLoginBtn">✈ ВОЙТИ ЧЕРЕЗ TELEGRAM</button>
+    <p class="tg-hint" id="tgLoginHint">Без пароля: подтверди вход кнопкой в личке бота. Работает, если твой Telegram ID привязан к аккаунту панели.</p>
+    {% endif %}
+
+    <div class="secure">🔒 ДОСТУП ТОЛЬКО АВТОРИЗОВАННЫМ АДМИНИСТРАТОРАМ · <b>SECURE</b></div>
+    <a class="back" href="/">← Вернуться на главную</a>
+  </main>
+
+  {% if bot_username %}
+  <script>
+  (() => {
+    const btn = document.getElementById('tgLoginBtn');
+    const hint = document.getElementById('tgLoginHint');
+    const csrf = document.querySelector('input[name="csrf_token"]')?.value || '';
+    let timer = null;
+    const setHint = (text, cls = '') => { hint.textContent = text; hint.className = 'tg-hint ' + cls; };
+    btn?.addEventListener('click', async () => {
+      btn.disabled = true;
+      // Open the tab synchronously (inside the click) so popup blockers allow it.
+      const tab = window.open('about:blank', '_blank');
+      try {
+        const res = await fetch('/admin/login/telegram/start', {method: 'POST', headers: {'X-CSRF-Token': csrf}});
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || 'Ошибка');
+        if (tab) { tab.opener = null; tab.location.href = data.url; }
+        hint.innerHTML = '';
+        const link = document.createElement('a');
+        link.href = data.url; link.target = '_blank'; link.rel = 'noopener'; link.textContent = 'Открыть бота';
+        link.style.color = '#36c2ff';
+        hint.append(link, ' и нажми «Подтвердить вход». Жду подтверждения… (5 минут)');
+        hint.className = 'tg-hint';
+        const deadline = Date.now() + data.expires_in * 1000;
+        clearInterval(timer);
+        timer = setInterval(async () => {
+          if (Date.now() > deadline) { clearInterval(timer); btn.disabled = false; return setHint('Время вышло. Нажми кнопку ещё раз.', 'bad'); }
+          const r = await fetch('/admin/login/telegram/status', {cache: 'no-store'}).then(x => x.json()).catch(() => null);
+          if (!r) return;
+          if (r.status === 'approved') { clearInterval(timer); setHint('Вход подтверждён ✓', 'ok'); location.href = r.redirect || '/admin'; }
+          else if (r.status === 'denied' || r.status === 'expired' || r.status === 'none') {
+            clearInterval(timer); btn.disabled = false;
+            setHint(r.status === 'denied' ? 'Вход отклонён в Telegram или аккаунт не найден.' : 'Запрос устарел. Попробуй ещё раз.', 'bad');
+          }
+        }, 2000);
+      } catch (e) {
+        if (tab) tab.close();
+        btn.disabled = false;
+        setHint(e.message, 'bad');
+      }
+    });
+  })();
+  </script>
+  {% endif %}
+
+  <audio id="loginDeniedSound" preload="auto" src="{{ url_for('static', filename='login-denied.mp3') }}"></audio>
+  {% if error == "Неверный логин или пароль." %}
+  <script>
+  (() => {
+    const card = document.getElementById('authCard');
+    const sound = document.getElementById('loginDeniedSound');
+    card?.classList.add('auth-denied');
+    if (!sound) return;
+    sound.volume = 0.92;
+    let played = false;
+    const playDenied = () => {
+      if (played) return;
+      sound.currentTime = 0;
+      const p = sound.play();
+      if (p && typeof p.then === 'function') {
+        p.then(() => { played = true; }).catch(() => {});
+      }
+    };
+    window.addEventListener('load', playDenied, {once:true});
+    document.addEventListener('pointerdown', playDenied, {once:true});
+    document.addEventListener('keydown', playDenied, {once:true});
+    setTimeout(() => card?.classList.remove('auth-denied'), 1900);
+  })();
+  </script>
+  {% endif %}
+</body>
+</html>

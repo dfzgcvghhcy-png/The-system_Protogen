@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Protogen Bot — страж и помощник для Telegram-чатов</title>
+  <meta name="description" content="Protogen — Telegram-бот для модерации чатов: варны, муты, баны, AutoMod, уровни, репутация и Web-панель управления.">
+  <meta property="og:title" content="Protogen Bot">
+  <meta property="og:description" content="Модерация, AutoMod, уровни и Web-панель для Telegram-чатов.">
+  <meta property="og:image" content="{{ url_for('static', filename='my_avatar.png', _external=True) }}">
+  <meta name="theme-color" content="#05070f">
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
+  <link rel="preload" as="image" href="/static/bg.webp">
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='mobile.css') }}">
+</head>
+<body>
+
+  <!-- PROTOGEN STARTUP INTRO -->
+  <div class="protogen-intro" id="protogenIntro" aria-hidden="true">
+    <div class="intro-noise"></div>
+    <div class="intro-grid"></div>
+    <div class="intro-scan"></div>
+
+    <button class="intro-skip" id="introSkip" type="button">ПРОПУСТИТЬ</button>
+
+    <div class="intro-core">
+      <div class="intro-orbit orbit-a"></div>
+      <div class="intro-orbit orbit-b"></div>
+      <div class="intro-avatar">
+        <img src="/static/my_avatar.webp" alt="Protogen">
+      </div>
+
+      <div class="intro-kicker">THE SYSTEM // PROTOGEN</div>
+      <h1>INITIALIZING SYSTEM</h1>
+
+      <div class="intro-terminal" aria-live="polite">
+        <div><span>CORE</span><b>ONLINE</b></div>
+        <div><span>DATABASE</span><b>CONNECTED</b></div>
+        <div><span>SECURITY</span><b>ACTIVE</b></div>
+        <div><span>TELEGRAM LINK</span><b>ESTABLISHED</b></div>
+      </div>
+
+      <div class="intro-online">SYSTEM ONLINE</div>
+    </div>
+  </div>
+  <!-- /PROTOGEN STARTUP INTRO -->
+
+  <!-- PROTOGEN ASSISTANT SHORT TEASER -->
+  <section class="assistant-teaser" id="assistantTeaser" aria-hidden="true" aria-label="Protogen Assistant teaser">
+    <div class="assistant-teaser__backdrop"></div>
+    <div class="assistant-teaser__panel" role="dialog" aria-modal="true" aria-labelledby="assistantTeaserTitle">
+      <button class="assistant-teaser__close" id="assistantTeaserClose" type="button" aria-label="Закрыть тизер">×</button>
+      <div class="assistant-teaser__image" aria-hidden="true"></div>
+      <div class="assistant-teaser__scrim"></div>
+      <div class="assistant-teaser__content">
+        <span class="assistant-teaser__eyebrow">PROTOGEN SYSTEM // NEW ERA</span>
+        <h2 id="assistantTeaserTitle">PROTOGEN <span>ASSISTANT</span></h2>
+        <p>Голосовой помощник нового поколения. Скоро.</p>
+        <div class="assistant-teaser__status"><i></i> VOICE CORE // PREPARING</div>
+        <div class="assistant-teaser__actions">
+          <a href="/assistant" class="assistant-teaser__cta">ПОДРОБНЕЕ <b>→</b></a>
+          <button id="assistantTeaserLater" type="button">НЕ СЕЙЧАС</button>
+        </div>
+      </div>
+      <div class="assistant-teaser__progress" aria-hidden="true"><span></span></div>
+    </div>
+  </section>
+  <!-- /PROTOGEN ASSISTANT SHORT TEASER -->
+
+  <div class="page-glow"></div>
+
+  <!-- DARKER TOP PANEL -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-avatar">
+        <img src="/static/my_avatar.webp" alt="Protogen Bot">
+      </div>
+      <div class="brand-copy">
+        <strong>PROTOGEN BOT</strong>
+        <span><i></i> THE SYSTEM // PROTOGEN</span>
+      </div>
+    </div>
+
+    <div class="topbar-spacer"></div>
+
+    <div class="system-pill">
+      <i></i> СИСТЕМА АКТИВНА
+      <span class="top-wave" aria-hidden="true"></span>
+    </div>
+  </header>
+
+  <main class="web-shell">
+    <section class="hero-area">
+      <div class="left-column">
+        <div class="hero-copy">
+          <div class="eyebrow">THE SYSTEM // PROTOGEN</div>
+          <h1>Твой чат.<br><span>Твоя система.</span></h1>
+          <p>
+            Protogen Bot следит за порядком, хранит историю модерации
+            и помогает управлять сообществом через единую систему.
+          </p>
+
+          <div class="hero-actions">
+            {% if bot_add_url %}
+            <a class="chat-cta add-bot-cta" href="{{ bot_add_url }}" target="_blank" rel="noopener">
+              ＋ &nbsp; ДОБАВИТЬ В ГРУППУ <b>→</b>
+            </a>
+            {% endif %}
+            <button class="{{ 'admin-cta' if bot_add_url else 'chat-cta' }} chat-open-btn" id="heroChatBtn" type="button">
+              ◈ &nbsp; ЧАТ С PROTOGEN <b>→</b>
+            </button>
+            <a class="admin-cta admin-login-link" href="/admin/login">
+              ⚙ &nbsp; ПАНЕЛЬ УПРАВЛЕНИЯ <b>→</b>
+            </a>
+            <a class="commands-cta" href="/commands">
+              📚 &nbsp; ВСЕ КОМАНДЫ <b>→</b>
+            </a>
+            <a class="assistant-cta" href="/assistant">
+              ✦ &nbsp; PROTOGEN ASSISTANT <span>СКОРО</span> <b>→</b>
+            </a>
+          </div>
+        </div>
+
+        <div class="feature-grid">
+          <div class="feature-card">
+            <b>⚔️</b>
+            <span>Модерация</span>
+            <small>Ответом, по @username или словами «мут 10м»</small>
+          </div>
+          <div class="feature-card">
+            <b>🤖</b>
+            <span>AutoMod</span>
+            <small>Флуд, спам-ссылки, капс, рейды, капча</small>
+          </div>
+          <div class="feature-card">
+            <b>⚡</b>
+            <span>Сообщество</span>
+            <small>Уровни, репутация, награды, daily</small>
+          </div>
+        </div>
+
+        <section class="system-stats">
+          <div class="stats-heading">
+            <span><i></i> ОБЩАЯ СТАТИСТИКА СИСТЕМЫ</span>
+            <div class="stats-controls">
+              <select id="serverSelector" aria-label="Сервер">
+                <option value="all">ВСЕ СЕРВЕРЫ</option>
+              </select>
+              <small id="statsUpdated">LIVE // PROTOGEN CORE</small>
+            </div>
+          </div>
+          <div class="stats-grid">
+            <div class="stat-item"><b>♙</b><strong id="statUsers">0</strong><span>ПОЛЬЗОВАТЕЛЕЙ</span></div>
+            <div class="stat-item"><b>⌁</b><strong id="statOnline">0</strong><span>АКТИВНЫ ЗА 24 Ч</span></div>
+            <div class="stat-item"><b>▣</b><strong id="statMessages">0</strong><span>СООБЩЕНИЙ</span></div>
+            <div class="stat-item"><b>⚒</b><strong id="statActions">0</strong><span>ДЕЙСТВИЙ МОДЕРАЦИИ</span></div>
+            <div class="stat-item"><b>◇</b><strong id="statStability">ONLINE</strong><span>СТАТУС СИСТЕМЫ</span></div>
+          </div>
+        </section>
+      </div>
+
+      <!-- CHAT: hidden by default; opens from "ЗАЙТИ В ЧАТ" and the top CHAT button. -->
+      <aside class="chat-panel" id="chatPanel" aria-label="Protogen Chat" aria-hidden="true">
+        <div class="chat-modal-header">
+          <div class="panel-user">
+            <div class="panel-avatar"><img src="/static/my_avatar.webp" alt=""></div>
+            <div>
+              <strong id="chatTitle">PROTOGEN CHAT</strong>
+              <span><i></i> онлайн</span>
+            </div>
+          </div>
+          <div class="chat-header-actions">
+            <button class="chat-dots chat-settings-btn" id="chatSettingsBtn" type="button" aria-label="Настройки чата" aria-expanded="false">•••</button>
+          </div>
+        </div>
+
+        <div class="chat-area" id="messages" aria-live="polite"></div>
+
+        <div class="chat-input">
+          <input id="input" type="text" placeholder="Напиши что-нибудь..." autocomplete="off">
+          <button id="sendBtn" type="button">➤</button>
+        </div>
+      </aside>
+
+      <!-- SYSTEM SIDEBAR: keep visible on the home page. -->
+      <aside class="system-sidebar" aria-label="Protogen system controls">
+        <section class="side-card system-card">
+          <div class="side-title">
+            <div><span class="side-icon">◈</span><strong>СИСТЕМА</strong></div>
+            <span class="live-badge">LIVE</span>
+          </div>
+          <div class="system-monitor">
+            <div class="core-ring">
+              <span class="ring ring-a"></span><span class="ring ring-b"></span><span class="ring ring-c"></span>
+              <span class="scan-dot"></span>
+              <div class="core-avatar"><img src="/static/my_avatar.webp" alt="Protogen core"></div>
+            </div>
+            <div class="metrics">
+              <div class="metric"><span>BOT</span><div class="mini-wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><b id="botValue">…</b></div>
+              <div class="metric"><span>DB</span><div class="mini-wave cyan"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><b id="dbValue">--ms</b></div>
+              <div class="metric"><span>PING</span><div class="mini-wave cyan"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><b id="pingValue">--ms</b></div>
+              <div class="metric"><span>UPTIME</span><span class="uptime-value">WEB</span><b id="uptimeValue">--</b></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="side-card wallpaper-card">
+          <div class="side-title">
+            <div><span class="side-icon">◈</span><strong>УПРАВЛЕНИЕ ОБОЯМИ</strong></div>
+            <span class="new-badge">NEW</span>
+          </div>
+          <div class="wall-main-preview" title="Выбрать Protogen wallpaper"><span class="wall-check">✓</span></div>
+          <div class="wall-thumbs">
+            <button class="wall-thumb active" data-wall="default" aria-label="Protogen"></button>
+            <button class="wall-thumb violet" data-wall="violet" aria-label="Violet Grid"></button>
+            <button class="wall-thumb nebula" data-wall="nebula" aria-label="Deep Nebula"></button>
+            <button class="wall-thumb cyber" data-wall="cyber" aria-label="Cyber Grid"></button>
+            <button class="wall-thumb dark" data-wall="dark" aria-label="Dark"></button>
+          </div>
+          <label class="upload-wallpaper">
+            ↥ &nbsp; ЗАГРУЗИТЬ СВОЁ ИЗОБРАЖЕНИЕ
+            <input id="customWallpaper" type="file" accept="image/png,image/jpeg,image/webp">
+          </label>
+          <div class="local-note">Пользовательские обои сохраняются только у тебя в этом браузере.</div>
+        </section>
+
+        <section class="side-card animated-card">
+          <div class="side-title">
+            <div><span class="side-icon">✣</span><strong>АНИМИРОВАННАЯ ПАНЕЛЬ</strong></div>
+            <span class="live-badge">ВКЛЮЧЕНА</span>
+          </div>
+          <div class="animation-stage">
+            <div class="wave wave-left"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            <div class="animated-core">
+              <div class="core-glow"></div><div class="core-orbit"></div>
+              <img src="/static/my_avatar.webp" alt="Animated Protogen">
+            </div>
+            <div class="wave wave-right"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          </div>
+          <div class="animation-controls"><span>SYSTEM SIGNAL</span><div class="signal-line"><i></i></div><b id="signalState">STABLE</b></div>
+        </section>
+
+        <section class="side-card quick-card">
+          <div class="side-title">
+            <div><span class="side-icon">⌁</span><strong>СИСТЕМНЫЕ СИГНАЛЫ</strong></div>
+          </div>
+          <div class="quick-grid">
+            <div><span>◉</span> WEB <b id="sigWeb">ONLINE</b></div>
+            <div><span>◈</span> DB <b id="sigDb">…</b></div>
+            <div><span>✦</span> AI CORE <b id="sigAi">…</b></div>
+            <div><span>⬡</span> BOT <b id="sigBot">…</b></div>
+          </div>
+        </section>
+      </aside>
+    </section>
+  </main>
+
+  <div class="admin-transition" aria-hidden="true"></div>
+
+  <footer>THE SYSTEM_PROTOGEN <span>•</span> SECURE SYSTEM</footer>
+
+  <script src="/static/script.js"></script>
+</body>
+</html>

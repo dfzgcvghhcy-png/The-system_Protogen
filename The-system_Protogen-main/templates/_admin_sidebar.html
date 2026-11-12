@@ -1,0 +1,50 @@
+<button class="mobile-nav-toggle" type="button" aria-label="Открыть меню" aria-expanded="false">☰</button>
+<div class="mobile-nav-backdrop" aria-hidden="true"></div>
+<aside class="admin-sidebar">
+  <button class="mobile-nav-close" type="button" aria-label="Закрыть меню">×</button>
+  <div class="sidebar-identity">
+    <div class="sidebar-avatar"><img src="{{ url_for('static', filename='my_avatar.webp') }}" alt="Protogen"></div>
+    <div class="sidebar-name">PROTOGEN</div>
+    <div class="sidebar-role">{{ panel_role_name }}</div>
+    <div class="sidebar-online"><i></i> ОНЛАЙН</div>
+  </div>
+
+  <nav class="admin-nav" aria-label="Административная навигация">
+    <a class="{% if request.path == '/admin' %}active{% endif %}" href="/admin"><span>⌂</span><b>ГЛАВНАЯ</b><small>Панель управления</small></a>
+    <a class="{% if request.path.startswith('/admin/users') %}active{% endif %}" href="/admin/users"><span>♙</span><b>ПОЛЬЗОВАТЕЛИ</b><small>Управление участниками</small></a>
+    <a class="{% if request.path.startswith('/admin/moderation') %}active{% endif %}" href="/admin/moderation"><span>♜</span><b>МОДЕРАЦИЯ</b><small>Действия и наказания</small></a>
+    <a class="{% if request.path.startswith('/admin/cases') %}active{% endif %}" href="/admin/cases"><span>⚠</span><b>ЖАЛОБЫ</b><small>CASE-центр</small></a>
+    <a class="{% if request.path.startswith('/admin/operations') %}active{% endif %}" href="/admin/operations"><span>◈</span><b>ОПЕРАЦИИ</b><small>Appeals · Support · Security</small></a>
+    {% if has_creator_operational_access %}
+    <a class="{% if request.path.startswith('/admin/history') %}active{% endif %}" href="/admin/history"><span>▣</span><b>ИСТОРИЯ</b><small>Логи и события</small></a>
+    {% endif %}
+    {% if is_creator %}
+    <a class="{% if request.path.startswith('/admin/audit') %}active{% endif %}" href="/admin/audit"><span>◉</span><b>АУДИТ</b><small>Контроль заместителя</small></a>
+    <a class="{% if request.path.startswith('/admin/security') %}active{% endif %}" href="/admin/security"><span>◆</span><b>БЕЗОПАСНОСТЬ</b><small>2FA · Sessions · Lockdown</small></a>
+    <a class="{% if request.path.startswith('/admin/v2') %}active{% endif %}" href="/admin/v2"><span>⬡</span><b>PROTOGEN V2</b><small>Флаги · Права · Backup</small></a>
+    {% endif %}
+    {% if is_admin_or_creator %}
+    <a class="{% if request.path.startswith('/admin/statistics') %}active{% endif %}" href="/admin/statistics"><span>▥</span><b>СТАТИСТИКА</b><small>Аналитика системы</small></a>
+    <a class="{% if request.path.startswith('/admin/settings') %}active{% endif %}" href="/admin/settings"><span>⚙</span><b>НАСТРОЙКИ</b><small>Конфигурация бота</small></a>
+    {% endif %}
+  </nav>
+
+  <div style="margin:14px 14px 10px;padding:10px 12px;border:1px solid rgba(0,255,225,.14);border-radius:12px;background:rgba(0,0,0,.18);font-size:11px;color:#8fa7b6">
+    Вход: <b style="color:#dff">{{ session.get('admin_username') }}</b><br>Роль: <b style="color:#00ffe1">{{ panel_role_name }}</b>
+  </div>
+  <a class="sidebar-logout" href="/admin/logout">
+    <span>↪</span><div><b>ВЫЙТИ</b><small>Завершить сессию</small></div>
+  </a>
+</aside>
+<script>
+(()=>{
+  const body=document.body,toggle=document.querySelector('.mobile-nav-toggle'),close=document.querySelector('.mobile-nav-close'),backdrop=document.querySelector('.mobile-nav-backdrop');
+  if(!toggle)return;
+  const setOpen=(open)=>{body.classList.toggle('mobile-nav-open',open);toggle.setAttribute('aria-expanded',open?'true':'false');document.documentElement.style.overflow=open?'hidden':'';};
+  toggle.addEventListener('click',()=>setOpen(!body.classList.contains('mobile-nav-open')));
+  close?.addEventListener('click',()=>setOpen(false));backdrop?.addEventListener('click',()=>setOpen(false));
+  document.querySelectorAll('.admin-sidebar a').forEach(a=>a.addEventListener('click',()=>setOpen(false)));
+  addEventListener('keydown',e=>{if(e.key==='Escape')setOpen(false)});
+  addEventListener('resize',()=>{if(innerWidth>900)setOpen(false)});
+})();
+</script>

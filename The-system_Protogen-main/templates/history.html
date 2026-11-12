@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ProtogenAdmin — История</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='history.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='mobile.css') }}">
+</head>
+<body>
+<div class="bg"></div><div class="grid"></div>
+
+{% include '_admin_sidebar.html' %}
+<div class="admin-main-wrap">
+{% include '_admin_topbar.html' %}
+<main class="history-main">
+  <section class="history-banner" aria-label="История действий">
+    <img src="{{ url_for('static', filename='history_banner_bg.webp') }}" alt="История действий — журнал модерации и системных событий">
+  </section>
+
+  <section class="history-toolbar panel">
+    <form method="get" action="/admin/history" class="search">
+      <span>⌕</span>
+      <input name="q" value="{{ query }}" placeholder="Поиск по пользователю, ID, модератору или причине...">
+      {% if action_type %}<input type="hidden" name="type" value="{{ action_type }}">{% endif %}
+      {% if query %}<a href="{{ url_for('admin_history', type=action_type) }}">×</a>{% endif %}
+      <button type="submit">Найти</button>
+    </form>
+
+    <div class="filters">
+      <a class="{{ 'selected' if not action_type else '' }}" href="/admin/history{% if query %}?q={{ query|urlencode }}{% endif %}">Все</a>
+      {% for t, label in [('warn','⚠️ Warn'),('mute','🔇 Mute'),('ban','🚫 Ban'),('kick','👢 Kick'),('unwarn','🧹 Unwarn'),('unmute','🔊 Unmute'),('unban','🔓 Unban')] %}
+      <a class="{{ 'selected' if action_type == t else '' }}" href="/admin/history?type={{ t }}{% if query %}&q={{ query|urlencode }}{% endif %}">{{ label }}</a>
+      {% endfor %}
+    </div>
+  </section>
+
+  {% if error %}
+  <div class="error-box">⚠️ {{ error }}</div>
+  {% endif %}
+
+  <section class="panel history-panel">
+    <div class="history-head">
+      <div>
+        <div class="panel-kicker">ACTIVITY LOG</div>
+        <h2>Последние действия</h2>
+      </div>
+      <div class="history-count">{{ rows|length }} записей</div>
+    </div>
+
+    {% for p, u in rows %}
+    {% set type_icon = {'warn':'⚠️','unwarn':'🧹','mute':'🔇','unmute':'🔊','ban':'🚫','unban':'🔓','kick':'👢'}.get(p.type, '📌') %}
+    {% set type_class = {'warn':'warn','unwarn':'unwarn','mute':'mute','unmute':'unmute','ban':'ban','unban':'unban','kick':'kick'}.get(p.type, 'action') %}
+    <a class="history-row" href="{{ url_for('admin_user_profile', user_id=p.user_id) if p.user_id else '#' }}">
+      <div class="history-icon {{ type_class }}">{{ type_icon }}</div>
+
+      <div class="history-user">
+        <strong>
+          {% if u %}
+            {{ ((u.first_name or '') ~ ' ' ~ (u.last_name or ''))|trim or ('@' ~ u.username if u.username else u.id) }}
+          {% else %}
+            Пользователь #{{ p.user_id }}
+          {% endif %}
+        </strong>
+        <small>
+          {% if u and u.username %}@{{ u.username }} · {% endif %}
+          ID {{ p.user_id }}
+        </small>
+      </div>
+
+      <div class="history-action">
+        <b class="{{ type_class }}">{{ p.type or 'action' }}</b>
+        <span>{{ p.reason or 'Не указана' }}</span>
+      </div>
+
+      <div class="history-mod">
+        <small>МОДЕРАТОР</small>
+        <b>{{ p.moderator_id or '—' }}</b>
+      </div>
+
+      <time>{{ p.created_at.strftime("%d.%m.%Y") if p.created_at else '—' }}<br>{{ p.created_at.strftime("%H:%M") if p.created_at else '' }}</time>
+      <span class="arrow">→</span>
+    </a>
+    {% else %}
+    <div class="empty-history">
+      <div>📜</div>
+      <h3>История пока пуста</h3>
+      <p>Когда бот запишет действие модерации, оно появится здесь.</p>
+    </div>
+    {% endfor %}
+  </section>
+
+  <footer>THE SYSTEM_PROTOGEN · MODERATION LOG · <span>SECURE SESSION</span></footer>
+</main>
+</div>
+</body>
+</html>
