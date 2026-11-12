@@ -22,6 +22,13 @@ import traceback
 ROOT = os.path.dirname(os.path.abspath(__file__))
 BOT_DIR = os.path.join(ROOT, "bot")
 
+# Hosting logs are pipes: without line buffering print() output appears late or never.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(line_buffering=True)
+    except Exception:
+        pass
+
 try:  # local runs: read .env (hosting platforms provide real environment variables)
     from dotenv import load_dotenv
     load_dotenv(os.path.join(ROOT, ".env"))
@@ -68,11 +75,14 @@ class BotRunner:
         self.ready = threading.Event()
         self.error = None
         self.lock_conn = None
+        self.pid = os.getpid()
+        self.stage = "created"
 
     def start(self):
         if self.mode == "off":
             print("🤖 BOT_MODE=off — Telegram-бот в этом процессе не запускается")
             return
+        print(f"🤖 Bot thread starting (pid {self.pid}, mode {self.mode})")
         threading.Thread(target=self._thread_main, name="protogen-bot", daemon=True).start()
 
     def _thread_main(self):
@@ -85,20 +95,28 @@ class BotRunner:
             print(f"❌ BOT START ERROR: {self.error}\n{traceback.format_exc()}")
             self.ready.set()
             return
+        self.stage = "online"
         self.ready.set()
         self.loop.run_forever()
 
     async def _startup(self):
+        self.stage = "importing bot modules"
         from main import build_application, ALLOWED_UPDATES, post_init, acquire_worker_lock
 
         if self.mode == "polling":
+            self.stage = "waiting for worker lock"
             # Wait at most 60 s for an old instance to stop, then continue anyway.
             self.lock_conn = await asyncio.to_thread(acquire_worker_lock, 60)
+        self.stage = "building application"
         application = build_application(with_updater=(self.mode == "polling"))
         self.application = application
+        self.stage = "connecting to Telegram (getMe)"
         await application.initialize()
+        self.stage = "post_init (jobs, command menus)"
         await post_init(application)  # run_polling()/run_webhook() normally call it; we start manually
+        self.stage = "starting application"
         await application.start()
+        self.stage = "setting webhook"
         if self.mode == "webhook":
             url = _public_url() + "/telegram/webhook"
             await application.bot.set_webhook(
@@ -120,12 +138,33 @@ class BotRunner:
         return True
 
 
-bot_runner = BotRunner()
-bot_runner.start()
+_runner = None
+_runner_lock = threading.Lock()
+
+
+def get_runner():
+    """Start the bot lazily inside the process that actually serves requests.
+
+    Starting a thread at import time breaks under gunicorn when the app is imported in the
+    master and then forked: threads do not survive fork() and locks they held stay locked
+    in the child, so the bot in the worker hangs forever in "starting".
+    """
+    global _runner
+    with _runner_lock:
+        if _runner is None or _runner.pid != os.getpid():
+            _runner = BotRunner()
+            _runner.start()
+        return _runner
+
+
+@app.before_request
+def _ensure_bot_started():
+    get_runner()
 
 
 @app.route("/telegram/webhook", methods=["POST"])
 def telegram_webhook():
+    bot_runner = get_runner()
     if bot_runner.mode != "webhook":
         return jsonify({"ok": False, "error": "webhook mode disabled"}), 404
     token = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
@@ -145,6 +184,7 @@ def telegram_webhook():
 @app.route("/healthz")
 def healthz():
     """For UptimeRobot / cron-job.org pings that keep the free instance awake."""
+    bot_runner = get_runner()
     status = "starting"
     if bot_runner.mode == "off":
         status = "off"
@@ -154,8 +194,10 @@ def healthz():
         status = "online"
     # Always 200 so the hosting health check never restarts the web panel because of the bot.
     return jsonify({"ok": status != "error", "web": "online", "bot": status, "mode": bot_runner.mode,
+                    "stage": bot_runner.stage, "pid": bot_runner.pid,
                     "bot_error": (bot_runner.error or "")[:200] or None})
 
 
 if __name__ == "__main__":
+    get_runner()
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), use_reloader=False)
